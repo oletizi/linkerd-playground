@@ -17,6 +17,12 @@ into a **public demo** others can run on their own machines and networks, and is
 a first rehearsal for a later `stack-control` fleet control plane that needs a
 multi-infrastructure shared trust domain.
 
+This is the **first of several demos** the repository will house. The repo's top
+level is organized as a demo *collection*; this SPIFFE case lives in its own
+self-contained demo directory (`demos/spiffe-cross-boundary/`) and does **not**
+define the repo. Shared tooling is extracted from real duplication once a second
+demo exists — not pre-built.
+
 The demo **crosses a real boundary between two physical machines** — that is the
 point, so it never collapses onto a single host. The headline: a process
 Kubernetes has never heard of, on a *separate machine*, authenticates to
@@ -183,22 +189,39 @@ mTLS-encrypted to the off-cluster workload and the edge enforces authz on the
 caller's in-cluster identity (Linkerd 2.15's "encrypt all traffic to VM
 workloads"). Built only if Beats 1–2 land with time to spare.
 
-## Repo layout
+## Repository structure (multi-demo)
+
+The repo houses many demos; the top level is demo-neutral, and each demo is
+self-contained under `demos/`.
 
 ```
-config.example.env    provider, hosts, CLUSTER_NODE_ADDR, EDGE_ADDR, VM sizing, pod/service CIDRs
-                      (real values in a gitignored config.local.env)
-provisioners/
-  lima/               cluster.yaml, edge.yaml            (default compute provider)
-  multipass/          cloud-init equivalents             (documented alt)
-net/                  generic route + cluster-DNS shim (uses CLUSTER_NODE_ADDR + CIDRs)
-cluster/              k3s + linkerd + spire-server + app + authz + externalworkload
-edge/                 spire-agent config, proxy launch + iptables scripts, app
-scripts/              up / down / status / per-beat (idempotent, resumable, arch-aware)
-docs/                 walkthrough that becomes the blog-post backbone
-Justfile              single entrypoint
+README.md                 repo overview + index of demos (demo-neutral)
+Justfile                  thin dispatcher: `just <demo> <target>`, `just demos`
+lib/                      shared bash helpers (arch-detect, config-load, VM launch) — grows as needed
+demos/
+  spiffe-cross-boundary/  demo #1 — this design, fully self-contained
+    README.md             walkthrough / blog-post backbone
+    config.example.env    provider, hosts, CLUSTER_NODE_ADDR, EDGE_ADDR, VM sizing, pod/service CIDRs
+                          (real values in a gitignored config.local.env)
+    provisioners/
+      lima/               cluster.yaml, edge.yaml         (default compute provider)
+      multipass/          cloud-init equivalents          (documented alt)
+    net/                  generic route + cluster-DNS shim (uses CLUSTER_NODE_ADDR + CIDRs)
+    cluster/              k3s + linkerd + spire-server + app + authz + externalworkload
+    edge/                 spire-agent config, proxy launch + iptables scripts, app
+    scripts/              up / down / status / per-beat (idempotent, resumable, arch-aware)
+    Justfile              demo targets (invoked by the top-level dispatcher)
+docs/
+  superpowers/specs/      design specs (this file — repo-level history)
 ```
 
+- **Top level is not about SPIFFE.** `README.md` describes the repo as a
+  collection of Linkerd mesh/identity demos and indexes them; the SPIFFE
+  specifics live entirely under `demos/spiffe-cross-boundary/`.
+- **No speculative framework.** `lib/` starts with only the trivially-shared
+  helpers this demo needs; genuinely common tooling (e.g. VM provisioning) is
+  promoted out of the demo when a second demo demonstrates the reuse (rule of
+  three), not before.
 - This layer is **bash + YAML**, not TypeScript: declarative infra + shell glue
   is the right tool. (Global TS/`@/` preferences apply to application code.)
 - Scripts are idempotent and resumable, arch-detecting; no `#` inside heredocs
@@ -206,16 +229,16 @@ Justfile              single entrypoint
 
 ## Success criteria
 
-1. `just up` reads config, provisions two Linux VMs (one per physical machine)
-   via the configured compute provider, applies the generic route/DNS shim over
-   whatever reachability already exists, and brings cluster + Linkerd + SPIRE +
-   edge workload online, idempotently. **No network infrastructure is selected or
-   provisioned by the playground.**
+1. `just spiffe-cross-boundary up` reads config, provisions two Linux VMs (one per
+   physical machine) via the configured compute provider, applies the generic
+   route/DNS shim over whatever reachability already exists, and brings cluster +
+   Linkerd + SPIRE + edge workload online, idempotently. **No network
+   infrastructure is selected or provisioned by the playground.**
 2. Beat 1: `linkerd viz tap` shows the edge's `spiffe://…` client identity on a
    cross-boundary call.
 3. Beat 2: flipping the authz identity alone flips 200 → 403.
 4. Beat 3 (stretch): in-cluster → edge mTLS.
-5. Reproducible, documented, tears down cleanly (`just down`).
+5. Reproducible, documented, tears down cleanly (`just spiffe-cross-boundary down`).
 6. `docs/` walkthrough lets a stranger run it on their own two machines over
    *any* reachability, needing no specific network product.
 
