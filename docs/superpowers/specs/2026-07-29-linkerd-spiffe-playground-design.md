@@ -8,18 +8,20 @@ status: approved
 
 ## Purpose
 
-Build a reproducible, **machine-agnostic** playground that demonstrates how
-SPIFFE provides a **shared trust domain** and **workload identities** across an
-infrastructure boundary, using **Linkerd mesh expansion** to bring a
-**non-Kubernetes workload** into the mesh. It is the backing artifact for a blog
-post on SPIFFE in Linkerd, is intended to grow into a **public demo** others can
-run on their own hardware, and is a first rehearsal for a later `stack-control`
-fleet control plane that needs a multi-infrastructure shared trust domain.
+Build a reproducible, **infrastructure-agnostic** playground that demonstrates
+the core SPIFFE thesis: **a unified trust domain and workload identity that are
+independent of the network and the underlying infrastructure.** It uses
+**Linkerd mesh expansion** to bring a **non-Kubernetes workload** into the mesh,
+is the backing artifact for a blog post on SPIFFE in Linkerd, is intended to grow
+into a **public demo** others can run on their own machines and networks, and is
+a first rehearsal for a later `stack-control` fleet control plane that needs a
+multi-infrastructure shared trust domain.
 
-The headline demonstration: a process Kubernetes has never heard of, running on a
-separate machine, authenticates to in-cluster services with a cryptographic
-SPIFFE identity, and access is gated on that identity rather than on network
-location.
+The demo **crosses a real boundary between two physical machines** — that is the
+point, so it never collapses onto a single host. The headline: a process
+Kubernetes has never heard of, on a *separate machine*, authenticates to
+in-cluster services with a cryptographic SPIFFE identity, and access is gated on
+**that identity, not on IP, subnet, or network location.**
 
 ## Background (why this is feasible)
 
@@ -36,29 +38,67 @@ References:
 - Adding non-Kubernetes workloads to your mesh:
   https://linkerd.io/2-edge/tasks/adding-non-kubernetes-workloads/
 
+## Network independence (the SPIFFE thesis) — and what the demo actually needs
+
+SPIFFE decouples **identity and trust** from the network: a workload's SVID, not
+its IP or location, is what authenticates and authorizes it. The playground
+therefore **does not prescribe, provision, or depend on any particular network
+infrastructure.** There is no "connectivity provider" to choose.
+
+Two honest, separate facts keep the demo from overclaiming:
+
+- **Trust/identity — network-independent (what SPIFFE proves).** The edge
+  workload is authorized by its SPIFFE identity, not by IP, subnet, or firewall.
+  Move it to a different network and nothing about trust changes. This is the
+  thesis the demo centers.
+- **Data-plane connectivity — a precondition SPIFFE does not remove.** Linkerd's
+  proxy still needs IP packets to reach in-cluster pods and resolve cluster DNS.
+  SPIFFE issues identity; it does not conjure routes. This is a *Linkerd*
+  requirement, orthogonal to SPIFFE, and the demo names it as such.
+
+**Precondition — bring your own reachability.** The two machines can already
+reach each other over IP by *any* means — LAN, VPN, Tailscale, WireGuard, a cloud
+VPC, a crossover cable. The playground neither sets this up nor cares which it is.
+The only network inputs in config are generic addresses you already use:
+`CLUSTER_NODE_ADDR` (how you reach Box A) and `EDGE_ADDR` (how the cluster reaches
+Box B).
+
+Given that reachability, the playground adds the **minimal, generic plumbing
+Linkerd's data plane requires**, expressed independently of the network:
+
+1. a route from the edge to the cluster **pod + service CIDRs** via
+   `CLUSTER_NODE_ADDR`;
+2. `cluster.local` DNS → the cluster's CoreDNS.
+
+These are two provider-neutral steps (a static route + a stub resolver entry),
+not a pluggable network layer — and they are flagged in the walkthrough as
+Linkerd's data-plane need, so the identity-vs-connectivity boundary stays clear.
+
+**Return-path check (validate early):** in-cluster pods must reach `EDGE_ADDR`.
+This is the one integration risk and is proven in Beat 1 before any policy is
+layered on top.
+
 ## Host contract (OS-neutral)
 
-The playground targets **two Linux hosts, each its own Tailscale node**. Nearly
-everything in the stack (k3s, Linkerd, SPIRE, the Tailscale subnet router,
-iptables, `ExternalWorkload`) is pure Linux and ships both `arm64` and `amd64`,
-so the core is portable. Only the way you *produce* the two Linux hosts varies by
-hardware — that is the swappable **provisioner** layer.
+The playground targets **two Linux hosts on two separate physical machines**.
+Nearly everything in the stack (k3s, Linkerd, SPIRE, iptables, `ExternalWorkload`)
+is pure Linux and ships both `arm64` and `amd64`, so the core is portable. The one
+environment-specific concern — how you *produce* the Linux hosts — is isolated
+into a swappable **provisioner** layer.
 
 | Box | Must provide |
 |---|---|
-| **Box A — cluster** | A Linux tailnet node that can run k3s, advertise routes (IP forwarding), and reach Box B |
-| **Box B — edge** | A Linux tailnet node that can run iptables redirection + a standalone `linkerd2-proxy`, and reach Box A's advertised routes |
+| **Box A — cluster** | A Linux node that can run k3s and route its pod+service CIDRs; reachable at `CLUSTER_NODE_ADDR` |
+| **Box B — edge** | A Linux node that can run iptables redirection + a standalone `linkerd2-proxy`; reachable at `EDGE_ADDR` |
 
-Design intent: the demo runs in **disposable VMs on every host** (isolation +
-easy teardown), even on Linux. Because the bootstrap always runs inside a Linux
-VM, there is a single uniform Linux path everywhere — no separate bare-metal
-branch to maintain. `tailscaled` runs **inside** each VM, so each VM is a
-first-class tailnet node, not hidden behind a host's Tailscale.
+Design intent: the demo runs in **disposable VMs**, one per physical machine
+(isolation + easy teardown), even on Linux — one uniform Linux bootstrap path.
+It **must** be two physical machines; single-host is out of scope by design.
 
-## Portability: provisioners & architecture
+## Portability: compute provisioners & architecture
 
-A **provisioner** produces one Linux VM that satisfies the host contract. The
-core bootstrap is identical across all of them.
+A **provisioner** produces one Linux VM per physical machine; the core bootstrap
+is identical across all of them.
 
 | Host OS | Provisioner | Status |
 |---|---|---|
@@ -66,42 +106,36 @@ core bootstrap is identical across all of them.
 | macOS (Intel) | Lima (amd64 guest) | Portable by construction |
 | Linux (arm64 / amd64) | Lima (QEMU backend) | Portable by construction |
 | Windows | multipass or WSL2 | Documented |
-| Cloud (any) | a Linux instance in a VPC, joined to the tailnet | Documented |
+| Cloud (any) | a Linux instance | Documented |
 
-- **Lima is the default provider** because it runs on both macOS and Linux, and
-  its VM definitions are committable YAML (CPUs, memory, mounts, provisioning).
+- **Lima is the default provider** (runs on macOS and Linux; committable YAML).
 - **Architecture-aware bootstrap:** scripts detect `uname -m` and pull the
   matching `linkerd2-proxy` binary and container images (`arm64` vs `amd64`).
-- **Config-driven, not hardcoded:** a `config.example.env` declares the two
-  target hosts, provider, VM sizing, and pod/service CIDRs. Real values live in a
-  gitignored local override. The two-Mac setup below is the *example*, not baked
-  into the code.
+- **Config-driven:** `config.example.env` declares provider, hosts, addresses,
+  VM sizing, and pod/service CIDRs; real values live in a gitignored
+  `config.local.env`.
 
 ### Reference environment (what this was authored on)
 
-Two Apple Silicon Macs, each already a Tailscale node, each hosting a Lima VM
-that is its own tailnet node. The crossed boundary is orion-m1 ↔ orion-m4: two
-physical machines with WireGuard between them.
+Two Apple Silicon Macs that already reach each other (over the LAN), each hosting
+a Lima VM. Boundary crossed: orion-m1 ↔ orion-m4 (two physical machines). Any
+reachability would work equally.
 
-| Role | Physical host | Linux VM (tailnet node) | Runs |
+| Role | Physical host | Linux VM | Runs |
 |---|---|---|---|
-| **Box A — cluster** | orion-m1 (M1, 16 GB, `100.96.71.14`) | `linkerd-cluster` (~8 GB) | k3s + Linkerd control plane + `linkerd viz` + SPIRE server + Tailscale **subnet router** |
-| **Box B — edge** | orion-m4 (M4, 16 GB, `100.65.31.54`) | `linkerd-edge` (~4 GB) | tailscaled + SPIRE agent + standalone `linkerd2-proxy` + demo app |
+| **Box A — cluster** | orion-m1 (M1, 16 GB) | `linkerd-cluster` (~8 GB) | k3s + Linkerd control plane + `linkerd viz` + SPIRE server |
+| **Box B — edge** | orion-m4 (M4, 16 GB) | `linkerd-edge` (~4 GB) | SPIRE agent + standalone `linkerd2-proxy` + demo app |
 
 ### Why these choices
 
 - **VM per host, not bare-metal.** Even on Linux, a disposable VM keeps the demo
   isolated and tear-down clean, and yields one uniform bootstrap path.
 - **Lima, not Docker/k3d.** k3d nests pod IPs on a Docker bridge inside Docker's
-  own Linux VM; advertising that CIDR across Tailscale means several NAT layers —
-  the fragile path. A real Linux VM host network stack makes advertising the pod
-  CIDR the documented, textbook case.
+  own Linux VM; reaching that CIDR across a boundary means several NAT layers. A
+  real Linux VM host network stack makes routing the pod CIDR the documented case.
 - **k3s, not kind/k3d.** Runs on the VM host directly, so pod CIDR
   (`10.42.0.0/16`) and service CIDR (`10.43.0.0/16`, both config-overridable) are
-  host-visible and advertisable by a subnet router.
-- **Host subnet router, not the Tailscale K8s operator.** Mesh expansion needs
-  the edge proxy to reach real **pod IPs** (`linkerd-dst-headless` is headless —
-  no VIP). A subnet router advertising the pod+service CIDRs delivers that.
+  host-visible and routable.
 
 ## Trust wiring
 
@@ -112,30 +146,18 @@ physical machines with WireGuard between them.
   root as Linkerd's in-cluster ServiceAccount identities.
 - **SPIRE agent** on the edge VM.
 - **Attestation:**
-  - Node (agent → server): **`join_token`** — portable over the tailnet, no
-    cloud metadata. The natural thing to swap for real infra attestation later in
+  - Node (agent → server): **`join_token`** — infrastructure-neutral, no cloud
+    metadata. The natural thing to swap for real infra attestation later in
     `stack-control`.
   - Workload (on edge): **`unix`** attestor — maps the `linkerd2-proxy`
     process's uid/path to its registration entry.
 - **Binding:** a SPIRE registration entry → `spiffe://<trust-domain>/edge/echo`,
-  plus an `ExternalWorkload` CRD in-cluster carrying that SPIFFE ID, the edge
-  VM's tailnet IP, and its ports.
+  plus an `ExternalWorkload` CRD in-cluster carrying that SPIFFE ID, `EDGE_ADDR`,
+  and the workload's ports.
 
 > The exact SPIFFE ID string scheme (trust-domain value + `ExternalWorkload`
 > path convention) is to be pinned against the Linkerd/SPIRE docs during
 > planning; strings here are illustrative examples.
-
-## Networking
-
-- **Box A VM:** `tailscale ... --advertise-routes=<pod-cidr>,<service-cidr>`
-  (defaults `10.42.0.0/16,10.43.0.0/16`) + IP forwarding; routes approved in the
-  tailnet.
-- **Box B VM:** `tailscale up --accept-routes`.
-- **Split-DNS:** tailnet rule mapping `cluster.local` → CoreDNS ClusterIP, so the
-  edge resolves `linkerd-dst-headless…` / `linkerd-policy…`.
-- **Return path (validate early):** pods must reach the edge's tailnet IP via the
-  node's `tailscale0`. This is the one integration risk; it is proven in Beat 1
-  before any policy is layered on top.
 
 ## Demonstration arc
 
@@ -146,70 +168,78 @@ The edge workload calls an in-cluster echo service. `linkerd viz tap`/`edges`
 shows the server proxy reporting the client identity as `spiffe://…/edge/echo`.
 *Proves the shared trust domain reaches outside the cluster.*
 
-**Beat 2 — Identity-based authz across the boundary (the money shot).**
+**Beat 2 — Identity-based authz, independent of network (the money shot).**
 An `AuthorizationPolicy` + `MeshTLSAuthentication` on the in-cluster service
 permits **only** the edge's SPIFFE ID.
 - Edge calls → **200**.
 - Change the required identity → same edge calls now **403**, with no change to
   network/IP/firewall.
-*Proves access is gated on cryptographic workload identity, not location.*
+*Proves access is gated on cryptographic workload identity, not location — the
+SPIFFE thesis, demonstrated.*
 
 **Beat 3 (stretch) — Encrypt + authorize traffic *to* the edge.**
 An in-cluster client calls a service hosted on the edge VM; traffic is
 mTLS-encrypted to the off-cluster workload and the edge enforces authz on the
 caller's in-cluster identity (Linkerd 2.15's "encrypt all traffic to VM
-workloads"). Built only if Beats 1–2 land with time to spare; a natural second
-act for the post.
+workloads"). Built only if Beats 1–2 land with time to spare.
 
 ## Repo layout
 
 ```
-config.example.env    declares provider, hosts, VM sizing, pod/service CIDRs
+config.example.env    provider, hosts, CLUSTER_NODE_ADDR, EDGE_ADDR, VM sizing, pod/service CIDRs
                       (real values in a gitignored config.local.env)
 provisioners/
-  lima/               cluster.yaml, edge.yaml            (default provider)
+  lima/               cluster.yaml, edge.yaml            (default compute provider)
   multipass/          cloud-init equivalents             (documented alt)
+net/                  generic route + cluster-DNS shim (uses CLUSTER_NODE_ADDR + CIDRs)
 cluster/              k3s + linkerd + spire-server + app + authz + externalworkload
 edge/                 spire-agent config, proxy launch + iptables scripts, app
-scripts/              up / down / status / per-beat scripts (idempotent, resumable, arch-aware)
+scripts/              up / down / status / per-beat (idempotent, resumable, arch-aware)
 docs/                 walkthrough that becomes the blog-post backbone
 Justfile              single entrypoint
 ```
 
 - This layer is **bash + YAML**, not TypeScript: declarative infra + shell glue
   is the right tool. (Global TS/`@/` preferences apply to application code.)
-- Scripts are idempotent and resumable (skip already-done units), arch-detecting;
-  no `#` inside heredocs (use files); no `sed` writes.
+- Scripts are idempotent and resumable, arch-detecting; no `#` inside heredocs
+  (use files); no `sed` writes.
 
 ## Success criteria
 
-1. `just up` reads config, provisions two Linux VMs via the configured provider,
-   and brings cluster + Linkerd + SPIRE + edge workload online, idempotently.
+1. `just up` reads config, provisions two Linux VMs (one per physical machine)
+   via the configured compute provider, applies the generic route/DNS shim over
+   whatever reachability already exists, and brings cluster + Linkerd + SPIRE +
+   edge workload online, idempotently. **No network infrastructure is selected or
+   provisioned by the playground.**
 2. Beat 1: `linkerd viz tap` shows the edge's `spiffe://…` client identity on a
    cross-boundary call.
 3. Beat 2: flipping the authz identity alone flips 200 → 403.
 4. Beat 3 (stretch): in-cluster → edge mTLS.
 5. Reproducible, documented, tears down cleanly (`just down`).
-6. `docs/` walkthrough is sufficient to anchor the blog post and lets a stranger
-   run it on their own hardware via the provisioner matrix.
+6. `docs/` walkthrough lets a stranger run it on their own two machines over
+   *any* reachability, needing no specific network product.
 
-## Non-goals
+## Non-goals & tested scope
 
-HA, multi-node clusters, production hardening, cert-rotation deep-dive, and
-cloud-instance attestation are all out of scope. Single k3s node, single edge
-workload, `join_token` attestation.
+HA, multi-node clusters, production hardening, cert-rotation deep-dive,
+single-host collapse, cloud-instance attestation, and **provisioning or
+prescribing the underlying network** are all out of scope. Single k3s node,
+single edge workload, `join_token` attestation. The playground assumes IP
+reachability between the two machines already exists and adds only the minimal
+generic routing/DNS that Linkerd's data plane requires.
 
-**Tested scope:** only the Lima-on-Apple-Silicon path is verified on available
-hardware. Other providers and architectures are kept correct-by-construction
-(config-driven, arch-aware) and documented, but are not CI-verified — stated
-plainly rather than claimed as "works everywhere."
+**Tested scope:** only the reference environment (Lima on Apple Silicon) is
+verified on available hardware. Other compute providers and architectures are
+kept correct-by-construction (config-driven, arch-aware) and documented, but are
+not CI-verified — stated plainly rather than claimed as "works everywhere."
 
 ## Relationship to stack-control (second concern)
 
 `stack-control`'s fleet control plane needs a multi-infrastructure shared trust
-domain; its control plane already binds to the Tailscale interface. This
-playground is a faithful small-scale rehearsal: same Tailscale trust fabric, same
-SPIFFE shared-trust-domain mechanics. That work is a separate spec; nothing here
-should hard-depend on the reference-environment specifics in a way that blocks
-generalizing to real infra (hence `join_token` attestation, config-driven hosts,
-and portable VM defs).
+domain. This playground is a faithful small-scale rehearsal: the *same*
+SPIFFE-issued identity and shared trust domain, demonstrated to be independent of
+the network. Because the playground prescribes no network, the identical demo
+runs over a LAN today and over whatever reachability the fleet actually has
+(overlay, VPC, direct) tomorrow — with `join_token` attestation, config-driven
+addresses, and portable VM defs ensuring nothing hard-depends on the reference
+specifics.
