@@ -1,0 +1,16 @@
+# Edge VM: SPIRE + standalone linkerd2-proxy + demo app.
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+cpus: 2
+memory: "4GiB"
+disk: "20GiB"
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      apt-get update
+      apt-get install -y curl iptables jq docker.io
