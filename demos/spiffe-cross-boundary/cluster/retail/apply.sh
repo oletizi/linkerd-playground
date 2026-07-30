@@ -31,6 +31,8 @@ kubectl -n mixed-env rollout status deploy/retail-cloud --timeout=120s
 echo "== expose on the node (tailnet-reachable) =="
 kubectl -n mixed-env delete svc retail-cloud-lan --ignore-not-found >/dev/null 2>&1
 kubectl -n mixed-env expose deployment retail-cloud --name=retail-cloud-lan --type=NodePort --port=8080 --target-port=8080 >/dev/null
+kubectl -n mixed-env patch svc retail-cloud-lan --type=json \
+  -p '[{"op":"replace","path":"/spec/ports/0/nodePort","value":30080}]' >/dev/null
 NODEPORT=$(kubectl -n mixed-env get svc retail-cloud-lan -o jsonpath='{.spec.ports[0].nodePort}')
 NODEIP=$(kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 echo "NODEPORT=${NODEPORT}"
