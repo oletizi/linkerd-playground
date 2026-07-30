@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <style>
   :root{--paper:#efe9d8;--paper2:#e6ddc6;--card:#f6f2e6;--ink:#17241d;--market:#1a6b4a;--market-d:#124e37;--tag:#e0a021;--void:#c8452b;--line:#d6ccae;--muted:#6f7566}
   *{box-sizing:border-box}
@@ -61,6 +62,14 @@
   body.void .void-stamp{display:flex} body.void .pbody{filter:grayscale(.7)} body.void .seal{background:var(--void)} body.void .seal .sub{color:#f6c9bf} body.void .verdict{background:rgba(200,69,43,.1)}
   @media (prefers-reduced-motion:no-preference){.void-stamp .stamp{animation:thud .28s cubic-bezier(.2,1.4,.3,1)}@keyframes thud{0%{transform:rotate(-11deg) scale(2.2);opacity:0}60%{opacity:1}100%{transform:rotate(-11deg) scale(1);opacity:.92}}}
   @media (max-width:820px){.cols{grid-template-columns:1fr}.rail{grid-template-columns:1fr}.end.store{text-align:left}.seal{padding:14px}}
+  /* topology */
+  .topo-panel{border:2px solid var(--ink);border-radius:3px;background:var(--card);margin-bottom:22px;overflow:hidden}
+  #topo{height:340px;background:var(--paper);background-image:radial-gradient(rgba(23,36,29,.05) 1px,transparent 1px);background-size:16px 16px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;padding:10px 16px;border-top:2px solid var(--ink);font-size:12px;color:var(--muted)}
+  .legend b{color:var(--ink);font-weight:600}
+  .legend .sw{display:inline-block;width:22px;height:0;border-top:3px solid var(--market);vertical-align:middle;margin-right:6px}
+  .legend .sw.ctrl{border-top-style:dotted;border-color:var(--muted)}
+  .legend .sw.id{border-color:var(--tag)} .legend .sw.denied{border-color:var(--void)}
 </style>
 </head>
 <body>
@@ -83,6 +92,17 @@
     <button id="restore" class="restore" style="display:none">Reinstate authorization</button>
     <span class="note">Flips the Linkerd authorization policy. <b>The network doesn’t change — only which identity is allowed.</b></span>
   </div>
+  <section class="topo-panel">
+    <div class="phead"><h2>Network topology</h2><span class="src mono" id="topoStat">live</span></div>
+    <div id="topo"></div>
+    <div class="legend">
+      <span><span class="sw"></span><b>mTLS data</b> · SPIFFE identity</span>
+      <span><span class="sw id"></span><b>SPIRE</b> issues SVID</span>
+      <span><span class="sw ctrl"></span><b>control plane</b> · policy &amp; discovery</span>
+      <span><span class="sw denied"></span><b>denied</b> when authorization is voided</span>
+    </div>
+  </section>
+
   <div class="cols">
     <section class="panel">
       <div class="phead"><h2>Inventory</h2><span class="src mono">live · store #042</span></div>
@@ -123,7 +143,7 @@
     try{
       const d=await (await fetch('/api/data')).json();
       $('cloudId').textContent=d.identities.cloud; $('storeId').textContent=d.identities.store;
-      setState(d.ok);
+      setState(d.ok); updateTopo(d);
       if(d.ok){renderInv(d.inventory); renderSales(d.sales);}
     }catch(e){/* keep last state */}
   }
@@ -133,6 +153,51 @@
     finally{ setTimeout(async()=>{await refresh(); btns.forEach(x=>x.disabled=false);},1200); }
   }
   $('revoke').onclick=()=>setPolicy(false); $('restore').onclick=()=>setPolicy(true);
+
+  // --- network topology (Cytoscape.js, curated two-machine layout) ---
+  const cy=cytoscape({
+    container:$('topo'),
+    userZoomingEnabled:false, userPanningEnabled:false, boxSelectionEnabled:false, autounselectify:true,
+    elements:[
+      {data:{id:'cloud',label:'CLOUD CLUSTER · MACHINE A'}},
+      {data:{id:'store',label:'ON-PREM STORE · MACHINE B'}},
+      {data:{id:'rc',parent:'cloud',label:'RetailCloud app'},position:{x:120,y:70}},
+      {data:{id:'cp',parent:'cloud',label:'Linkerd control plane'},position:{x:120,y:180}},
+      {data:{id:'anchor',parent:'cloud',label:'Trust anchor · root CA'},position:{x:120,y:285}},
+      {data:{id:'pos',parent:'store',label:'store-pos'},position:{x:660,y:70}},
+      {data:{id:'proxy',parent:'store',label:'linkerd2-proxy'},position:{x:660,y:180}},
+      {data:{id:'spire',parent:'store',label:'SPIRE server + agent'},position:{x:660,y:285}},
+      {data:{id:'mtls',source:'rc',target:'pos',elabel:'mTLS'},classes:'link'},
+      {data:{id:'ctrl',source:'proxy',target:'cp',elabel:'control-plane'},classes:'ctrl'},
+      {data:{id:'idw',source:'spire',target:'proxy',elabel:'SVID'},classes:'idw'},
+      {data:{id:'trust',source:'anchor',target:'spire',elabel:'trust'},classes:'trust'},
+    ],
+    layout:{name:'preset',fit:true,padding:34},
+    style:[
+      {selector:'node',style:{'label':'data(label)','shape':'round-rectangle','background-color':'#f6f2e6','border-color':'#17241d','border-width':1.5,'width':'label','height':'label','padding':'12px','font-family':'Hanken Grotesk','font-size':'13px','font-weight':600,'color':'#17241d','text-valign':'center','text-halign':'center'}},
+      {selector:'$node > node',style:{}},
+      {selector:'node:parent',style:{'background-color':'#e6ddc6','background-opacity':0.5,'border-color':'#17241d','border-width':2,'border-style':'dashed','label':'data(label)','text-valign':'top','text-halign':'center','text-margin-y':-6,'font-size':'11px','font-weight':700,'color':'#6f7566','padding':'26px'}},
+      {selector:'#pos',style:{'background-color':'#efe4c8','border-width':2}},
+      {selector:'#rc',style:{'background-color':'#e7efe9','border-width':2}},
+      {selector:'edge',style:{'label':'data(elabel)','curve-style':'bezier','width':2,'target-arrow-shape':'triangle','font-family':'Spline Sans Mono','font-size':'10px','color':'#6f7566','text-background-color':'#efe9d8','text-background-opacity':1,'text-background-padding':'2px','text-rotation':'autorotate'}},
+      {selector:'.ctrl',style:{'line-color':'#b8ab86','target-arrow-color':'#b8ab86','line-style':'dotted','width':2}},
+      {selector:'.idw',style:{'line-color':'#e0a021','target-arrow-color':'#e0a021','width':2.5}},
+      {selector:'.trust',style:{'line-color':'#17241d','target-arrow-color':'#17241d','line-style':'dashed','width':1.5,'opacity':0.6}},
+      {selector:'.link',style:{'line-color':'#1a6b4a','target-arrow-color':'#1a6b4a','width':5,'line-dash-pattern':[10,6],'color':'#124e37','font-size':'11px'}},
+      {selector:'.link.denied',style:{'line-color':'#c8452b','target-arrow-color':'#c8452b','line-style':'dashed','line-dash-pattern':[6,6],'color':'#c8452b'}},
+    ],
+  });
+  // flow animation on the secured mTLS link
+  let off=0, denied=false;
+  setInterval(()=>{ if(!denied){ off=(off-1.4); cy.$('#mtls').style('line-dash-offset',off);} },55);
+  function updateTopo(d){
+    denied=!(d&&d.ok);
+    const e=cy.$('#mtls');
+    e.toggleClass('denied',denied);
+    e.data('elabel', denied?'DENIED · 403':('mTLS · '+((d.link&&d.link.ms)||0)+'ms'));
+    $('topoStat').textContent=denied?'denied':'live · secured';
+  }
+
   refresh(); setInterval(refresh,2500);
 </script>
 </body>

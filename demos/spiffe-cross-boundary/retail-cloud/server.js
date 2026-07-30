@@ -17,14 +17,15 @@ const DENY_ID = 'blocked.' + NS + '.serviceaccount.identity.linkerd.cluster.loca
 const html = fs.readFileSync(__dirname + '/index.html');
 
 function getJSON(url) {
+  const t0 = Date.now();
   return new Promise((resolve) => {
     const req = http.get(url, { timeout: 4000 }, (r) => {
       let d = '';
       r.on('data', (c) => (d += c));
-      r.on('end', () => resolve({ code: r.statusCode, body: d }));
+      r.on('end', () => resolve({ code: r.statusCode, body: d, ms: Date.now() - t0 }));
     });
-    req.on('error', (e) => resolve({ code: 0, error: e.code || String(e) }));
-    req.on('timeout', () => { req.destroy(); resolve({ code: 0, error: 'timeout' }); });
+    req.on('error', (e) => resolve({ code: 0, error: e.code || String(e), ms: Date.now() - t0 }));
+    req.on('timeout', () => { req.destroy(); resolve({ code: 0, error: 'timeout', ms: Date.now() - t0 }); });
   });
 }
 
@@ -55,7 +56,7 @@ const server = http.createServer(async (req, res) => {
   if (path === '/api/data') {
     const [inv, sales] = await Promise.all([getJSON(STORE_BASE + '/inventory'), getJSON(STORE_BASE + '/sales')]);
     const ok = inv.code >= 200 && inv.code < 300;
-    const out = { ok, identities: { cloud: CLOUD_ID, store: STORE_ID } };
+    const out = { ok, identities: { cloud: CLOUD_ID, store: STORE_ID }, link: { ok, code: inv.code, ms: inv.ms } };
     if (ok) { out.inventory = JSON.parse(inv.body).items; out.sales = JSON.parse(sales.body || '{"sales":[]}').sales; }
     else { out.reason = inv.code === 403 ? 'denied' : (inv.error || 'unreachable'); out.code = inv.code; }
     res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(out));
