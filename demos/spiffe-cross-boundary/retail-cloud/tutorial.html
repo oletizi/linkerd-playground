@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetailCloud · Tutorial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#efe9d8;--paper2:#e6ddc6;--card:#f6f2e6;--ink:#17241d;--market:#1a6b4a;--market-d:#124e37;--tag:#e0a021;--void:#c8452b;--line:#d6ccae;--muted:#6f7566}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hanken Grotesk",system-ui,sans-serif;font-size:16px;line-height:1.62;background-image:radial-gradient(rgba(23,36,29,.03) 1px,transparent 1px);background-size:5px 5px}
+  .mono{font-family:"Spline Sans Mono",ui-monospace,monospace}
+  h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0;line-height:1.08}
+  a{color:var(--market-d)}
+  header{display:flex;align-items:center;gap:16px;padding:16px 26px;border-bottom:2px solid var(--ink)}
+  .wm{font-family:"Bricolage Grotesque";font-weight:800;font-size:22px;letter-spacing:-.02em}
+  .wm b{color:var(--market)}
+  .sub{font-size:13px;color:var(--muted)}
+  .grow{flex:1}
+  nav{display:flex;gap:6px}
+  nav a{text-decoration:none;font-weight:700;font-size:14px;color:var(--ink);padding:8px 14px;border:2px solid var(--ink);border-radius:2px;background:var(--card)}
+  nav a.active{background:var(--ink);color:var(--paper)}
+  main{max-width:920px;margin:0 auto;padding:26px 24px 80px}
+  .tabs{display:flex;gap:4px;margin-bottom:26px;border:2px solid var(--ink);border-radius:3px;overflow:hidden;background:var(--card)}
+  .tabs button{flex:1;font-family:"Hanken Grotesk";font-weight:700;font-size:15px;border:0;border-right:2px solid var(--ink);padding:13px;cursor:pointer;background:var(--card);color:var(--ink)}
+  .tabs button:last-child{border-right:0}
+  .tabs button.active{background:var(--market);color:#fff}
+  .tabs button .k{display:block;font-size:11px;font-weight:600;color:inherit;opacity:.7;letter-spacing:.08em;text-transform:uppercase}
+  section.tab{display:none} section.tab.active{display:block}
+  .step,.concept{border:2px solid var(--ink);border-radius:3px;background:var(--card);padding:18px 20px;margin:0 0 16px;position:relative}
+  .concept h2{font-size:22px;margin-bottom:6px}
+  .concept .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--market-d);font-weight:700;margin-bottom:6px}
+  .concept p{margin:8px 0 0}
+  .idbox{font-family:"Spline Sans Mono";font-size:13px;background:var(--paper);border:1px solid var(--line);border-radius:2px;padding:8px 10px;margin-top:10px;word-break:break-all;color:var(--market-d)}
+  .step{padding-left:64px}
+  .step .n{position:absolute;left:16px;top:16px;width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--paper);font-family:"Bricolage Grotesque";font-weight:800;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .step h3{font-size:18px} .step .watch{margin-top:8px;font-size:14px;color:var(--market-d)} .step .watch b{color:var(--ink)}
+  .step.void{border-color:var(--void)} .step.void .n{background:var(--void)}
+  .frame{border:2px solid var(--ink);border-radius:3px;overflow:hidden;background:var(--card);margin-top:22px}
+  .frame .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:2px solid var(--ink);font-size:12px;color:var(--muted)}
+  .frame .bar .dot{width:9px;height:9px;border-radius:50%;background:var(--market)}
+  .frame iframe{width:100%;height:680px;border:0;display:block;background:var(--paper)}
+  pre{background:var(--ink);color:#e8e6d9;border-radius:3px;padding:14px 16px;overflow-x:auto;font-family:"Spline Sans Mono";font-size:12.5px;line-height:1.55;margin:10px 0}
+  pre .c{color:#9db7a5}
+  .lede{font-size:18px;color:var(--ink);margin:0 0 20px}
+  .note{font-size:14px;color:var(--muted);margin-top:8px}
+  ol.plain{padding-left:22px} ol.plain li{margin:6px 0}
+  @media (max-width:640px){.tabs button{font-size:13px;padding:10px}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="wm">Retail<b>Cloud</b></div><div class="sub">How this demo works</div></div>
+  <div class="grow"></div>
+  <nav><a href="/">Dashboard</a><a href="/tutorial" class="active">Tutorial</a></nav>
+</header>
+
+<main>
+  <div class="tabs">
+    <button data-tab="learn" class="active"><span class="k">Understand</span>Learn</button>
+    <button data-tab="try"><span class="k">Guided</span>Try it</button>
+    <button data-tab="build"><span class="k">Reproduce</span>Build it</button>
+  </div>
+
+  <!-- LEARN -->
+  <section class="tab active" id="learn">
+    <p class="lede">RetailCloud is a cloud dashboard reading live data from a store’s point-of-sale system that runs on a <b>different machine</b>, outside Kubernetes. Here’s how they trust each other — by <b>identity</b>, not by network.</p>
+
+    <div class="concept">
+      <div class="eyebrow">The problem</div>
+      <h2>Trust across a boundary</h2>
+      <p>The dashboard runs in the cloud (machine A). The point-of-sale system runs on-prem in the store (machine B). When the dashboard asks the store for inventory, how does the store know the caller is really the dashboard — and not something else that reached its address? Firewalls and IP allowlists tie trust to <i>where</i> a workload runs. Move it, or share a network, and those rules break.</p>
+    </div>
+
+    <div class="concept">
+      <div class="eyebrow">The idea</div>
+      <h2>SPIFFE: identity, not location</h2>
+      <p>SPIFFE gives every workload a cryptographic identity — a short-lived certificate called an SVID — inside a shared <b>trust domain</b>. The store’s service isn’t “whatever is at 100.77.68.7”; it <i>is</i>:</p>
+      <div class="idbox">spiffe://root.linkerd.cluster.local/store-pos</div>
+      <p class="note">That identity is the same regardless of what network the workload sits on.</p>
+    </div>
+
+    <div class="concept">
+      <div class="eyebrow">The bridge</div>
+      <h2>Mesh expansion: the store joins the mesh</h2>
+      <p>store-pos runs on a plain VM, not in Kubernetes. Linkerd’s <b>mesh expansion</b> brings it in: a standalone <span class="mono">linkerd2-proxy</span> runs beside it, and <b>SPIRE</b> issues its SVID — chained to the same trust anchor Linkerd uses inside the cluster. One trust domain now spans both machines.</p>
+    </div>
+
+    <div class="concept">
+      <div class="eyebrow">The wire</div>
+      <h2>mTLS: encrypted and mutually authenticated</h2>
+      <p>When the dashboard calls the store, both sides present their SVIDs and establish mutual TLS. The store knows exactly who is calling — by identity — and the traffic is encrypted the whole way across the boundary. On the dashboard you’ll see the link marked <span class="mono">mTLS</span> with live latency.</p>
+    </div>
+
+    <div class="concept">
+      <div class="eyebrow">The point</div>
+      <h2>Authorization by identity</h2>
+      <p>Access becomes a policy about <i>identity</i>: the store-pos service allows only the dashboard’s identity to read its data. Change the allowed identity, and the dashboard is refused — a real HTTP <b>403</b> — with nothing about the network changing. That’s exactly what the dashboard’s <b>Void authorization</b> button does. Head to <b>Try it</b> to watch it happen.</p>
+    </div>
+  </section>
+
+  <!-- TRY IT -->
+  <section class="tab" id="try">
+    <p class="lede">Follow these five steps against the live dashboard below. It’s the real running app — clicking here changes real Linkerd policy.</p>
+
+    <div class="step"><div class="n">1</div><h3>Meet the two machines</h3>
+      <p>In <b>Network topology</b>, find the two dashed boxes: the <b>cloud cluster</b> (machine A) and the <b>on-prem store</b> (machine B). <span class="mono">store-pos</span> lives on machine B — outside Kubernetes entirely.</p></div>
+
+    <div class="step"><div class="n">2</div><h3>Spot the identities</h3>
+      <p>In the top panel, read the two identities: the dashboard’s and the store’s <span class="mono">spiffe://…/store-pos</span>.</p>
+      <div class="watch"><b>These are cryptographic</b>, not IP addresses — the basis for trust.</div></div>
+
+    <div class="step"><div class="n">3</div><h3>Watch the secure link</h3>
+      <p>The green <span class="mono">mTLS</span> link (with live latency) is the dashboard reading the store’s inventory and sales — encrypted and mutually authenticated across the boundary.</p></div>
+
+    <div class="step void"><div class="n">4</div><h3>Revoke trust</h3>
+      <p>Click <b>Void authorization</b>. The policy now requires a <i>different</i> identity.</p>
+      <div class="watch">Watch: the store data stamps <b>VOID</b>, the topology link turns <b>red (403)</b>, and the seal breaks.</div></div>
+
+    <div class="step"><div class="n">5</div><h3>Notice what didn’t change</h3>
+      <p>The network is identical — same addresses, same routes, same firewall. Only the <i>allowed identity</i> changed. Click <b>Reinstate authorization</b> to bring the store back.</p></div>
+
+    <div class="frame">
+      <div class="bar"><span class="dot"></span>Live dashboard — clicking inside changes real policy</div>
+      <iframe src="/" title="RetailCloud dashboard"></iframe>
+    </div>
+  </section>
+
+  <!-- BUILD IT -->
+  <section class="tab" id="build">
+    <p class="lede">Reproduce it on two Linux hosts (or VMs) that can reach each other. This is the shape; the exact scripts are in the repo.</p>
+
+    <div class="concept"><div class="eyebrow">Prerequisites</div><h2>What you need</h2>
+      <ol class="plain">
+        <li>Two Linux hosts on any network where they can reach each other (LAN, VPN, or an overlay).</li>
+        <li>Linkerd 2.15+ (mesh expansion + SPIFFE), a Kubernetes cluster (k3s is fine), and SPIRE.</li>
+      </ol>
+    </div>
+
+    <div class="concept"><div class="eyebrow">Step 1</div><h2>One trust anchor</h2>
+      <p>Generate a root CA and install Linkerd with it — this root is the shared trust domain both machines will chain to.</p>
+<pre><span class="c"># on the cluster host</span>
+step certificate create root.linkerd.cluster.local ca.crt ca.key \
+  --profile root-ca --no-password --insecure
+linkerd install --identity-trust-anchors-file ca.crt \
+  --identity-issuer-certificate-file issuer.crt \
+  --identity-issuer-key-file issuer.key | kubectl apply -f -</pre>
+    </div>
+
+    <div class="concept"><div class="eyebrow">Step 2</div><h2>The store joins the mesh</h2>
+      <p>On the store host, run SPIRE rooted at that same anchor, register the workload’s identity, and run a standalone proxy beside store-pos.</p>
+<pre><span class="c"># on the store host — SPIRE server+agent use the copied ca.crt/ca.key</span>
+spire-server entry create \
+  -parentID spiffe://root.linkerd.cluster.local/agent \
+  -spiffeID spiffe://root.linkerd.cluster.local/store-pos \
+  -selector unix:uid:0
+<span class="c"># extract + run linkerd2-proxy (identity from SPIRE), set up iptables, run store-pos</span></pre>
+    </div>
+
+    <div class="concept"><div class="eyebrow">Step 3</div><h2>Register + authorize</h2>
+      <p>Tell the cluster about the external workload, then allow only the cloud app’s identity to reach it.</p>
+<pre><span class="c"># ExternalWorkload + a Server + AuthorizationPolicy</span>
+kind: MeshTLSAuthentication
+spec:
+  identities:
+    - retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local</pre>
+      <p class="note">Change that identity and the dashboard gets a 403 — the “Void” button patches exactly this.</p>
+    </div>
+
+    <div class="concept"><div class="eyebrow">Full walkthrough</div><h2>The repo has every script</h2>
+      <p>The complete, runnable version — VM provisioning, the connectivity options, and the RetailCloud app — lives in the demo repo under <span class="mono">demos/spiffe-cross-boundary/</span>. Start with its <span class="mono">README.md</span>.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+  const tabs=document.querySelectorAll('.tabs button'), secs=document.querySelectorAll('section.tab');
+  function show(id){
+    tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===id));
+    secs.forEach(s=>s.classList.toggle('active',s.id===id));
+    history.replaceState(null,'','#'+id);
+  }
+  tabs.forEach(t=>t.onclick=()=>show(t.dataset.tab));
+  const h=location.hash.replace('#',''); if(['learn','try','build'].includes(h)) show(h);
+</script>
+</body>
+</html>

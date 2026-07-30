@@ -15,6 +15,7 @@ const STORE_ID = 'spiffe://root.linkerd.cluster.local/store-pos';
 const DENY_ID = 'blocked.' + NS + '.serviceaccount.identity.linkerd.cluster.local';
 
 const html = fs.readFileSync(__dirname + '/index.html');
+const tutorial = fs.readFileSync(__dirname + '/tutorial.html');
 
 function getJSON(url) {
   const t0 = Date.now();
@@ -51,6 +52,9 @@ const server = http.createServer(async (req, res) => {
 
   if (path === '/' || path === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(html);
+  }
+  if (path === '/tutorial') {
+    res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(tutorial);
   }
 
   if (path === '/api/data') {
