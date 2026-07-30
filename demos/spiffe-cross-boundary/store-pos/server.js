@@ -30,8 +30,14 @@ function ring() {
   const hit = inventory[Math.floor(Math.random() * inventory.length)];
   if (hit.stock > 0) hit.stock -= 1;
 }
+// periodic restock ("deliveries") so the store stays lively and never drains to empty
+function delivery() {
+  const p = inventory[Math.floor(Math.random() * inventory.length)];
+  p.stock = Math.min(200, p.stock + 15 + Math.floor(Math.random() * 45));
+}
 for (let i = 0; i < 6; i++) ring();
 setInterval(ring, 3000);
+setInterval(delivery, 5000);
 
 function status(n) { return n === 0 ? 'out' : n <= 12 ? 'low' : 'ok'; }
 
