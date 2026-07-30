@@ -7,7 +7,7 @@ cross-infrastructure trust.
 
 | Demo | What it shows |
 |------|---------------|
-| [spiffe-cross-boundary](demos/spiffe-cross-boundary/) | SPIFFE giving a shared trust domain + workload identity to a non-Kubernetes workload across a real two-machine boundary, via Linkerd mesh expansion. |
+| [spiffe-cross-boundary](demos/spiffe-cross-boundary/) | **RetailCloud** — a cloud dashboard reads a store's on-prem point-of-sale system on another machine over the mesh, gated by SPIFFE identity (Linkerd mesh expansion). Live dashboard, network topology, and a built-in tutorial. |
 
 ## Running a demo
 
