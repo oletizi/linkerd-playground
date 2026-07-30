@@ -7,11 +7,13 @@ mkdir -p "$DIR"; cd "$DIR"
 
 install_step() {
   command -v step >/dev/null 2>&1 && return 0
-  local arch ver
+  local arch url
   arch="$(dpkg --print-architecture)"   # amd64 | arm64
-  ver="$(curl -sSf https://api.github.com/repos/smallstep/cli/releases/latest | jq -r .tag_name)"
-  [ -n "$ver" ] && [ "$ver" != "null" ] || { echo "could not resolve step-cli latest release" >&2; exit 1; }
-  curl -sSLf "https://github.com/smallstep/cli/releases/download/${ver}/step-cli_${ver#v}_${arch}.deb" -o /tmp/step.deb
+  # Resolve the .deb URL from the release assets (names carry a Debian revision, e.g. _0.30.6-1_arm64.deb).
+  url="$(curl -sSf https://api.github.com/repos/smallstep/cli/releases/latest \
+    | jq -r --arg a "$arch" '.assets[] | select(.name | test("_" + $a + "\\.deb$")) | .browser_download_url' | head -1)"
+  [ -n "$url" ] || { echo "could not resolve step-cli .deb for arch $arch" >&2; exit 1; }
+  curl -sSLf "$url" -o /tmp/step.deb
   sudo dpkg -i /tmp/step.deb
 }
 
