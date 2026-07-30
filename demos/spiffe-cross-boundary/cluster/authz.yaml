@@ -1,4 +1,4 @@
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   namespace: mixed-env
