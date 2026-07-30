@@ -1,0 +1,9 @@
+# Flip: allow a DIFFERENT identity so the edge is now denied (same network, only identity changed).
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  namespace: mixed-env
+  name: allow-edge
+spec:
+  identities:
+    - "spiffe://root.linkerd.cluster.local/some-other-workload"

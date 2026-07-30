@@ -1,0 +1,7 @@
+config.local.env
+*.key
+issuer.crt
+ca.crt
+.lima/
+*.png
+.playwright-mcp/
