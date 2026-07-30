@@ -13,6 +13,7 @@ echo "== retail-cloud app code -> ConfigMap =="
 kubectl -n mixed-env create configmap retail-cloud-app \
   --from-file=server.js="$DEMO/retail-cloud/server.js" \
   --from-file=index.html="$DEMO/retail-cloud/index.html" \
+  --from-file=tutorial.html="$DEMO/retail-cloud/tutorial.html" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "== store-pos ExternalWorkload + Service =="
