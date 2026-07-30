@@ -4,7 +4,7 @@
 # selector, not podSelector. Verify the exact field before applying:
 #   kubectl explain server.spec
 # and adjust `externalWorkloadSelector` below if the current CRD names it differently.
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   namespace: mixed-env
