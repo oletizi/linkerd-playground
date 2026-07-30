@@ -70,6 +70,10 @@ what's missing.
 > Putting Lima VMs directly on a physical LAN requires bridged networking
 > (`socket_vmnet`, a one-time `sudo` setup per host); see Lima's networking docs.
 
+For machines that are **not** on the same flat LAN (across NAT/networks), an
+optional overlay recipe is in [`connectivity-tailscale.md`](connectivity-tailscale.md).
+It is strictly optional — the demo does not depend on it.
+
 ## Run it
 
 ### Box A — cluster
@@ -175,7 +179,9 @@ just demo spiffe-cross-boundary down     # on each box
 - **`join_token` attestation** is chosen for portability across any
   infrastructure — swap for cloud/x509 attestation on real infra.
 - **Verified end-to-end on Lima/Apple-Silicon (arm64).** All four beats were run
-  and pass. Other providers/arches are config-driven and arch-aware but not
-  independently verified.
+  and pass. That run used the optional overlay recipe
+  ([`connectivity-tailscale.md`](connectivity-tailscale.md)) for reachability; the
+  default LAN path uses the same `net/shim.sh` static-route mechanism. Other
+  providers/arches are config-driven and arch-aware but not independently verified.
 - **`Server` uses `policy.linkerd.io/v1beta3`**; the edge-facing Server targets the
   workload via `externalWorkloadSelector` (confirmed available in v1beta3).
