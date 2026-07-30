@@ -1,0 +1,21 @@
+set shell := ["bash", "-cu"]
+
+# Show demo configuration + local VM state
+status:
+    bash scripts/status.sh
+
+# --- provisioning (Task 4) ---
+cluster-up:
+    bash scripts/cluster-up.sh
+edge-up:
+    bash scripts/edge-up.sh
+down:
+    bash scripts/down.sh
+
+# --- beats (Phase 5) ---
+beat1:
+    bash scripts/beat1-verify.sh
+beat2:
+    bash scripts/beat2-authz.sh
+beat3:
+    bash scripts/beat3-to-edge.sh
