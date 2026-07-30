@@ -3,3 +3,5 @@ config.local.env
 issuer.crt
 ca.crt
 .lima/
+*.png
+.playwright-mcp/

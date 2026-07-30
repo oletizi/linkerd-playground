@@ -1,0 +1,31 @@
+apiVersion: workload.linkerd.io/v1beta1
+kind: ExternalWorkload
+metadata:
+  name: store-pos
+  namespace: mixed-env
+  labels:
+    location: on-prem
+    app: store-pos
+    workload_name: store-pos
+spec:
+  meshTLS:
+    identity: "spiffe://root.linkerd.cluster.local/store-pos"
+    serverName: "store-pos.cluster.local"
+  workloadIPs:
+  - ip: "__EDGE_ADDR__"
+  ports:
+  - port: 80
+    name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-pos
+  namespace: mixed-env
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+    name: http
+  selector:
+    app: store-pos

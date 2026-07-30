@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetailCloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#efe9d8;--paper2:#e6ddc6;--card:#f6f2e6;--ink:#17241d;--market:#1a6b4a;--market-d:#124e37;--tag:#e0a021;--void:#c8452b;--line:#d6ccae;--muted:#6f7566}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hanken Grotesk",system-ui,sans-serif;font-size:15px;line-height:1.5;background-image:radial-gradient(rgba(23,36,29,.03) 1px,transparent 1px);background-size:5px 5px}
+  .mono{font-family:"Spline Sans Mono",ui-monospace,monospace}
+  h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0;line-height:1.05}
+  header{display:flex;align-items:center;gap:16px;padding:16px 26px;border-bottom:2px solid var(--ink)}
+  .wm{font-family:"Bricolage Grotesque";font-weight:800;font-size:22px;letter-spacing:-.02em}
+  .wm b{color:var(--market)}
+  .where{font-size:13px;color:var(--muted)} .where .mono{color:var(--ink)}
+  .grow{flex:1}
+  .seal-pill{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:13px;padding:8px 14px;border-radius:2px;border:2px solid var(--market);color:var(--market-d);background:repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(26,107,74,.07) 7px,rgba(26,107,74,.07) 14px)}
+  .seal-pill.void{border-color:var(--void);color:var(--void);background:repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(200,69,43,.08) 7px,rgba(200,69,43,.08) 14px)}
+  main{max-width:1160px;margin:0 auto;padding:22px 26px 60px}
+  .custody{border:2px solid var(--ink);background:var(--card);border-radius:3px;overflow:hidden;margin-bottom:22px}
+  .rail{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch}
+  .end{padding:16px 18px}
+  .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .who{font-family:"Bricolage Grotesque";font-weight:700;font-size:19px;margin:3px 0 8px}
+  .id{font-size:11.5px;color:var(--market-d);background:var(--paper);border:1px solid var(--line);border-radius:2px;padding:6px 8px;word-break:break-all}
+  .end.store{text-align:right} .end.store .id{color:#7a5a12}
+  .seal{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 26px;background:var(--ink);color:var(--paper);min-width:190px}
+  .seal .medal{font-size:26px;line-height:1} .seal .txt{font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-top:6px;font-weight:600} .seal .sub{font-size:10.5px;color:#9fb39f;margin-top:2px}
+  .verdict{padding:12px 18px;border-top:2px solid var(--ink);font-weight:600;display:flex;gap:10px;align-items:center;font-size:14px;background:rgba(26,107,74,.08)}
+  .ops{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 22px}
+  button{font-family:"Hanken Grotesk";font-weight:700;font-size:14px;border-radius:2px;cursor:pointer;padding:10px 18px;border:2px solid var(--ink);background:var(--card);color:var(--ink)}
+  button:disabled{opacity:.5;cursor:wait}
+  button:focus-visible{outline:3px solid var(--tag);outline-offset:2px}
+  button.void{background:var(--void);border-color:var(--void);color:#fff}
+  button.restore{background:var(--market);border-color:var(--market);color:#fff}
+  .note{color:var(--muted);font-size:13px} .note b{color:var(--ink)}
+  .cols{display:grid;grid-template-columns:1fr 340px;gap:22px}
+  section.panel{border:2px solid var(--ink);border-radius:3px;background:var(--card);position:relative;overflow:hidden}
+  .phead{display:flex;align-items:baseline;justify-content:space-between;padding:13px 16px;border-bottom:2px solid var(--ink);background:var(--paper)}
+  .phead h2{font-size:16px} .phead .src{font-size:11px;color:var(--muted)}
+  .pbody{padding:16px}
+  .tags{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .ptag{position:relative;background:var(--paper);border:1.5px solid var(--ink);border-radius:3px;padding:12px 12px 12px 26px}
+  .ptag::before{content:"";position:absolute;left:9px;top:12px;width:9px;height:9px;border-radius:50%;background:var(--card);border:1.5px solid var(--ink)}
+  .ptag .sku{font-size:11px;color:var(--muted)} .ptag .pname{font-weight:600;font-size:14px;margin:1px 0 8px;line-height:1.2}
+  .ptag .row{display:flex;align-items:flex-end;justify-content:space-between} .ptag .aisle{font-size:11px;color:var(--muted)}
+  .ptag .stk{font-family:"Bricolage Grotesque";font-weight:800;font-size:22px;line-height:1} .ptag .stk small{font-size:11px;font-weight:600;color:var(--muted);font-family:"Hanken Grotesk"}
+  .ptag.low .stk{color:var(--tag)} .ptag.out .stk{color:var(--void)} .ptag.low{border-color:var(--tag)} .ptag.out{border-color:var(--void)}
+  .rtop,.rbot{height:10px;background:linear-gradient(135deg,var(--paper) 25%,transparent 25%) -5px 0/10px 10px,linear-gradient(225deg,var(--paper) 25%,transparent 25%) -5px 0/10px 10px;background-repeat:repeat-x}
+  .rbot{transform:scaleY(-1)} .receipt .pbody{padding:8px 14px}
+  .rlist{font-family:"Spline Sans Mono";font-size:12.5px}
+  .r{display:flex;justify-content:space-between;gap:10px;padding:8px 4px;border-bottom:1px dashed var(--line)}
+  .r .it{color:var(--muted);font-size:11px} .r .amt{font-weight:600}
+  .void-stamp{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:5;background:rgba(239,233,216,.62)}
+  .void-stamp .stamp{border:5px solid var(--void);color:var(--void);font-family:"Bricolage Grotesque";font-weight:800;font-size:52px;letter-spacing:.06em;padding:6px 26px;border-radius:6px;transform:rotate(-11deg);opacity:.92;box-shadow:inset 0 0 0 2px rgba(200,69,43,.4)}
+  .void-stamp .why{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:var(--void);font-weight:700;font-size:13px}
+  body.void .void-stamp{display:flex} body.void .pbody{filter:grayscale(.7)} body.void .seal{background:var(--void)} body.void .seal .sub{color:#f6c9bf} body.void .verdict{background:rgba(200,69,43,.1)}
+  @media (prefers-reduced-motion:no-preference){.void-stamp .stamp{animation:thud .28s cubic-bezier(.2,1.4,.3,1)}@keyframes thud{0%{transform:rotate(-11deg) scale(2.2);opacity:0}60%{opacity:1}100%{transform:rotate(-11deg) scale(1);opacity:.92}}}
+  @media (max-width:820px){.cols{grid-template-columns:1fr}.rail{grid-template-columns:1fr}.end.store{text-align:left}.seal{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="wm">Retail<b>Cloud</b></div><div class="where">Downtown Market · store <span class="mono">#042</span></div></div>
+  <div class="grow"></div>
+  <div id="pill" class="seal-pill">● connecting…</div>
+</header>
+<main>
+  <div class="custody">
+    <div class="rail">
+      <div class="end"><div class="kicker">Cloud cluster · machine A</div><div class="who">RetailCloud app</div><div class="id mono" id="cloudId">…</div></div>
+      <div class="seal"><div class="medal" id="medal">🔒</div><div class="txt" id="sealtxt">mTLS · SPIFFE</div><div class="sub" id="sealsub">verifying…</div></div>
+      <div class="end store"><div class="kicker">On-prem POS · machine B — different hardware</div><div class="who">Store point-of-sale</div><div class="id mono" id="storeId">…</div></div>
+    </div>
+    <div class="verdict" id="verdict"><span class="mark">…</span><span id="vtext">Connecting to the store…</span></div>
+  </div>
+  <div class="ops">
+    <button id="revoke" class="void">Void authorization</button>
+    <button id="restore" class="restore" style="display:none">Reinstate authorization</button>
+    <span class="note">Flips the Linkerd authorization policy. <b>The network doesn’t change — only which identity is allowed.</b></span>
+  </div>
+  <div class="cols">
+    <section class="panel">
+      <div class="phead"><h2>Inventory</h2><span class="src mono">live · store #042</span></div>
+      <div class="pbody"><div class="tags" id="tags"></div></div>
+      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">inventory withheld — cloud app identity not authorized</div></div>
+    </section>
+    <section class="panel receipt">
+      <div class="phead"><h2>Sales</h2><span class="src mono">live · register tape</span></div>
+      <div class="rtop"></div>
+      <div class="pbody"><div class="rlist" id="rlist"></div></div>
+      <div class="rbot"></div>
+      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">register feed withheld — access denied</div></div>
+    </section>
+  </div>
+</main>
+<script>
+  const $=id=>document.getElementById(id), b=document.body;
+  function money(n){return '$'+Number(n).toFixed(2)}
+  function renderInv(items){
+    $('tags').innerHTML=items.map(p=>`<div class="ptag ${p.status==='ok'?'':p.status}">
+      <div class="sku mono">${p.sku}</div><div class="pname">${p.name}</div>
+      <div class="row"><span class="aisle">${p.aisle}</span>
+      <span class="stk">${p.stock}<small> ${p.status==='out'?'out':p.status==='low'?'low':'on hand'}</small></span></div></div>`).join('');
+  }
+  function renderSales(sales){
+    $('rlist').innerHTML=sales.map(s=>`<div class="r"><div><div>#${s.id}</div><div class="it">${s.items}</div></div><div class="amt">${money(s.amount)}</div></div>`).join('');
+  }
+  function setState(ok){
+    b.classList.toggle('void',!ok);
+    $('pill').className='seal-pill'+(ok?'':' void'); $('pill').textContent=ok?'● Store link secured':'● Authorization voided';
+    $('medal').textContent=ok?'🔒':'⛔'; $('sealtxt').textContent=ok?'mTLS · SPIFFE':'policy denied'; $('sealsub').textContent=ok?'chain verified':'chain broken';
+    $('verdict').querySelector('.mark').textContent=ok?'✓':'✕';
+    $('vtext').textContent=ok?'Store identity verified over mTLS. Cloud app is authorized to read POS data.'
+                            :'Access denied — the cloud app’s identity is not authorized to query the on-prem POS.';
+    $('revoke').style.display=ok?'':'none'; $('restore').style.display=ok?'none':'';
+  }
+  async function refresh(){
+    try{
+      const d=await (await fetch('/api/data')).json();
+      $('cloudId').textContent=d.identities.cloud; $('storeId').textContent=d.identities.store;
+      setState(d.ok);
+      if(d.ok){renderInv(d.inventory); renderSales(d.sales);}
+    }catch(e){/* keep last state */}
+  }
+  async function setPolicy(allow){
+    const btns=[$('revoke'),$('restore')]; btns.forEach(x=>x.disabled=true);
+    try{ await fetch('/api/policy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allow})}); }
+    finally{ setTimeout(async()=>{await refresh(); btns.forEach(x=>x.disabled=false);},1200); }
+  }
+  $('revoke').onclick=()=>setPolicy(false); $('restore').onclick=()=>setPolicy(true);
+  refresh(); setInterval(refresh,2500);
+</script>
+</body>
+</html>
