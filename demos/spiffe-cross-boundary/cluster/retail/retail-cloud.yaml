@@ -48,9 +48,12 @@ spec:
           command: ["node", "/app/server.js"]
           env:
             - { name: PORT, value: "8080" }
+            - { name: INGEST_PORT, value: "8090" }
             - { name: DEMO_NS, value: "mixed-env" }
-            - { name: AUTHN_NAME, value: "allow-retail-cloud" }
-          ports: [{ containerPort: 8080, name: http }]
+            - { name: AUTHN_NAME, value: "allow-store" }
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 8090, name: ingest }
           volumeMounts:
             - { name: app, mountPath: /app }
       volumes:
@@ -69,3 +72,6 @@ spec:
     - port: 8080
       targetPort: 8080
       name: http
+    - port: 8090
+      targetPort: 8090
+      name: ingest

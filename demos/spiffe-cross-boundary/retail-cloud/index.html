@@ -92,7 +92,7 @@
   <div class="ops">
     <button id="revoke" class="void">Void authorization</button>
     <button id="restore" class="restore" style="display:none">Reinstate authorization</button>
-    <span class="note">Flips the Linkerd authorization policy. <b>The network doesn’t change — only which identity is allowed.</b></span>
+    <span class="note">Flips the Linkerd policy on the cloud’s ingest endpoint. <b>The network doesn’t change — only which identity may report.</b></span>
   </div>
   <section class="topo-panel">
     <div class="phead"><h2>Network topology</h2><span class="src mono" id="topoStat">live</span></div>
@@ -109,14 +109,14 @@
     <section class="panel">
       <div class="phead"><h2>Inventory</h2><span class="src mono">live · store #042</span></div>
       <div class="pbody"><div class="tags" id="tags"></div></div>
-      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">inventory withheld — cloud app identity not authorized</div></div>
+      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">no fresh data — the store’s identity is not authorized to report</div></div>
     </section>
     <section class="panel receipt">
       <div class="phead"><h2>Sales</h2><span class="src mono">live · register tape</span></div>
       <div class="rtop"></div>
       <div class="pbody"><div class="rlist" id="rlist"></div></div>
       <div class="rbot"></div>
-      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">register feed withheld — access denied</div></div>
+      <div class="void-stamp"><div class="stamp">VOID</div><div class="why">store’s pushes refused — access denied</div></div>
     </section>
   </div>
 </main>
@@ -132,21 +132,28 @@
   function renderSales(sales){
     $('rlist').innerHTML=sales.map(s=>`<div class="r"><div><div>#${s.id}</div><div class="it">${s.items}</div></div><div class="amt">${money(s.amount)}</div></div>`).join('');
   }
-  function setState(ok){
-    b.classList.toggle('void',!ok);
-    $('pill').className='seal-pill'+(ok?'':' void'); $('pill').textContent=ok?'● Store link secured':'● Authorization voided';
-    $('medal').textContent=ok?'🔒':'⛔'; $('sealtxt').textContent=ok?'mTLS · SPIFFE':'policy denied'; $('sealsub').textContent=ok?'chain verified':'chain broken';
-    $('verdict').querySelector('.mark').textContent=ok?'✓':'✕';
-    $('vtext').textContent=ok?'Store identity verified over mTLS. Cloud app is authorized to read POS data.'
-                            :'Access denied — the cloud app’s identity is not authorized to query the on-prem POS.';
-    $('revoke').style.display=ok?'':'none'; $('restore').style.display=ok?'none':'';
+  function setState(d){
+    const voided=d.voided, reporting=d.reporting;
+    b.classList.toggle('void',voided);
+    $('pill').className='seal-pill'+(voided?' void':'');
+    $('pill').textContent=voided?'● Authorization voided':reporting?'● Store reporting':'● Awaiting store report';
+    $('medal').textContent=voided?'⛔':reporting?'🔒':'⏳';
+    $('sealtxt').textContent=voided?'policy denied':'mTLS · SPIFFE';
+    $('sealsub').textContent=voided?'store refused':reporting?'identity verified':'waiting';
+    $('verdict').querySelector('.mark').textContent=voided?'✕':reporting?'✓':'…';
+    $('vtext').textContent=voided
+      ?'Access denied — the store’s identity is not authorized to report to the cloud, so its pushes are refused (403).'
+      :reporting
+        ?'The store is reporting POS data to the cloud over mTLS; its identity is authorized.'
+        :'Waiting for the store to report…';
+    $('revoke').style.display=voided?'none':''; $('restore').style.display=voided?'':'none';
   }
   async function refresh(){
     try{
       const d=await (await fetch('/api/data')).json();
       $('cloudId').textContent=d.identities.cloud; $('storeId').textContent=d.identities.store;
-      setState(d.ok); updateTopo(d);
-      if(d.ok){renderInv(d.inventory); renderSales(d.sales);}
+      setState(d); updateTopo(d);
+      renderInv(d.inventory||[]); renderSales(d.sales||[]);
     }catch(e){/* keep last state */}
   }
   async function setPolicy(allow){
@@ -169,7 +176,7 @@
       {data:{id:'pos',parent:'store',label:'store-pos'},position:{x:660,y:70}},
       {data:{id:'proxy',parent:'store',label:'linkerd2-proxy'},position:{x:660,y:180}},
       {data:{id:'spire',parent:'store',label:'SPIRE server + agent'},position:{x:660,y:285}},
-      {data:{id:'mtls',source:'rc',target:'pos',elabel:'mTLS'},classes:'link'},
+      {data:{id:'mtls',source:'pos',target:'rc',elabel:'mTLS'},classes:'link'},
       {data:{id:'ctrl',source:'proxy',target:'cp',elabel:'control-plane'},classes:'ctrl'},
       {data:{id:'idw',source:'spire',target:'proxy',elabel:'SVID'},classes:'idw'},
       {data:{id:'trust',source:'anchor',target:'spire',elabel:'trust'},classes:'trust'},
@@ -189,15 +196,16 @@
       {selector:'.link.denied',style:{'line-color':'#c8452b','target-arrow-color':'#c8452b','line-style':'dashed','line-dash-pattern':[6,6],'color':'#c8452b'}},
     ],
   });
-  // flow animation on the secured mTLS link
-  let off=0, denied=false;
-  setInterval(()=>{ if(!denied){ off=(off-1.4); cy.$('#mtls').style('line-dash-offset',off);} },55);
+  // flow animation on the mTLS link while the store is reporting
+  let off=0, flowing=false;
+  setInterval(()=>{ if(flowing){ off=(off-1.4); cy.$('#mtls').style('line-dash-offset',off);} },55);
   function updateTopo(d){
-    denied=!(d&&d.ok);
+    const voided=d&&d.voided, reporting=d&&d.reporting;
+    flowing=reporting && !voided;
     const e=cy.$('#mtls');
-    e.toggleClass('denied',denied);
-    e.data('elabel', denied?'DENIED · 403':('mTLS · '+((d.link&&d.link.ms)||0)+'ms'));
-    $('topoStat').textContent=denied?'denied':'live · secured';
+    e.toggleClass('denied',voided);
+    e.data('elabel', voided?'DENIED · 403':reporting?'mTLS · reporting':'awaiting report');
+    $('topoStat').textContent=voided?'denied':reporting?'live · reporting':'awaiting store';
   }
 
   refresh(); setInterval(refresh,2500);
