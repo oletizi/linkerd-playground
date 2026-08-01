@@ -16,7 +16,13 @@ kubectl -n mixed-env create configmap retail-cloud-app \
   --from-file=tutorial.html="$DEMO/retail-cloud/tutorial.html" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-echo "== store-pos ExternalWorkload + Service =="
+echo "== clean up stale pull-model resources (if present) =="
+kubectl -n mixed-env delete svc store-pos --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n mixed-env delete server store-pos-http --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n mixed-env delete authorizationpolicy store-pos-allow-cloud --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n mixed-env delete meshtlsauthentication allow-retail-cloud --ignore-not-found >/dev/null 2>&1 || true
+
+echo "== store-pos ExternalWorkload (client identity; no fronting Service) =="
 render() { while IFS= read -r line; do echo "${line/__EDGE_ADDR__/$EDGE_ADDR}"; done < "$HERE/store-pos.yaml"; }
 render | kubectl apply -f -
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

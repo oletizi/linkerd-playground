@@ -16,16 +16,6 @@ spec:
   ports:
   - port: 80
     name: http
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: store-pos
-  namespace: mixed-env
-spec:
-  ports:
-  - port: 80
-    targetPort: 80
-    name: http
-  selector:
-    app: store-pos
+# No fronting Service: the store is a client that pushes to the cloud, not a
+# server the cluster routes to. The ExternalWorkload above still gives it a
+# first-class mesh identity so the cloud can authorize its pushes.

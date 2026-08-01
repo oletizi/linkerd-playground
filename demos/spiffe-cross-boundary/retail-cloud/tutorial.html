@@ -66,12 +66,12 @@
 
   <!-- LEARN -->
   <section class="tab active" id="learn">
-    <p class="lede">RetailCloud is a cloud dashboard reading live data from a store’s point-of-sale system that runs on a <b>different machine</b>, outside Kubernetes. Here’s how they trust each other — by <b>identity</b>, not by network.</p>
+    <p class="lede">RetailCloud is a cloud dashboard showing live data that a store’s point-of-sale system <b>reports</b> from a <b>different machine</b>, outside Kubernetes. Here’s how they trust each other — by <b>identity</b>, not by network.</p>
 
     <div class="concept">
       <div class="eyebrow">The problem</div>
       <h2>Trust across a boundary</h2>
-      <p>The dashboard runs in the cloud (machine A). The point-of-sale system runs on-prem in the store (machine B). When the dashboard asks the store for inventory, how does the store know the caller is really the dashboard — and not something else that reached its address? Firewalls and IP allowlists tie trust to <i>where</i> a workload runs. Move it, or share a network, and those rules break.</p>
+      <p>The dashboard runs in the cloud (machine A). The point-of-sale system runs on-prem in the store (machine B), and pushes its data up to the cloud (the realistic direction — the cloud can't depend on an in-store box being reachable). When that data arrives, how does the cloud know the sender is really this store — and not something else that reached its address? Firewalls and IP allowlists tie trust to <i>where</i> a workload runs. Move it, or share a network, and those rules break.</p>
     </div>
 
     <div class="concept">
@@ -91,13 +91,13 @@
     <div class="concept">
       <div class="eyebrow">The wire</div>
       <h2>mTLS: encrypted and mutually authenticated</h2>
-      <p>When the dashboard calls the store, both sides present their SVIDs and establish mutual TLS. The store knows exactly who is calling — by identity — and the traffic is encrypted the whole way across the boundary. On the dashboard you’ll see the link marked <span class="mono">mTLS</span> with live latency.</p>
+      <p>When the store reports to the cloud, both sides present their SVIDs and establish mutual TLS. The cloud knows exactly who is reporting — by identity — and the traffic is encrypted the whole way across the boundary. On the dashboard you’ll see the link marked <span class="mono">mTLS · reporting</span>.</p>
     </div>
 
     <div class="concept">
       <div class="eyebrow">The point</div>
       <h2>Authorization by identity</h2>
-      <p>Access becomes a policy about <i>identity</i>: the store-pos service allows only the dashboard’s identity to read its data. Change the allowed identity, and the dashboard is refused — a real HTTP <b>403</b> — with nothing about the network changing. That’s exactly what the dashboard’s <b>Void authorization</b> button does. Head to <b>Try it</b> to watch it happen.</p>
+      <p>Access becomes a policy about <i>identity</i>: the cloud’s ingest endpoint allows only the store’s identity to report. Change the allowed identity, and the store’s pushes are refused — a real HTTP <b>403</b> — with nothing about the network changing. That’s exactly what the dashboard’s <b>Void authorization</b> button does. Head to <b>Try it</b> to watch it happen.</p>
     </div>
   </section>
 
@@ -113,10 +113,10 @@
       <div class="watch"><b>These are cryptographic</b>, not IP addresses — the basis for trust.</div></div>
 
     <div class="step"><div class="n">3</div><h3>Watch the secure link</h3>
-      <p>The green <span class="mono">mTLS</span> link (with live latency) is the dashboard reading the store’s inventory and sales — encrypted and mutually authenticated across the boundary.</p></div>
+      <p>The green <span class="mono">mTLS · reporting</span> link is the store pushing its inventory and sales up to the cloud — encrypted and mutually authenticated across the boundary.</p></div>
 
     <div class="step void"><div class="n">4</div><h3>Revoke trust</h3>
-      <p>Click <b>Void authorization</b>. The policy now requires a <i>different</i> identity.</p>
+      <p>Click <b>Void authorization</b>. The policy now requires a <i>different</i> identity, so the store’s pushes are refused.</p>
       <div class="watch">Watch: the store data stamps <b>VOID</b>, the topology link turns <b>red (403)</b>, and the seal breaks.</div></div>
 
     <div class="step"><div class="n">5</div><h3>Notice what didn’t change</h3>
@@ -160,13 +160,13 @@ spire-server entry create \
     </div>
 
     <div class="concept"><div class="eyebrow">Step 3</div><h2>Register + authorize</h2>
-      <p>Tell the cluster about the external workload, then allow only the cloud app’s identity to reach it.</p>
-<pre><span class="c"># ExternalWorkload + a Server + AuthorizationPolicy</span>
+      <p>Register the store as an external workload, then allow only the store’s identity to push to the cloud’s ingest endpoint.</p>
+<pre><span class="c"># a Server on the cloud ingest port + AuthorizationPolicy</span>
 kind: MeshTLSAuthentication
 spec:
   identities:
-    - retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local</pre>
-      <p class="note">Change that identity and the dashboard gets a 403 — the “Void” button patches exactly this.</p>
+    - spiffe://root.linkerd.cluster.local/store-pos</pre>
+      <p class="note">Change that identity and the store’s pushes get a 403 — the “Void” button patches exactly this.</p>
     </div>
 
     <div class="concept"><div class="eyebrow">Full walkthrough</div><h2>The repo has every script</h2>
