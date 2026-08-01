@@ -1,37 +1,38 @@
-# Protects the on-prem store-pos service: default-deny on its HTTP port, allowing
-# only the retail-cloud app's identity. The "Void" button patches the identities
-# below to a different value, which denies the cloud app for real.
+# Protects the cloud's ingest port: default-deny on retail-cloud's :8090, allowing
+# only the STORE's SPIFFE identity to push. The browser-facing UI port (:8080) has
+# no Server, so it stays open. The "Void" button patches the identities below to a
+# different value, which refuses the store's pushes for real.
 apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   namespace: mixed-env
-  name: store-pos-http
+  name: retail-ingest
 spec:
-  externalWorkloadSelector:
-    matchLabels: { app: store-pos }
-  port: http
+  podSelector:
+    matchLabels: { app: retail-cloud }
+  port: ingest
   proxyProtocol: HTTP/1
 ---
 apiVersion: policy.linkerd.io/v1alpha1
 kind: MeshTLSAuthentication
 metadata:
   namespace: mixed-env
-  name: allow-retail-cloud
+  name: allow-store
 spec:
   identities:
-    - "retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local"
+    - "spiffe://root.linkerd.cluster.local/store-pos"
 ---
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   namespace: mixed-env
-  name: store-pos-allow-cloud
+  name: ingest-allow-store
 spec:
   targetRef:
     group: policy.linkerd.io
     kind: Server
-    name: store-pos-http
+    name: retail-ingest
   requiredAuthenticationRefs:
-    - name: allow-retail-cloud
+    - name: allow-store
       kind: MeshTLSAuthentication
       group: policy.linkerd.io

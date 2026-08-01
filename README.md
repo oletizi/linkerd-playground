@@ -7,7 +7,7 @@ cross-infrastructure trust.
 
 | Demo | What it shows |
 |------|---------------|
-| [spiffe-cross-boundary](demos/spiffe-cross-boundary/) | **RetailCloud** — a cloud dashboard reads a store's on-prem point-of-sale system on another machine over the mesh, gated by SPIFFE identity (Linkerd mesh expansion). Live dashboard, network topology, and a built-in tutorial. |
+| [spiffe-cross-boundary](demos/spiffe-cross-boundary/) | **RetailCloud** — a store's on-prem point-of-sale on another machine pushes to a cloud dashboard over the mesh, gated by SPIFFE identity (Linkerd mesh expansion). Live dashboard, network topology, and a built-in tutorial. |
 
 ## Running a demo
 
