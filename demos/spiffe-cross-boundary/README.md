@@ -1,15 +1,17 @@
 # spiffe-cross-boundary — RetailCloud
 
-**A cloud dashboard reads live inventory and sales from a store's point-of-sale
-system running on a *different machine*, outside Kubernetes — and access is gated
-on cryptographic SPIFFE identity, not on IP or network.**
+**A store's point-of-sale system, running on a *different machine* outside
+Kubernetes, pushes live inventory and sales up to a cloud dashboard — and the cloud
+accepts the data based on cryptographic SPIFFE identity, not on IP or network.**
 
 This is SPIFFE-in-Linkerd made tangible. `store-pos` runs on an edge machine that
 Kubernetes has never heard of; Linkerd **mesh expansion** brings it into the mesh
 with a SPIRE-issued identity (`spiffe://root.linkerd.cluster.local/store-pos`)
-chained to the cluster's trust anchor. The cloud app (`retail-cloud`) calls it over
-mTLS. A **Void authorization** button flips the real Linkerd policy so the cloud
-app is refused with a genuine 403 — with nothing about the network changing.
+chained to the cluster's trust anchor. It pushes its data to the `retail-cloud` app
+over mTLS (the realistic direction — the cloud never depends on the store being
+reachable). A **Void authorization** button flips the real Linkerd policy so the
+store's pushes are refused with a genuine 403 — with nothing about the network
+changing.
 
 Design spec: [`docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md`](../../docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md).
 
@@ -36,9 +38,9 @@ and the topology link turn red — while both identities stay on screen.
 
 **SPIRE runs on the edge**, rooted at Linkerd's trust anchor (copied over), so the
 edge's SVID chains to the same root as in-cluster identities — one trust domain,
-no federation. `retail-cloud` calls `store-pos` over mTLS; an `AuthorizationPolicy`
-on `store-pos` allows only the `retail-cloud` identity, and the Void button patches
-that policy.
+no federation. `store-pos` pushes to `retail-cloud`'s ingest endpoint over mTLS; an
+`AuthorizationPolicy` on that endpoint allows only the `store-pos` identity, and the
+Void button patches that policy.
 
 ## Prerequisites
 
@@ -110,7 +112,7 @@ limactl shell linkerd-edge -- bash <demo>/edge/install-spire.sh
 limactl shell linkerd-edge -- bash <demo>/edge/register-workload.sh      # registers store-pos identity
 limactl shell linkerd-edge -- bash <demo>/edge/extract-proxy.sh
 limactl shell linkerd-edge -- bash <demo>/edge/iptables.sh
-limactl shell linkerd-edge -- bash <demo>/store-pos/run-store-pos.sh     # the POS service on :80
+limactl shell linkerd-edge -- bash <demo>/store-pos/run-store-pos.sh     # the POS — pushes to the cloud
 ```
 
 ### Box A → deploy RetailCloud, THEN Box B → start the proxy
@@ -127,9 +129,9 @@ limactl shell linkerd-cluster -- bash <demo>/cluster/retail/apply.sh   # prints 
 limactl shell linkerd-edge -- bash <demo>/edge/run-proxy.sh
 ```
 
-Open `http://<CLUSTER_NODE_ADDR>:30080/` — inventory and sales are now flowing from
-the store over the mesh. Click **Void authorization** to watch identity-based
-authz refuse the cloud app for real.
+Open `http://<CLUSTER_NODE_ADDR>:30080/` — the store is now pushing its inventory
+and sales to the cloud over the mesh. Click **Void authorization** to watch
+identity-based authz refuse the store's pushes for real.
 
 ## Under the hood — see the raw evidence
 
@@ -140,11 +142,11 @@ cluster, tap the traffic while the dashboard polls:
 linkerd -n mixed-env viz tap deploy/retail-cloud
 ```
 
-Each row shows `tls=true`, `dst_server_id=spiffe://root.linkerd.cluster.local/store-pos`,
-and `dst_external_workload=store-pos` — a workload outside Kubernetes, on another
-machine, authenticated by SPIFFE identity. Click **Void** and the same call becomes
-a 403; `linkerd viz stat` shows the success rate drop. Nothing about the network
-changed — only the allowed identity.
+Each inbound row shows `tls=true` and `client_id=spiffe://root.linkerd.cluster.local/store-pos`
+(with `src_external_workload=store-pos`) — a workload outside Kubernetes, on another
+machine, authenticated by SPIFFE identity as it pushes. Click **Void** and the
+store's pushes become 403; `linkerd viz stat` shows them fail. Nothing about the
+network changed — only the allowed identity.
 
 ## Teardown
 
