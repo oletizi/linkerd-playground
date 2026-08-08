@@ -39,6 +39,7 @@ export default defineConfig({
 						'demos/spiffe-cross-boundary/concepts',
 						'demos/spiffe-cross-boundary/manual',
 						'demos/spiffe-cross-boundary/reference',
+						'demos/spiffe-cross-boundary/production-notes',
 					],
 				},
 			],
