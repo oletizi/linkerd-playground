@@ -1,14 +1,14 @@
 # SPIFFE for an external workload — a from-scratch manual
 
-This is the long way round. The [README](README.md) runs scripts; this document
-walks through the **same setup by hand**, explaining every configuration file and
-command, so you understand each moving part of giving a non-Kubernetes workload a
-SPIFFE identity and bringing it into a Linkerd mesh.
+The [README](README.md) automates this setup with scripts. This document performs the
+same setup by hand, explaining every configuration file and command involved in
+giving a non-Kubernetes workload a SPIFFE identity and joining it to a Linkerd mesh.
 
 The worked example is **RetailCloud**: a point-of-sale service (`store-pos`) runs on
-a machine outside Kubernetes and **pushes** inventory and sales up to a cloud app
-(`retail-cloud`) running in the cluster. The cloud accepts the data only from the
-store's proven SPIFFE identity. Everything below builds that, piece by piece.
+a machine outside Kubernetes and sends inventory and sales data to a cloud
+application (`retail-cloud`) running in the cluster. The cloud service accepts the
+data only from the store's verified SPIFFE identity. The sections below build this
+configuration incrementally.
 
 > Convention: commands prefixed `[cloud]` run on the Kubernetes host; `[store]` run
 > on the external machine. The trust domain throughout is
@@ -22,8 +22,8 @@ Four things have to line up:
 
 1. **A single root of trust.** Linkerd already issues every pod a certificate from a
    root CA (the *trust anchor*). We will make the external workload's certificates
-   chain to that *same* root, so both sides validate each other. That's the whole
-   game — one trust domain spanning two machines.
+   chain to that *same* root, so both sides validate each other. The result is one
+   trust domain spanning two machines.
 2. **An identity source on the external machine.** In the cluster, the control-plane
    component `linkerd-identity` issues certificates, trusting a pod's Kubernetes
    ServiceAccount. Off-cluster there is no Kubernetes, so **SPIRE** plays that role:
@@ -123,8 +123,8 @@ flat LAN it's a static route plus a resolver entry — nothing Linkerd-specific:
 
 `10.43.0.10` is the cluster's CoreDNS ClusterIP (`kubectl -n kube-system get svc
 kube-dns`). The cloud host must have IP forwarding on so it routes the store's
-traffic into the pod network. This is the "identity ≠ connectivity" line: SPIFFE
-handles the former; this step is the latter.
+traffic into the pod network. This is the distinction between identity and
+connectivity: SPIFFE provides identity; this step provides connectivity.
 
 ---
 
@@ -186,7 +186,7 @@ Field by field:
 - `NodeAttestor "join_token"` chooses how *agents* prove their identity to the
   server. `join_token` is a one-time shared secret — the simplest, works on any
   infrastructure. (On real infra you'd swap in cloud-instance or x509 attestation.)
-- `UpstreamAuthority "disk"` is the load-bearing block: it points SPIRE at Linkerd's
+- `UpstreamAuthority "disk"` is the key setting: it points SPIRE at Linkerd's
   `ca.crt`/`ca.key`, so everything SPIRE signs chains to that root.
 
 ### 3c. The SPIRE agent config
@@ -305,8 +305,7 @@ outbound into an infinite loop.
 
 ### 4c. Launch the proxy — identity from SPIRE
 
-The proxy is configured entirely through environment variables. This is the heart of
-the setup:
+The proxy is configured entirely through environment variables:
 
 ```bash
 [store] export LINKERD2_PROXY_IDENTITY_SERVER_ID="spiffe://root.linkerd.cluster.local/store-pos"
@@ -326,7 +325,7 @@ What each group does:
 
 - **`IDENTITY_SERVER_ID` / `IDENTITY_SERVER_NAME`** — the SPIFFE ID this proxy should
   obtain and the SNI it presents. Must match the registered entry.
-- **`IDENTITY_SPIRE_WORKLOAD_API_ADDRESS`** — the crucial swap: instead of talking to
+- **`IDENTITY_SPIRE_WORKLOAD_API_ADDRESS`** — the key change: instead of talking to
   the in-cluster `linkerd-identity` service, the proxy fetches its SVID from the
   **SPIRE agent's Workload API socket**. SPIRE attests the proxy (uid 0), matches the
   registration entry, and streams it a certificate — rotating it before expiry, with
@@ -341,8 +340,8 @@ What each group does:
   to those controllers: as the external workload `store-pos` in namespace
   `mixed-env`. This is why the `ExternalWorkload` (next part) must exist and match.
 
-On startup the log line to look for is `Certified identity id=spiffe://…/store-pos`
-— proof SPIRE issued the SVID and the proxy is now a first-class mesh participant.
+On startup, the log line to look for is `Certified identity id=spiffe://…/store-pos`,
+which confirms SPIRE issued the SVID and the proxy has joined the mesh.
 
 ---
 
@@ -390,10 +389,12 @@ The endpoint is treated as NotReady until a `Ready` status condition exists; set
 
 ## Part 6 — The application and the data flow
 
-Two small services. The store one pushes; the cloud one receives and displays.
+Two small services: the store service sends data, and the cloud service receives and
+displays it.
 
-**`store-pos` (store, non-root).** A tiny HTTP client that keeps an inventory/sales
-model and every couple of seconds POSTs a snapshot to the cloud's ingest endpoint.
+**`store-pos` (store, non-root).** A small HTTP client that maintains an
+inventory/sales model and POSTs a snapshot to the cloud's ingest endpoint every few
+seconds.
 Because it runs as `--user 1000`, its outbound POST is redirected through the proxy
 and carries the `store-pos` SVID over mTLS. It resolves
 `retail-cloud.mixed-env.svc.cluster.local` via the cluster DNS from Part 2.
@@ -406,12 +407,11 @@ and carries the `store-pos` SVID over mTLS. It resolves
   protect by identity in Part 7.
 
 It caches the latest report and renders it. When the store's pushes are refused, the
-cached data simply stops updating — which is exactly what a real ingest pipeline
-would experience.
+cached data stops updating, which is the behavior a real ingest pipeline would show.
 
 ---
 
-## Part 7 — Authorization by identity (the point)
+## Part 7 — Authorization by identity
 
 By default a meshed port is open to any meshed client. We make the ingest port
 **default-deny except for the store's identity** with three policy resources on the
@@ -460,9 +460,9 @@ different one:
           -p '{"spec":{"identities":["spiffe://root.linkerd.cluster.local/nobody"]}}'
 ```
 
-The store's very next push returns **403**, even though its route, address, and
-firewall are unchanged. (In the demo, the dashboard's *Void authorization* button
-makes exactly this patch, via a small RBAC Role granted to `retail-cloud`.)
+The store's next push returns **403**, even though its route, address, and firewall
+are unchanged. In the demo, the dashboard's *Void authorization* button applies this
+same patch, using an RBAC Role granted to `retail-cloud`.
 
 ---
 
@@ -483,17 +483,16 @@ network moved — only which identity was allowed.
 
 ---
 
-## What each part bought you
+## What each part provides
 
-| Piece | Gave the workload |
+| Piece | What it provides the workload |
 |---|---|
 | Shared trust anchor (Part 1) + SPIRE `UpstreamAuthority` (Part 3) | a certificate the cluster trusts |
-| SPIRE registration + `unix` attestor (Part 3) | a *specific* identity tied to the right process |
+| SPIRE registration + `unix` attestor (Part 3) | a specific identity tied to the correct process |
 | SPIRE Workload API + proxy env (Parts 3–4) | automatic issuance and rotation of that identity |
-| iptables + non-root workload (Part 4) | its traffic actually going through the proxy |
-| `ExternalWorkload` (Part 5) | a place in the mesh's model of the world |
-| `Server` + `MeshTLSAuthentication` + `AuthorizationPolicy` (Part 7) | access decided by *who it is*, not where it is |
+| iptables + non-root workload (Part 4) | its traffic passing through the proxy |
+| `ExternalWorkload` (Part 5) | a representation in the mesh's model of the cluster |
+| `Server` + `MeshTLSAuthentication` + `AuthorizationPolicy` (Part 7) | access decided by identity rather than location |
 
-That last row is the reason to do any of this: once identity is portable and
-cryptographic, authorization stops being about networks and starts being about
-workloads.
+The final row is the purpose of the setup: when identity is portable and
+cryptographic, authorization is defined in terms of workloads rather than networks.

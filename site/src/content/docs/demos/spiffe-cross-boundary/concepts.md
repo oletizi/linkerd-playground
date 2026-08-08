@@ -1,50 +1,50 @@
 ---
 title: Concepts
-description: How SPIFFE gives a workload a portable identity, and why authorization by identity beats authorization by network.
+description: How SPIFFE gives a workload a portable identity, and how authorization by identity differs from authorization by network.
 ---
 
-If you've run anything on Kubernetes with a service mesh, you've seen workload
-identity already: Linkerd gives every pod a cryptographic identity derived from its
-ServiceAccount, and services authenticate with mutual TLS instead of trusting
-whatever happens to be at a given IP. It's a better model — a pod proves *who it is*,
-not just *where it sits*. But that identity comes from Kubernetes, so it only covers
-things Kubernetes runs. The moment part of your system lives elsewhere — a VM, a
-legacy service, an on-prem box — those workloads fall outside the scheme, and you're
-back to firewalls and IP rules.
+On Kubernetes with a service mesh, workload identity is already familiar: Linkerd
+gives every pod a cryptographic identity derived from its ServiceAccount, and
+services authenticate with mutual TLS rather than trusting whatever responds at a
+given IP address. A pod is identified by its identity, not by its location. That
+identity comes from Kubernetes, however, so it only covers workloads Kubernetes
+runs. When part of a system runs elsewhere — a VM, a legacy service, an on-premises
+host — those workloads fall outside the scheme, and access control falls back to
+firewalls and IP rules.
 
-## SPIFFE: identity, not location
+## Identity instead of location
 
-SPIFFE gives *any* workload — pod or not — a cryptographic identity (a short-lived
-certificate called an **SVID**) inside a shared **trust domain**. The store's service
-isn't "whatever is at 192.0.2.7"; it *is*:
+SPIFFE gives any workload, whether or not it is a pod, a cryptographic identity: a
+short-lived certificate called an **SVID**, issued within a shared **trust domain**.
+The store's service is identified by a SPIFFE ID rather than by an address:
 
 ```
 spiffe://root.linkerd.cluster.local/store-pos
 ```
 
-That identity is the same regardless of what network the workload sits on.
+That identity does not change with the network the workload runs on.
 
-## Mesh expansion: the workload joins the mesh
+## Mesh expansion
 
-`store-pos` runs on a plain machine, not in Kubernetes. Linkerd's **mesh expansion**
-brings it in: a standalone `linkerd2-proxy` runs beside it, and **SPIRE** (the SPIFFE
-reference implementation) issues its SVID — chained to the same trust anchor Linkerd
-uses inside the cluster. One trust domain now spans both machines, with no federation
-and no requirement that everything share a network.
+`store-pos` runs on a standalone machine, not in Kubernetes. Linkerd's **mesh
+expansion** adds it to the mesh: a standalone `linkerd2-proxy` runs alongside it, and
+**SPIRE** (the SPIFFE reference implementation) issues its SVID, chained to the same
+trust anchor Linkerd uses inside the cluster. One trust domain then spans both
+machines, without federation and without requiring them to share a network.
 
-## mTLS: encrypted and mutually authenticated
+## Mutual TLS
 
-When the store reports to the cloud, both sides present their SVIDs and establish
-mutual TLS. The cloud knows exactly who is reporting — by identity — and the traffic
-is encrypted the whole way across the boundary.
+When the store connects to the cloud, both sides present their SVIDs and establish
+mutual TLS. Each side authenticates the other by identity, and the traffic is
+encrypted across the boundary.
 
 ## Authorization by identity
 
-Access becomes a policy about *identity*: the cloud's ingest endpoint allows only the
-store's identity to report. Change the allowed identity, and the store's pushes are
-refused with a real HTTP **403** — with nothing about the network changing. Once
-identity is portable and cryptographic, authorization stops being about networks and
-starts being about workloads.
+Access control is expressed as a policy over identity: the cloud's ingest endpoint
+admits only the store's identity. If the allowed identity is changed, requests from
+the store are rejected with HTTP **403**, with no change to the network. Because the
+identity is cryptographic and portable, authorization is defined in terms of the
+workload rather than the network it runs on.
 
-Ready to build it? The **[manual](/demos/spiffe-cross-boundary/manual/)** walks
-through every piece from scratch.
+The **[manual](/demos/spiffe-cross-boundary/manual/)** covers each of these pieces in
+full.

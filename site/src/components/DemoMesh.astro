@@ -19,7 +19,7 @@ const demos: Demo[] = [
 	{
 		title: 'SPIFFE across a boundary',
 		blurb:
-			'A point-of-sale box outside Kubernetes joins the mesh with a SPIRE-issued identity and pushes to the cloud over mTLS — admitted by who it is, not where it runs.',
+			'A workload outside Kubernetes joins the mesh with a SPIRE-issued identity and connects to an in-cluster service over mTLS, authorized by SPIFFE identity rather than network location.',
 		href: '/demos/spiffe-cross-boundary/overview/',
 		status: 'live',
 	},
@@ -118,7 +118,7 @@ const ghostMidY = ghostY + GHOST_H / 2;
 		>
 			<div class="ghost-card">
 				<span class="ghost-plus">+</span>
-				<span>more demos wire in here</span>
+				<span>additional demos</span>
 			</div>
 		</foreignObject>
 	</svg>
