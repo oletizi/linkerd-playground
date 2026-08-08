@@ -5,3 +5,6 @@ ca.crt
 .lima/
 *.png
 .playwright-mcp/
+site/node_modules/
+site/dist/
+site/.astro/
