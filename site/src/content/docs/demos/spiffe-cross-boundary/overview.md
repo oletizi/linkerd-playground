@@ -1,34 +1,31 @@
 ---
 title: Overview
-description: SPIFFE identity for a workload outside Kubernetes, brought into a Linkerd mesh across a real two-machine boundary.
+description: SPIFFE identity for a workload outside Kubernetes, joined to a Linkerd mesh across a machine boundary.
 ---
 
-**A store's point-of-sale system, running on a *different machine* outside
-Kubernetes, pushes live inventory and sales up to a cloud app — and the cloud
-accepts the data based on cryptographic SPIFFE identity, not on IP or network.**
+This demo runs a workload outside Kubernetes and gives it a SPIFFE identity that an
+in-cluster service trusts. A point-of-sale service (`store-pos`) runs on a separate
+machine that is not part of the cluster. Linkerd's mesh expansion adds it to the mesh
+with a SPIRE-issued identity (`spiffe://root.linkerd.cluster.local/store-pos`) that
+chains to the cluster's trust anchor. `store-pos` sends inventory and sales data to
+the in-cluster `retail-cloud` service over mTLS. The store initiates the connection,
+because the cluster cannot assume that a machine inside the store is reachable.
 
-This demo makes SPIFFE-in-Linkerd tangible. A point-of-sale service (`store-pos`)
-runs on a machine that Kubernetes has never heard of. Linkerd's **mesh expansion**
-brings it into the mesh with a SPIRE-issued identity
-(`spiffe://root.linkerd.cluster.local/store-pos`) that chains to the cluster's trust
-anchor. The store pushes its data to the in-cluster app (`retail-cloud`) over mTLS —
-the realistic direction, since the cloud can't depend on an in-store box being
-reachable.
-
-Access is a policy about **identity**: the cloud's ingest endpoint admits only the
-store's SPIFFE identity. Revoke that identity and the store's next push is refused
-with a real HTTP 403 — with nothing about the network, the routes, or the addresses
-changing. That is the whole point: authorization follows *who a workload is*, not
-*where it runs*.
+Authorization is expressed in terms of identity rather than network location. The
+`retail-cloud` ingest endpoint admits only the store's SPIFFE identity. If that
+identity is removed from the policy, the next request is rejected with HTTP 403; no
+addresses, routes, or firewall rules change. A workload is authorized by its
+identity, which remains the same across machines and networks.
 
 ## Where to go next
 
-- **[Concepts](/demos/spiffe-cross-boundary/concepts/)** — the SPIFFE story, from the
-  problem to identity-based authorization.
-- **[The manual](/demos/spiffe-cross-boundary/manual/)** — a from-scratch, no-scripts
-  walkthrough of every config file, field, and command.
+- **[Concepts](/demos/spiffe-cross-boundary/concepts/)** — how SPIFFE identity and
+  Linkerd mesh expansion work, and how authorization by identity differs from
+  authorization by network.
+- **[The manual](/demos/spiffe-cross-boundary/manual/)** — a step-by-step walkthrough
+  of every configuration file, field, and command, without setup scripts.
 - **[Reference](/demos/spiffe-cross-boundary/reference/)** — the key configuration
-  artifacts at a glance.
+  artifacts in one place.
 
 The runnable code lives in the
 [repository](https://github.com/oletizi/linkerd-playground/tree/main/demos/spiffe-cross-boundary).
