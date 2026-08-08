@@ -267,6 +267,16 @@ starlight-toc a[aria-current='true'] {
 	border-inline-start-color: var(--mesh-signal);
 }
 
+/* Landing kicker above the demo mesh (the component owns the rest). */
+.mesh-kicker {
+	text-align: center;
+	font-family: var(--mesh-mono);
+	font-size: 0.78rem;
+	letter-spacing: 0.06em;
+	color: var(--mesh-ink-quiet);
+	margin-top: 3rem;
+}
+
 /* ────────────────────────────────────────────────────────────────────────
  * 6. Quality floor
  * ──────────────────────────────────────────────────────────────────────── */
