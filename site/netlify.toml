@@ -1,0 +1,12 @@
+# Netlify build for the docs site.
+# The Astro project lives in site/, so `base` points Netlify there; `publish`
+# and `command` are then resolved relative to that base. This is a static
+# Starlight build — no serverless adapter needed.
+[build]
+  base = "site"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Match the toolchain the site is developed against (Astro 5 needs >=18.20.8).
+  NODE_VERSION = "22"
