@@ -1,49 +1,53 @@
-# Starlight Starter Kit: Basics
+# site — linkerd-playground documentation
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+The documentation site for [linkerd-playground](https://github.com/oletizi/linkerd-playground):
+a hub of deep, hands-on manuals for the demos in this repo. Built with
+[Astro](https://astro.build) + [Starlight](https://starlight.astro.build) and
+themed with the "mesh-schematic" visual identity.
 
-```
-npm create astro@latest -- --template starlight
-```
+The manuals are the product. Each demo gets an Overview, Concepts, Manual, and
+Reference; new demos slot in as sibling sections.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Develop
 
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```bash
+cd site
+npm install
+npm run dev        # http://localhost:4321, live reload
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+| Command           | What it does                                      |
+| ----------------- | ------------------------------------------------- |
+| `npm run dev`     | Start the dev server with hot reload              |
+| `npm run build`   | Build the static site to `dist/`                  |
+| `npm run preview` | Serve the built `dist/` locally to verify a build |
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+## Structure
 
-Static assets, like favicons, can be placed in the `public/` directory.
+```
+site/
+  astro.config.mjs                     # Starlight config: fonts, sidebar, per-demo nav
+  src/
+    styles/theme.css                   # the mesh-schematic theme (palette, type, code)
+    components/DemoMesh.astro           # landing signature: the demo index as a mesh
+    content/docs/
+      index.mdx                         # splash landing (demo-neutral)
+      demos/<demo>/{overview,concepts,manual,reference}
+```
 
-## 🧞 Commands
+Adding a demo: create `src/content/docs/demos/<demo>/` with its pages, add a
+group to `sidebar` in `astro.config.mjs`, and add an entry to the `demos` array
+in `DemoMesh.astro` — the landing mesh grows from that array.
 
-All commands are run from the root of the project, from a terminal:
+## Deploy (Netlify)
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+`netlify.toml` pins the build: base `site/`, command `npm run build`, publish
+`dist/`, Node 22. To deploy:
 
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+1. In Netlify, **Add new site → Import an existing project** and connect the
+   `oletizi/linkerd-playground` repository. `netlify.toml` supplies the build
+   settings; no manual configuration is needed.
+2. Deploy. Every push to the default branch publishes; pull requests get
+   deploy previews.
+3. Once the production domain is known, set it as `site` in `astro.config.mjs`
+   so the sitemap and canonical URLs are correct.
