@@ -81,6 +81,10 @@ an optional overlay recipe is in [`connectivity-tailscale.md`](connectivity-tail
 
 ## Build it
 
+The steps below use the repo's scripts. To understand every piece instead — each
+config file and command, with the *why* behind them — follow the from-scratch
+manual: [`MANUAL.md`](MANUAL.md).
+
 ### Box A — cloud cluster
 
 ```bash
