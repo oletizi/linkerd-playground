@@ -1,6 +1,6 @@
 ---
 title: The manual
-description: A from-scratch, no-scripts walkthrough of giving a non-Kubernetes workload a SPIFFE identity and bringing it into a Linkerd mesh.
+description: A from-scratch, no-scripts walkthrough of every config file, field, and command behind this demo.
 ---
 
 This is the long way round. The [README](https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/README.md) runs scripts; this document
