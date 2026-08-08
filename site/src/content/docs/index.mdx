@@ -1,9 +1,25 @@
 ---
 title: linkerd-playground
-description: Hands-on demos exploring Linkerd, service-mesh identity, and cross-infrastructure trust.
+description: Deep, hands-on manuals for service-mesh identity and cross-infrastructure trust.
+template: splash
+hero:
+  tagline: |
+    Deep, hands-on manuals for service-mesh identity and cross-infrastructure
+    trust. Each demo is a workload you actually stand up — and a manual that
+    explains every config file, field, and command behind it.
+  actions:
+    - text: Start with SPIFFE across a boundary
+      link: /demos/spiffe-cross-boundary/overview/
+      icon: right-arrow
+      variant: primary
+    - text: Read the manual
+      link: /demos/spiffe-cross-boundary/manual/
+      icon: open-book
+      variant: minimal
 ---
 
-Hands-on demos exploring Linkerd, service-mesh identity, and cross-infrastructure
-trust. The landing (a mesh of the demo collection) is designed in Phase 3.
+import DemoMesh from '../../components/DemoMesh.astro';
 
-- [SPIFFE across a boundary](/demos/spiffe-cross-boundary/overview/)
+<p class="mesh-kicker">The collection — one trust domain, every demo a node</p>
+
+<DemoMesh />

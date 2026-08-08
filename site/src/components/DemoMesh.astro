@@ -1,0 +1,327 @@
+---
+/**
+ * DemoMesh — the landing signature.
+ *
+ * The collection drawn as a mesh: one hub (the shared trust domain every demo
+ * lives in) wired out to a card per demo, on the dot-grid substrate. It's the
+ * thesis of the whole repo made literal — many demos, one trust domain — and
+ * it grows by adding entries to `demos` below. Edges and nodes are laid out
+ * from the array, so the geometry follows the data.
+ */
+interface Demo {
+	title: string;
+	blurb: string;
+	href: string;
+	status: 'live' | 'planned';
+}
+
+const demos: Demo[] = [
+	{
+		title: 'SPIFFE across a boundary',
+		blurb:
+			'A point-of-sale box outside Kubernetes joins the mesh with a SPIRE-issued identity and pushes to the cloud over mTLS — admitted by who it is, not where it runs.',
+		href: '/demos/spiffe-cross-boundary/overview/',
+		status: 'live',
+	},
+];
+
+// Geometry, derived from the collection so the mesh scales with it.
+const CARD_H = 128;
+const GAP = 40;
+const TOP = 56;
+const GHOST_H = 72;
+const cardX = 432;
+const cardW = 388;
+const n = demos.length;
+const height = TOP + n * (CARD_H + GAP) + GHOST_H + 40;
+const hubCx = 150;
+const hubCy = Math.round(height / 2);
+const hubR = 56;
+const cardMidY = (i: number) => TOP + i * (CARD_H + GAP) + CARD_H / 2;
+const ghostY = TOP + n * (CARD_H + GAP);
+const ghostMidY = ghostY + GHOST_H / 2;
+---
+
+<figure class="demo-mesh" aria-label="The demo collection">
+	<svg
+		viewBox={`0 0 860 ${height}`}
+		width="860"
+		height={height}
+		role="presentation"
+		class="mesh-canvas"
+	>
+		<defs>
+			<pattern id="mesh-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+				<circle cx="1" cy="1" r="1" class="dot" />
+			</pattern>
+		</defs>
+
+		<!-- substrate: the engineering grid every page shares -->
+		<rect x="1" y="1" width="858" height={height - 2} rx="6" class="substrate" />
+		<rect x="1" y="1" width="858" height={height - 2} rx="6" fill="url(#mesh-dots)" />
+
+		<!-- edges: hub → each demo (signal), hub → the growth slot (dashed wire) -->
+		{
+			demos.map((_, i) => (
+				<path
+					d={`M ${hubCx + hubR} ${hubCy} C 320 ${hubCy}, 340 ${cardMidY(i)}, ${cardX} ${cardMidY(i)}`}
+					class="edge edge--live"
+					style={`--i:${i}`}
+				/>
+			))
+		}
+		<path
+			d={`M ${hubCx + hubR} ${hubCy} C 320 ${hubCy}, 340 ${ghostMidY}, ${cardX} ${ghostMidY}`}
+			class="edge edge--ghost"
+			style={`--i:${n}`}
+		/>
+
+		<!-- hub: the shared trust domain -->
+		<g class="hub">
+			<circle cx={hubCx} cy={hubCy} r={hubR + 10} class="hub-ring" />
+			<circle cx={hubCx} cy={hubCy} r={hubR} class="hub-core" />
+			<text x={hubCx} y={hubCy - 8} class="hub-label">trust</text>
+			<text x={hubCx} y={hubCy + 12} class="hub-label">domain</text>
+			<text x={hubCx} y={hubCy + 34} class="hub-id">root.linkerd</text>
+		</g>
+
+		<!-- demo cards -->
+		{
+			demos.map((demo, i) => (
+				<foreignObject
+					x={cardX}
+					y={cardMidY(i) - CARD_H / 2}
+					width={cardW}
+					height={CARD_H}
+					class="node-slot"
+					style={`--i:${i}`}
+				>
+					<a href={demo.href} class="node-card" aria-label={`${demo.title} — open the demo`}>
+						<span class="node-status" data-status={demo.status}>
+							{demo.status === 'live' ? 'live' : 'planned'}
+						</span>
+						<span class="node-title">{demo.title}</span>
+						<span class="node-blurb">{demo.blurb}</span>
+					</a>
+				</foreignObject>
+			))
+		}
+
+		<!-- growth slot: honest affordance that the mesh extends -->
+		<foreignObject
+			x={cardX}
+			y={ghostY}
+			width={288}
+			height={GHOST_H}
+			class="node-slot"
+			style={`--i:${n}`}
+		>
+			<div class="ghost-card">
+				<span class="ghost-plus">+</span>
+				<span>more demos wire in here</span>
+			</div>
+		</foreignObject>
+	</svg>
+</figure>
+
+<style>
+	.demo-mesh {
+		margin: 2.5rem auto 0;
+		max-width: 900px;
+		padding: 0 0.5rem;
+	}
+	.mesh-canvas {
+		width: 100%;
+		height: auto;
+		overflow: visible;
+	}
+
+	/* substrate */
+	.substrate {
+		fill: var(--mesh-surface);
+		stroke: var(--mesh-wire);
+		stroke-width: 1;
+	}
+	.dot {
+		fill: var(--mesh-dot);
+	}
+
+	/* edges — drawn in on load */
+	.edge {
+		fill: none;
+		stroke-width: 1.5;
+	}
+	.edge--live {
+		stroke: var(--mesh-signal);
+	}
+	.edge--ghost {
+		stroke: var(--mesh-wire-lit);
+		stroke-dasharray: 4 5;
+	}
+
+	/* hub */
+	.hub-core {
+		fill: var(--mesh-bg-sink);
+		stroke: var(--mesh-signal);
+		stroke-width: 1.5;
+	}
+	.hub-ring {
+		fill: none;
+		stroke: var(--mesh-signal);
+		stroke-width: 1;
+		opacity: 0.35;
+		transform-origin: center;
+	}
+	.hub-label {
+		fill: var(--mesh-ink);
+		font-family: var(--mesh-display);
+		font-size: 15px;
+		font-weight: 700;
+		text-anchor: middle;
+		letter-spacing: -0.01em;
+	}
+	.hub-id {
+		fill: var(--mesh-ink-quiet);
+		font-family: var(--mesh-mono);
+		font-size: 9px;
+		text-anchor: middle;
+	}
+
+	/* demo cards (HTML inside the SVG so prose wraps and uses our fonts) */
+	.node-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		height: 100%;
+		box-sizing: border-box;
+		padding: 0.85rem 1rem;
+		background: var(--mesh-bg-sink);
+		border: 1px solid var(--mesh-wire);
+		border-left: 2px solid var(--mesh-signal);
+		border-radius: 5px;
+		text-decoration: none;
+		transition:
+			transform 0.16s ease,
+			border-color 0.16s ease,
+			box-shadow 0.16s ease;
+	}
+	.node-card:hover {
+		transform: translateX(3px);
+		border-color: var(--mesh-signal);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--mesh-signal) 14%, transparent);
+	}
+	.node-status {
+		align-self: flex-start;
+		font-family: var(--mesh-mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		padding: 0.05rem 0.4rem;
+		border-radius: 3px;
+	}
+	.node-status[data-status='live'] {
+		color: var(--mesh-signal);
+		background: color-mix(in oklab, var(--mesh-signal) 15%, transparent);
+	}
+	.node-status[data-status='planned'] {
+		color: var(--mesh-ink-quiet);
+		background: color-mix(in oklab, var(--mesh-ink-quiet) 15%, transparent);
+	}
+	.node-title {
+		font-family: var(--mesh-display);
+		font-weight: 700;
+		font-size: 1.02rem;
+		color: var(--mesh-ink);
+		letter-spacing: -0.01em;
+	}
+	.node-blurb {
+		font-family: var(--mesh-body);
+		font-size: 0.8rem;
+		line-height: 1.45;
+		color: var(--mesh-ink-quiet);
+	}
+
+	/* growth slot */
+	.ghost-card {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		height: 100%;
+		box-sizing: border-box;
+		padding: 0 1rem;
+		border: 1px dashed var(--mesh-wire-lit);
+		border-radius: 5px;
+		font-family: var(--mesh-mono);
+		font-size: 0.78rem;
+		color: var(--mesh-ink-quiet);
+	}
+	.ghost-plus {
+		font-size: 1.1rem;
+		color: var(--mesh-signal);
+	}
+
+	/* orchestrated load: substrate settles, edges draw, nodes arrive */
+	.edge {
+		stroke-dasharray: 320;
+		stroke-dashoffset: 320;
+		animation: draw 0.7s ease forwards;
+		animation-delay: calc(0.25s + var(--i) * 0.12s);
+	}
+	.node-slot {
+		opacity: 0;
+		animation: arrive 0.4s ease forwards;
+		animation-delay: calc(0.5s + var(--i) * 0.12s);
+	}
+	.hub {
+		opacity: 0;
+		animation: arrive 0.4s ease forwards;
+		animation-delay: 0.1s;
+	}
+	.hub-ring {
+		animation: pulse 3.2s ease-in-out infinite;
+		animation-delay: 1.2s;
+	}
+	@keyframes draw {
+		to {
+			stroke-dashoffset: 0;
+		}
+	}
+	@keyframes arrive {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.12;
+			r: 66px;
+		}
+		50% {
+			opacity: 0.4;
+			r: 70px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.edge,
+		.node-slot,
+		.hub,
+		.hub-ring {
+			animation: none;
+			opacity: 1;
+			stroke-dashoffset: 0;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.node-blurb {
+			font-size: 0.72rem;
+		}
+	}
+</style>
