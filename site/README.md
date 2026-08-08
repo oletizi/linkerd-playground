@@ -41,12 +41,13 @@ in `DemoMesh.astro` — the landing mesh grows from that array.
 
 ## Deploy (Netlify)
 
-`netlify.toml` pins the build: base `site/`, command `npm run build`, publish
-`dist/`, Node 22. To deploy:
+`netlify.toml` at the **repo root** pins the build: base `site/`, command
+`npm run build`, publish `dist/` (i.e. `site/dist`), Node 22. To deploy:
 
 1. In Netlify, **Add new site → Import an existing project** and connect the
-   `oletizi/linkerd-playground` repository. `netlify.toml` supplies the build
-   settings; no manual configuration is needed.
+   `oletizi/linkerd-playground` repository. The root `netlify.toml` supplies the
+   build settings, so the import form's fields auto-fill; no manual configuration
+   is needed.
 2. Deploy. Every push to the default branch publishes; pull requests get
    deploy previews.
 3. Once the production domain is known, set it as `site` in `astro.config.mjs`
