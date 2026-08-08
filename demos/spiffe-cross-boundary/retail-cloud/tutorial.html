@@ -66,71 +66,71 @@
 
   <!-- LEARN -->
   <section class="tab active" id="learn">
-    <p class="lede">RetailCloud is a cloud dashboard showing live data that a store’s point-of-sale system <b>reports</b> from a <b>different machine</b>, outside Kubernetes. Here’s how they trust each other — by <b>identity</b>, not by network.</p>
+    <p class="lede">RetailCloud is a cloud dashboard that displays live data reported by a store’s point-of-sale system running on a <b>separate machine</b>, outside Kubernetes. The two authenticate each other by <b>identity</b> rather than by network.</p>
 
     <div class="concept">
-      <div class="eyebrow">The problem</div>
+      <div class="eyebrow">Problem</div>
       <h2>Trust across a boundary</h2>
-      <p>The dashboard runs in the cloud (machine A). The point-of-sale system runs on-prem in the store (machine B), and pushes its data up to the cloud (the realistic direction — the cloud can't depend on an in-store box being reachable). When that data arrives, how does the cloud know the sender is really this store — and not something else that reached its address? Firewalls and IP allowlists tie trust to <i>where</i> a workload runs. Move it, or share a network, and those rules break.</p>
+      <p>The dashboard runs in the cloud (machine A). The point-of-sale system runs on-premises in the store (machine B) and sends its data to the cloud; the store initiates the connection, because the cloud cannot assume an in-store machine is reachable. When the data arrives, the cloud needs to determine whether the sender is this store rather than something else that reached its address. Firewalls and IP allowlists tie trust to <i>where</i> a workload runs, so they break when a workload moves or shares a network.</p>
     </div>
 
     <div class="concept">
-      <div class="eyebrow">The idea</div>
-      <h2>SPIFFE: identity, not location</h2>
-      <p>SPIFFE gives every workload a cryptographic identity — a short-lived certificate called an SVID — inside a shared <b>trust domain</b>. The store’s service isn’t “whatever is at 100.77.68.7”; it <i>is</i>:</p>
+      <div class="eyebrow">Identity</div>
+      <h2>Identity instead of location</h2>
+      <p>SPIFFE gives every workload a cryptographic identity — a short-lived certificate called an SVID — inside a shared <b>trust domain</b>. The store’s service is identified by a SPIFFE ID rather than by an address:</p>
       <div class="idbox">spiffe://root.linkerd.cluster.local/store-pos</div>
-      <p class="note">That identity is the same regardless of what network the workload sits on.</p>
+      <p class="note">That identity does not change with the network the workload runs on.</p>
     </div>
 
     <div class="concept">
-      <div class="eyebrow">The bridge</div>
-      <h2>Mesh expansion: the store joins the mesh</h2>
-      <p>store-pos runs on a plain VM, not in Kubernetes. Linkerd’s <b>mesh expansion</b> brings it in: a standalone <span class="mono">linkerd2-proxy</span> runs beside it, and <b>SPIRE</b> issues its SVID — chained to the same trust anchor Linkerd uses inside the cluster. One trust domain now spans both machines.</p>
+      <div class="eyebrow">Mesh expansion</div>
+      <h2>The store joins the mesh</h2>
+      <p>store-pos runs on a standalone VM, not in Kubernetes. Linkerd’s <b>mesh expansion</b> adds it to the mesh: a standalone <span class="mono">linkerd2-proxy</span> runs alongside it, and <b>SPIRE</b> issues its SVID, chained to the same trust anchor Linkerd uses inside the cluster. One trust domain then spans both machines.</p>
     </div>
 
     <div class="concept">
-      <div class="eyebrow">The wire</div>
-      <h2>mTLS: encrypted and mutually authenticated</h2>
-      <p>When the store reports to the cloud, both sides present their SVIDs and establish mutual TLS. The cloud knows exactly who is reporting — by identity — and the traffic is encrypted the whole way across the boundary. On the dashboard you’ll see the link marked <span class="mono">mTLS · reporting</span>.</p>
+      <div class="eyebrow">Mutual TLS</div>
+      <h2>Encrypted and mutually authenticated</h2>
+      <p>When the store connects to the cloud, both sides present their SVIDs and establish mutual TLS. Each side authenticates the other by identity, and the traffic is encrypted across the boundary. On the dashboard, this link is marked <span class="mono">mTLS · reporting</span>.</p>
     </div>
 
     <div class="concept">
-      <div class="eyebrow">The point</div>
+      <div class="eyebrow">Authorization</div>
       <h2>Authorization by identity</h2>
-      <p>Access becomes a policy about <i>identity</i>: the cloud’s ingest endpoint allows only the store’s identity to report. Change the allowed identity, and the store’s pushes are refused — a real HTTP <b>403</b> — with nothing about the network changing. That’s exactly what the dashboard’s <b>Void authorization</b> button does. Head to <b>Try it</b> to watch it happen.</p>
+      <p>Access control is expressed as a policy over <i>identity</i>: the cloud’s ingest endpoint admits only the store’s identity. If the allowed identity is changed, the store’s requests are rejected with HTTP <b>403</b>, with no change to the network. The dashboard’s <b>Void authorization</b> button makes this change. See <b>Try it</b> to observe it.</p>
     </div>
   </section>
 
   <!-- TRY IT -->
   <section class="tab" id="try">
-    <p class="lede">Follow these five steps against the live dashboard below. It’s the real running app — clicking here changes real Linkerd policy.</p>
+    <p class="lede">Follow these five steps against the live dashboard below. It is the running application; actions here change actual Linkerd policy.</p>
 
-    <div class="step"><div class="n">1</div><h3>Meet the two machines</h3>
-      <p>In <b>Network topology</b>, find the two dashed boxes: the <b>cloud cluster</b> (machine A) and the <b>on-prem store</b> (machine B). <span class="mono">store-pos</span> lives on machine B — outside Kubernetes entirely.</p></div>
+    <div class="step"><div class="n">1</div><h3>Identify the two machines</h3>
+      <p>In <b>Network topology</b>, find the two dashed boxes: the <b>cloud cluster</b> (machine A) and the <b>on-prem store</b> (machine B). <span class="mono">store-pos</span> runs on machine B, outside Kubernetes entirely.</p></div>
 
-    <div class="step"><div class="n">2</div><h3>Spot the identities</h3>
+    <div class="step"><div class="n">2</div><h3>Read the identities</h3>
       <p>In the top panel, read the two identities: the dashboard’s and the store’s <span class="mono">spiffe://…/store-pos</span>.</p>
-      <div class="watch"><b>These are cryptographic</b>, not IP addresses — the basis for trust.</div></div>
+      <div class="watch">These are cryptographic identities, not IP addresses — the basis for trust.</div></div>
 
-    <div class="step"><div class="n">3</div><h3>Watch the secure link</h3>
-      <p>The green <span class="mono">mTLS · reporting</span> link is the store pushing its inventory and sales up to the cloud — encrypted and mutually authenticated across the boundary.</p></div>
+    <div class="step"><div class="n">3</div><h3>Observe the secure link</h3>
+      <p>The green <span class="mono">mTLS · reporting</span> link is the store sending its inventory and sales to the cloud, encrypted and mutually authenticated across the boundary.</p></div>
 
-    <div class="step void"><div class="n">4</div><h3>Revoke trust</h3>
-      <p>Click <b>Void authorization</b>. The policy now requires a <i>different</i> identity, so the store’s pushes are refused.</p>
-      <div class="watch">Watch: the store data stamps <b>VOID</b>, the topology link turns <b>red (403)</b>, and the seal breaks.</div></div>
+    <div class="step void"><div class="n">4</div><h3>Revoke authorization</h3>
+      <p>Click <b>Void authorization</b>. The policy now requires a <i>different</i> identity, so the store’s requests are refused.</p>
+      <div class="watch">The store data is stamped <b>VOID</b>, the topology link turns <b>red (403)</b>, and the seal indicator breaks.</div></div>
 
-    <div class="step"><div class="n">5</div><h3>Notice what didn’t change</h3>
-      <p>The network is identical — same addresses, same routes, same firewall. Only the <i>allowed identity</i> changed. Click <b>Reinstate authorization</b> to bring the store back.</p></div>
+    <div class="step"><div class="n">5</div><h3>Note what did not change</h3>
+      <p>The network is identical — same addresses, routes, and firewall. Only the <i>allowed identity</i> changed. Click <b>Reinstate authorization</b> to restore the store.</p></div>
 
     <div class="frame">
-      <div class="bar"><span class="dot"></span>Live dashboard — clicking inside changes real policy</div>
+      <div class="bar"><span class="dot"></span>Live dashboard — actions inside change actual policy</div>
       <iframe src="/" title="RetailCloud dashboard"></iframe>
     </div>
   </section>
 
   <!-- BUILD IT -->
   <section class="tab" id="build">
-    <p class="lede">Reproduce it on two Linux hosts (or VMs) that can reach each other. This is the shape; the exact scripts are in the repo.</p>
+    <p class="lede">Reproduce it on two Linux hosts (or VMs) that can reach each other. This is the outline; the exact scripts are in the repo.</p>
 
     <div class="concept"><div class="eyebrow">Prerequisites</div><h2>What you need</h2>
       <ol class="plain">
@@ -166,11 +166,11 @@ kind: MeshTLSAuthentication
 spec:
   identities:
     - spiffe://root.linkerd.cluster.local/store-pos</pre>
-      <p class="note">Change that identity and the store’s pushes get a 403 — the “Void” button patches exactly this.</p>
+      <p class="note">Change that identity and the store’s requests receive a 403; the Void authorization button applies this same change.</p>
     </div>
 
-    <div class="concept"><div class="eyebrow">Full walkthrough</div><h2>The repo has every script</h2>
-      <p>The complete, runnable version — VM provisioning, the connectivity options, and the RetailCloud app — lives in the <a href="https://github.com/oletizi/linkerd-playground" target="_blank" rel="noopener">demo repo</a> under <span class="mono">demos/spiffe-cross-boundary/</span>. Start with its <a class="mono" href="https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/README.md" target="_blank" rel="noopener">README.md</a>.</p>
+    <div class="concept"><div class="eyebrow">Full walkthrough</div><h2>Full scripts in the repo</h2>
+      <p>The complete, runnable version — VM provisioning, connectivity options, and the RetailCloud app — is in the <a href="https://github.com/oletizi/linkerd-playground" target="_blank" rel="noopener">demo repo</a> under <span class="mono">demos/spiffe-cross-boundary/</span>. Start with its <a class="mono" href="https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/README.md" target="_blank" rel="noopener">README.md</a>.</p>
     </div>
   </section>
 </main>
