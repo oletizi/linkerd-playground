@@ -1,10 +1,10 @@
 ---
 title: Reference
-description: The key configuration artifacts for the SPIFFE external-workload setup, at a glance.
+description: The key configuration artifacts for the SPIFFE external-workload setup, in one place.
 ---
 
-A quick lookup of the load-bearing configuration. Each links back to the part of the
-**[manual](/demos/spiffe-cross-boundary/manual/)** that explains it in full.
+A summary of the configuration this demo depends on. Each section links to the part
+of the **[manual](/demos/spiffe-cross-boundary/manual/)** that covers it in full.
 
 ## Trust domain
 
@@ -18,10 +18,11 @@ A quick lookup of the load-bearing configuration. Each links back to the part of
 | `store-pos` (off-cluster) | `spiffe://root.linkerd.cluster.local/store-pos` | SPIRE (Workload API) |
 | `retail-cloud` (in-cluster) | `retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local` | Linkerd identity |
 
-## SPIRE server — the load-bearing block
+## SPIRE server — upstream authority
 
-The `UpstreamAuthority` is what makes cross-machine trust work: it signs with
-Linkerd's root, so SVIDs chain to the same anchor.
+The `UpstreamAuthority` block is what allows trust to span machines. SPIRE signs
+SVIDs with Linkerd's root certificate, so identities issued off-cluster chain to the
+same trust anchor the cluster uses.
 
 ```hcl
 UpstreamAuthority "disk" {
@@ -85,6 +86,6 @@ spec:
     - "spiffe://root.linkerd.cluster.local/store-pos"
 ```
 
-Bound to a `Server` (which flips the ingest port default-deny) via an
-`AuthorizationPolicy`. Swap that identity for a different one and the store's pushes
-get a 403 — the "Void" moment.
+Bound to a `Server` (which sets the ingest port to default-deny) through an
+`AuthorizationPolicy`. If the allowed identity is changed, requests from the store
+are rejected with HTTP 403.
