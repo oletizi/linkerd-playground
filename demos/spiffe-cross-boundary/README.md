@@ -1,17 +1,21 @@
 # spiffe-cross-boundary — RetailCloud
 
-**A store's point-of-sale system, running on a *different machine* outside
-Kubernetes, pushes live inventory and sales up to a cloud dashboard — and the cloud
-accepts the data based on cryptographic SPIFFE identity, not on IP or network.**
+A store's point-of-sale system (`store-pos`) runs on a machine outside Kubernetes and
+sends live inventory and sales to a cloud dashboard (`retail-cloud`). The cloud accepts
+the data based on cryptographic SPIFFE identity rather than IP or network.
 
-This is SPIFFE-in-Linkerd made tangible. `store-pos` runs on an edge machine that
-Kubernetes has never heard of; Linkerd **mesh expansion** brings it into the mesh
-with a SPIRE-issued identity (`spiffe://root.linkerd.cluster.local/store-pos`)
-chained to the cluster's trust anchor. It pushes its data to the `retail-cloud` app
-over mTLS (the realistic direction — the cloud never depends on the store being
-reachable). A **Void authorization** button flips the real Linkerd policy so the
-store's pushes are refused with a genuine 403 — with nothing about the network
-changing.
+`store-pos` runs on an edge machine that is not part of the cluster; Linkerd **mesh
+expansion** joins it to the mesh with a SPIRE-issued identity
+(`spiffe://root.linkerd.cluster.local/store-pos`) chained to the cluster's trust anchor.
+It sends its data to `retail-cloud` over mTLS; the store initiates the connection,
+because the cloud cannot assume the store is reachable. A **Void authorization** button
+changes the Linkerd policy so the store's requests are refused with a 403, with no change
+to the network.
+
+> **This is a teaching demo, not a production blueprint.** It takes deliberate shortcuts
+> — starting with copying the trust domain's root key onto the store host — to keep the
+> mechanics legible. Do not run this configuration in a real environment.
+> [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) lists every shortcut and what to do instead.
 
 Design spec: [`docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md`](../../docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md).
 
@@ -25,8 +29,8 @@ Once built, open (at your cluster's address, port `30080`):
 - **`/tutorial`** — a self-teaching page: **Learn** (the SPIFFE concepts), **Try it**
   (five guided steps with the live dashboard embedded), **Build it** (the runbook).
 
-The whole story lands in one place: hit **Void**, watch the store data stamp VOID
-and the topology link turn red — while both identities stay on screen.
+Click **Void** to see the store data marked VOID and the topology link turn red, while
+both identities remain on screen.
 
 ## What runs where
 
@@ -137,10 +141,10 @@ Open `http://<CLUSTER_NODE_ADDR>:30080/` — the store is now pushing its invent
 and sales to the cloud over the mesh. Click **Void authorization** to watch
 identity-based authz refuse the store's pushes for real.
 
-## Under the hood — see the raw evidence
+## Inspect the traffic
 
-The dashboard is a friendly wrapper; the CLI shows the same facts unadorned. On the
-cluster, tap the traffic while the dashboard polls:
+The dashboard is a wrapper; the CLI shows the same facts directly. On the cluster, tap
+the traffic while the dashboard polls:
 
 ```bash
 linkerd -n mixed-env viz tap deploy/retail-cloud
@@ -174,16 +178,17 @@ three identity vars in `config.local.env` back to the `edge-echo` values
 `apply-externalworkload.sh` instead of `store-pos` + `cluster/retail/apply.sh`.
 RetailCloud and the beats share one edge proxy (one identity), so run one or the other.
 
-## Caveats (honest scope)
+## Scope — this is a teaching demo
 
-- **The root CA key lives on the edge.** SPIRE's `UpstreamAuthority` uses the Linkerd
-  trust anchor `ca.key`, copied to the edge. Fine for a playground; a real deployment
-  would use an intermediate instead.
-- **`join_token` attestation** is chosen for portability across any infrastructure —
-  swap for cloud/x509 attestation on real infra.
-- **Verified end-to-end on Lima/Apple-Silicon (arm64)** over the optional overlay
-  recipe; the default LAN path uses the same `net/shim.sh` mechanism. Other
-  providers/arches are config-driven and arch-aware but not independently verified.
-- **`Server` uses `policy.linkerd.io/v1beta3`**; the store-pos Server targets the
-  workload via `externalWorkloadSelector`. The RetailCloud app is granted a small RBAC
-  Role to patch the `MeshTLSAuthentication` (that's what the Void button uses).
+Built for explanatory clarity, not production practice. It takes deliberate shortcuts —
+the root CA key on the edge, `join_token` attestation, processes run without supervision,
+the app holding RBAC to change its own policy, and more.
+[`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) catalogues each shortcut and the production
+practice that should replace it.
+
+- **Verified end-to-end on Lima/Apple-Silicon (arm64)** over the optional overlay recipe;
+  the default LAN path uses the same `net/shim.sh` mechanism. Other providers/arches are
+  config-driven and arch-aware but not independently verified.
+- **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
+  store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
+  small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).
