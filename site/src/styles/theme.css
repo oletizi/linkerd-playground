@@ -1,0 +1,297 @@
+/* linkerd-playground — "mesh-schematic"
+ *
+ * A collection of demos drawn as a mesh: nodes and edges on a dot-grid
+ * substrate, a cool engineered palette, a technical display grotesque over
+ * readable Plex body + mono. The manuals are the product — everything here
+ * serves long-form technical reading first, atmosphere second.
+ *
+ * Structure:
+ *   1. Tokens        — the mesh palette + type roles (theme-agnostic names)
+ *   2. Starlight map — bind those tokens to Starlight's CSS variables
+ *   3. Substrate     — the ambient dot-grid
+ *   4. Reading       — headings, prose, code, callouts, links
+ *   5. Chrome        — sidebar, nav, TOC
+ *   6. Floor         — focus, selection, reduced motion
+ */
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 1. Tokens — the mesh palette
+ * Named once here; the Starlight map below is the only place they're spent.
+ * ──────────────────────────────────────────────────────────────────────── */
+:root {
+	/* type roles */
+	--mesh-display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+	--mesh-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+	--mesh-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+	/* dark ("slate substrate") — Starlight's default theme */
+	--mesh-bg: #101615;
+	--mesh-bg-sink: #0b100f; /* nav / sidebar, one step deeper */
+	--mesh-surface: #161f1d; /* code + card panels */
+	--mesh-ink: #e4eae8;
+	--mesh-ink-quiet: #9aa9a6;
+	--mesh-wire: #26332f; /* hairlines / edges */
+	--mesh-wire-lit: #35463f;
+	--mesh-signal: #2fd4a6; /* the one accent */
+	--mesh-signal-quiet: #17715a;
+	--mesh-dot: rgba(47, 212, 166, 0.05); /* substrate grid */
+}
+
+:root[data-theme='light'] {
+	/* light ("cool paper") */
+	--mesh-bg: #edf1ef;
+	--mesh-bg-sink: #e5eae8;
+	--mesh-surface: #f6f8f7;
+	--mesh-ink: #16211f;
+	--mesh-ink-quiet: #51635f;
+	--mesh-wire: #c9d4d1;
+	--mesh-wire-lit: #b3c1bd;
+	--mesh-signal: #0a6e54;
+	--mesh-signal-quiet: #12a67e;
+	--mesh-dot: rgba(16, 33, 31, 0.05);
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 2. Bind tokens to Starlight's variables
+ * Starlight derives almost everything from --sl-color-accent-*, the gray
+ * ramp, and the fonts; set those and the whole UI follows.
+ * ──────────────────────────────────────────────────────────────────────── */
+:root {
+	--sl-font: var(--mesh-body);
+	--sl-font-mono: var(--mesh-mono);
+
+	/* accent ramp */
+	--sl-color-accent-low: color-mix(in oklab, var(--mesh-signal) 22%, var(--mesh-bg));
+	--sl-color-accent: var(--mesh-signal);
+	--sl-color-accent-high: color-mix(in oklab, var(--mesh-signal) 70%, var(--mesh-ink));
+	--sl-color-text-accent: var(--mesh-signal);
+
+	/* ink + surfaces */
+	--sl-color-white: var(--mesh-ink);
+	--sl-color-gray-1: color-mix(in oklab, var(--mesh-ink) 92%, var(--mesh-bg));
+	--sl-color-gray-2: color-mix(in oklab, var(--mesh-ink) 74%, var(--mesh-bg));
+	--sl-color-gray-3: var(--mesh-ink-quiet);
+	--sl-color-gray-4: color-mix(in oklab, var(--mesh-ink-quiet) 60%, var(--mesh-bg));
+	--sl-color-gray-5: var(--mesh-wire-lit);
+	--sl-color-gray-6: var(--mesh-wire);
+	--sl-color-black: var(--mesh-bg);
+
+	--sl-color-bg: var(--mesh-bg);
+	--sl-color-bg-nav: color-mix(in oklab, var(--mesh-bg-sink) 88%, transparent);
+	--sl-color-bg-sidebar: var(--mesh-bg-sink);
+	--sl-color-bg-inline-code: var(--mesh-surface);
+	--sl-color-hairline: var(--mesh-wire);
+	--sl-color-hairline-light: var(--mesh-wire);
+	--sl-color-hairline-shade: var(--mesh-wire);
+	--sl-color-text: var(--mesh-ink);
+
+	/* tighten the default rounding — schematic, not soft */
+	--border-radius: 3px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 3. Substrate — the ambient dot-grid
+ * Faint, fixed, behind everything. It's the connective tissue of the whole
+ * site: every page reads as a sheet laid on the same engineering grid.
+ * ──────────────────────────────────────────────────────────────────────── */
+body {
+	background-image: radial-gradient(var(--mesh-dot) 1px, transparent 1.4px);
+	background-size: 22px 22px;
+	background-position: -1px -1px;
+	background-attachment: fixed;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 4. Reading — the product
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Display grotesque for headings, tightened; body for prose. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+h1,
+h2,
+h3 {
+	font-family: var(--mesh-display);
+	font-weight: 700;
+	letter-spacing: -0.015em;
+}
+
+.sl-markdown-content {
+	--sl-content-width: 46rem; /* comfortable long-form measure */
+	line-height: 1.72;
+}
+
+/* Every section is a node in the mesh: a hairline rule and a signal dot
+ * mark each H2. The device is literal — sections are the nodes you read. */
+.sl-markdown-content h2 {
+	margin-top: 2.6rem;
+	padding-top: 1.4rem;
+	border-top: 1px solid var(--mesh-wire);
+	position: relative;
+}
+.sl-markdown-content h2::before {
+	content: '';
+	position: absolute;
+	top: -4px;
+	left: 0;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--mesh-signal);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--mesh-signal) 20%, transparent);
+}
+
+/* Links: accent, with an underline that only fills in on interaction. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--mesh-signal);
+	text-underline-offset: 0.2em;
+	text-decoration-color: var(--mesh-wire-lit);
+	transition: text-decoration-color 0.15s ease;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+	text-decoration-color: var(--mesh-signal);
+}
+
+/* Inline code / identifiers / SPIFFE IDs — the site is full of them. */
+.sl-markdown-content :not(pre) > code {
+	font-family: var(--mesh-mono);
+	font-size: 0.86em;
+	background: var(--mesh-surface);
+	border: 1px solid var(--mesh-wire);
+	border-radius: 3px;
+	padding: 0.1em 0.36em;
+	color: var(--mesh-ink);
+}
+
+/* Code blocks: a schematic panel — surface, hairline frame, signal spine.
+ * Starlight renders these through Expressive Code; bind its frame to the same
+ * wire border and signal spine the callouts and tables use, so every panel on
+ * the page belongs to one system. */
+:root {
+	--ec-brdCol: var(--mesh-wire);
+	--ec-brdRad: 4px;
+	--ec-frm-edBg: var(--mesh-surface);
+	--ec-frm-trmBg: var(--mesh-surface);
+	--ec-frm-trmTtbBg: var(--mesh-bg-sink);
+	--ec-frm-edTabBarBg: var(--mesh-bg-sink);
+	--ec-uiFontFam: var(--mesh-mono);
+}
+.expressive-code .frame {
+	border-left: 2px solid var(--mesh-signal-quiet);
+}
+/* Any plain <pre> that isn't Expressive Code gets the same treatment. */
+.sl-markdown-content pre:not(.expressive-code *) {
+	background: var(--mesh-surface);
+	border: 1px solid var(--mesh-wire);
+	border-left: 2px solid var(--mesh-signal-quiet);
+	border-radius: 4px;
+	font-size: 0.85rem;
+	line-height: 1.6;
+}
+
+/* Callouts (asides) — trade-off / gotcha / consequence live here. Give them
+ * a solid signal spine and a surface panel so they read as marginalia, not
+ * body text. Starlight sets --sl-color-asides-* per variant; we keep the
+ * variant hue but unify the shape. */
+.sl-markdown-content .starlight-aside {
+	border-radius: 4px;
+	border-inline-start-width: 3px;
+	background: var(--mesh-surface);
+}
+
+/* Blockquotes authored in the source markdown get the same node treatment. */
+.sl-markdown-content blockquote:not(:where(.not-content *)) {
+	border-inline-start: 3px solid var(--mesh-signal-quiet);
+	background: var(--mesh-surface);
+	padding: 0.2rem 1rem;
+	border-radius: 0 4px 4px 0;
+	color: var(--mesh-ink-quiet);
+}
+
+/* Tables — the Reference page is mostly tables; keep them crisp. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+	border: 1px solid var(--mesh-wire);
+	border-radius: 4px;
+	border-collapse: separate;
+	border-spacing: 0;
+	overflow: hidden;
+}
+.sl-markdown-content th {
+	font-family: var(--mesh-display);
+	font-weight: 500;
+	font-size: 0.82rem;
+	letter-spacing: 0.01em;
+	background: var(--mesh-bg-sink);
+}
+.sl-markdown-content th,
+.sl-markdown-content td {
+	border-bottom: 1px solid var(--mesh-wire);
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 5. Chrome — sidebar, header, TOC
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Site title in the display face — it's the first node you meet. */
+.site-title {
+	font-family: var(--mesh-display);
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+/* Header sits on a hairline over the substrate. */
+header.header {
+	border-bottom: 1px solid var(--mesh-wire);
+	backdrop-filter: blur(6px);
+}
+
+/* Active sidebar entry: a signal node marker instead of a filled pill. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+	color: var(--mesh-signal);
+	background: color-mix(in oklab, var(--mesh-signal) 12%, transparent);
+	font-weight: 600;
+}
+
+/* Sidebar group labels in the display face — they name the demos. */
+.sidebar-content summary,
+.sidebar-content h2 {
+	font-family: var(--mesh-display);
+}
+
+/* In-page TOC current marker follows the signal. */
+starlight-toc a[aria-current='true'] {
+	color: var(--mesh-signal);
+	border-inline-start-color: var(--mesh-signal);
+}
+
+/* Landing kicker above the demo mesh (the component owns the rest). */
+.mesh-kicker {
+	text-align: center;
+	font-family: var(--mesh-mono);
+	font-size: 0.78rem;
+	letter-spacing: 0.06em;
+	color: var(--mesh-ink-quiet);
+	margin-top: 3rem;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 6. Quality floor
+ * ──────────────────────────────────────────────────────────────────────── */
+:focus-visible {
+	outline: 2px solid var(--mesh-signal);
+	outline-offset: 2px;
+}
+
+::selection {
+	background: color-mix(in oklab, var(--mesh-signal) 26%, transparent);
+	color: var(--mesh-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sl-markdown-content a:not(:where(.not-content *)) {
+		transition: none;
+	}
+}
