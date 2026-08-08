@@ -11,7 +11,18 @@ export default defineConfig({
 			title: 'linkerd-playground',
 			description:
 				'Hands-on demos exploring Linkerd, service-mesh identity, and cross-infrastructure trust.',
-			customCss: ['./src/styles/theme.css'],
+			customCss: [
+				// Self-hosted faces (bundled at build — no runtime font CDN).
+				'@fontsource/space-grotesk/500.css',
+				'@fontsource/space-grotesk/700.css',
+				'@fontsource/ibm-plex-sans/400.css',
+				'@fontsource/ibm-plex-sans/500.css',
+				'@fontsource/ibm-plex-sans/600.css',
+				'@fontsource/ibm-plex-mono/400.css',
+				'@fontsource/ibm-plex-mono/500.css',
+				// The mesh-schematic theme (last, so it wins the cascade).
+				'./src/styles/theme.css',
+			],
 			social: [
 				{
 					icon: 'github',
