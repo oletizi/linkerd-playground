@@ -19,8 +19,18 @@ export default defineConfig({
 					href: 'https://github.com/oletizi/linkerd-playground',
 				},
 			],
-			// Sidebar is populated per demo section in Phase 1.
-			sidebar: [],
+			// One group per demo; the collection grows as demos are added.
+			sidebar: [
+				{
+					label: 'SPIFFE across a boundary',
+					items: [
+						'demos/spiffe-cross-boundary/overview',
+						'demos/spiffe-cross-boundary/concepts',
+						'demos/spiffe-cross-boundary/manual',
+						'demos/spiffe-cross-boundary/reference',
+					],
+				},
+			],
 		}),
 	],
 });
