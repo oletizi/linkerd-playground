@@ -18,3 +18,8 @@ dependency chain:
 For an edit that has no verb yet (e.g. moving a `part-of` / `depends-on` edge):
 edit this file directly, then run `stackctl roadmap order` to revalidate the
 graph (it fails loud on a cycle / dangling ref / duplicate id).
+
+## design:feature/astro-docs-site
+- status: planned
+- ref: https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/MANUAL.md
+Astro website serving the project's documentation for the SPIFFE-in-Linkerd RetailCloud demo (from-scratch manual, tutorial concepts, reference). All UX/UI design + implementation via the frontend-design plugin.
