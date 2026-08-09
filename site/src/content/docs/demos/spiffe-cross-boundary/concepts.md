@@ -38,6 +38,48 @@ expansion** adds it to the mesh: a standalone `linkerd2-proxy` runs alongside it
 trust anchor Linkerd uses inside the cluster. One trust domain then spans both
 machines, without federation and without requiring them to share a network.
 
+## Trust domains: one or many?
+
+A trust domain is the unit of *ambient* trust: every workload whose SVID chains to the
+same root implicitly trusts every other as a potential peer. A trust domain's boundary
+is therefore the boundary of "who can even authenticate as one of us" — and choosing
+where that boundary falls is a real design decision.
+
+This demo uses **one** trust domain on purpose. `store-pos` and `retail-cloud` are one
+application spanning on-premises and the cluster; sharing a domain gives them a seamless
+identity fabric, and access is decided per *identity* (admit this exact SPIFFE ID), not
+per domain.
+
+You would use **several** trust domains — inside a single organization — when you want a
+hard boundary between groups of workloads:
+
+- **Isolation / blast radius.** Separate roots mean a compromise or mis-issuance in one
+  domain cannot mint identities another domain will trust. The classic split is
+  **production vs staging** — staging should never be able to authenticate as production.
+- **Independent administration.** Different business units, subsidiaries, or platform
+  teams each run their own SPIRE/PKI, with their own CA rotation, TTLs, and attestation
+  policy.
+- **Regulatory scope.** A domain under a specific compliance regime (say PCI) kept
+  distinct from everything else.
+
+You then connect only the domains that must interoperate with **SPIFFE federation**: the
+domains exchange trust bundles, so a workload in one can validate SVIDs from another —
+*explicitly and selectively*, rather than the ambient trust you get inside a single
+domain.
+
+| | One trust domain | Several domains, federated |
+|---|---|---|
+| **Use when** | the workloads are one trust realm you run as a unit (this demo) | you want a hard boundary — environments, teams, compliance scopes |
+| **Trust between workloads** | ambient — same root; authorize per identity | explicit — only federated domains interoperate |
+| **Blast radius** | domain-wide: one root anchors everything | contained: a compromise can't cross the boundary |
+| **Cost** | simplest; nothing to federate | federation setup + cross-domain authorization to author |
+
+This demo takes the single-domain path because that is its thesis — identity that spans
+infrastructure without federation. A production fleet might instead give each environment
+its own domain and federate the pairs that must talk; the
+[Production notes](/demos/spiffe-cross-boundary/production-notes/) frame the single domain
+as the deliberate choice it is.
+
 ## Mutual TLS
 
 When the store connects to the cloud, both sides present their SVIDs and establish
