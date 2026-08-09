@@ -3,6 +3,12 @@ dist/
 # generated types
 .astro/
 
+# sync-docs output: these pages are generated from demos/<slug>/{MANUAL,PRODUCTION-NOTES}.md
+# by scripts/sync-docs.mjs (prebuild/predev hook), so they are build artifacts, not source.
+# The hand-authored pages in the same dir (concepts/overview/reference.md) stay tracked.
+src/content/docs/demos/*/manual.md
+src/content/docs/demos/*/production-notes.md
+
 # dependencies
 node_modules/
 
