@@ -132,8 +132,8 @@ start (installing viz later requires a `kubectl rollout restart` on each workloa
 
 ## Part 2 — The networking prerequisite (store)
 
-Before any SPIFFE, the store's proxy must be able to reach the cluster's control
-plane and, later, its data-plane peers. Concretely the store needs:
+Before any of the identity setup (Parts 3 onward), the store's proxy must be able to
+reach the cluster's control plane and, later, its data-plane peers. Concretely the store needs:
 
 - an L3 route to the cluster **pod CIDR** and **service CIDR** (k3s defaults
   `10.42.0.0/16` and `10.43.0.0/16`), and
