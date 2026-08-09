@@ -14,16 +14,16 @@ departs from production practice.
 
 - **The application can rewrite its own authorization policy.** The `retail-cloud` pod
   holds RBAC to `patch` the `MeshTLSAuthentication` that protects it, and the *Void
-  authorization* button does so from an unauthenticated web endpoint. Production:
+  authorization* button does so from an unauthenticated web endpoint. In a real system,
   authorization policy is authored by operators in a GitOps source of truth, never mutated
   by the workload it governs.
 - **The root CA key is stored in a Kubernetes Secret.** It is off the store — only a
   one-time join token and the public trust bundle go to the edge — but a cluster Secret is
-  not HSM / offline-root custody. Production: back the root with external or offline PKI,
-  an HSM, or Vault.
+  not HSM / offline-root custody. A real system backs the root with external or offline
+  PKI, an HSM, or Vault.
 - **One trust domain spans both environments.** The store reuses the cluster's trust
   domain — the whole point of the demo, but it removes the isolation boundary between
-  on-prem and cloud. Production: give each environment its own trust domain and connect
+  on-prem and cloud. A real system gives each environment its own trust domain and connects
   them with **SPIFFE federation**.
 
 ## Security shortcuts
@@ -55,7 +55,7 @@ These are exploitable as written, not merely non-ideal.
 
 ## Operational and architectural simplifications
 
-Not directly exploitable, but not how a production system is built.
+Not directly exploitable, but not how a real system is built.
 
 ### Trust & CA
 
@@ -79,9 +79,9 @@ Not directly exploitable, but not how a production system is built.
 
 ### Attestation
 
-- **`join_token` node enrollment** — a legitimate one-time mechanism. Production commonly
-  binds enrollment to a **device identity** (TPM/DevID, enterprise PKI, or a cloud instance
-  identity: `aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`) rather than a token.
+- **`join_token` node enrollment** — a legitimate one-time mechanism. Real deployments
+  commonly bind enrollment to a **device identity** (TPM/DevID, enterprise PKI, or a cloud
+  instance identity: `aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`) rather than a token.
 - **Workload attestation is `unix:uid:2102` + `unix:path`** — enough to isolate ordinary
   processes on the host. `unix:sha256` (binary hash) is an optional tightening; note the
   host-root boundary below.
