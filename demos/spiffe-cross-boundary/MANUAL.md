@@ -50,12 +50,16 @@ gives you identity; it does not give you connectivity.
 ## Prerequisites
 
 - **Two Linux hosts** that can reach each other over IP. (On macOS, run each in a
-  Linux VM.)
+  Linux VM — note that default VM networking often isolates guests from one another;
+  you may need a shared VM-to-VM network, e.g. Lima's `user-v2`, or the
+  [Tailscale recipe](connectivity-tailscale.md). This reachability is a precondition,
+  covered in Part 2.)
 - On the **cloud** host: a Kubernetes cluster (k3s is fine) and the `linkerd` CLI
   (edge channel — mesh expansion needs 2.15+), plus [`step`](https://smallstep.com/docs/step-cli/)
   to make certificates.
-- On the **store** host: the SPIRE binaries (`spire-server`, `spire-agent`), a
-  container runtime (Docker/Podman) to run the app, and `iptables`.
+- On the **store** host: the SPIRE **agent** binary (`spire-agent`) — the server runs
+  in the cluster (Part 3), so the store never needs `spire-server` — a container
+  runtime (Docker/Podman) to run the app, and `iptables`.
 - Pick one Linkerd edge version and use it everywhere — the standalone proxy binary
   must match the control plane. We'll call it `$LINKERD_VERSION` (e.g. `edge-26.7.2`).
 
@@ -85,6 +89,13 @@ root as its `UpstreamAuthority` — the root key stays in the cluster the whole 
   them (as a read-only Secret) to sign the external workload's certificates. The key never
   goes to the store.
 
+> **Demo shortcut:** this root is a password-less, 10-year, self-signed *software* root
+> written straight to disk — quick to generate and inspect, but with no HSM, no encryption
+> at rest, and no rotation or revocation plan. Real-world PKI keeps the root in an HSM or
+> managed CA, with rotation and cross-signing planned up front. See
+> [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts) and
+> [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
+
 Install Linkerd with these certs instead of generated ones. Linkerd needs the
 Gateway API CRDs present first:
 
@@ -103,8 +114,19 @@ Gateway API CRDs present first:
   SVIDs it issues to the off-cluster workload chain to this root and the cluster accepts
   them.
 
-(Optionally `linkerd viz install | kubectl apply -f -` to get `linkerd viz tap`,
-which we use to see identities on the wire.)
+> **Demo shortcut:** the Gateway API CRDs and Linkerd here — and `step` and the SPIRE
+> tooling in the prerequisites — are pulled from unpinned, unverified sources. Real systems
+> pin exact versions and verify checksums and signatures for all tooling and images.
+> See [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
+
+Install the viz extension now — Part 8's verification uses `linkerd viz tap`, and
+installing it *before* the workloads means their proxies are tap-enabled from the
+start (installing viz later requires a `kubectl rollout restart` on each workload for
+`tap` to see it):
+
+```bash
+[cloud] linkerd viz install | kubectl apply -f -
+```
 
 ---
 
@@ -130,9 +152,18 @@ flat LAN it's a static route plus a resolver entry — nothing Linkerd-specific:
 ```
 
 `10.43.0.10` is the cluster's CoreDNS ClusterIP (`kubectl -n kube-system get svc
-kube-dns`). The cloud host must have IP forwarding on so it routes the store's
-traffic into the pod network. This is the distinction between identity and
+kube-dns`). The pod/service CIDRs and this DNS IP are **k3s defaults, not portable** —
+on any other cluster, discover yours (`kubectl -n kube-system get svc kube-dns` for
+CoreDNS; your distro's config for the CIDRs) and substitute them wherever they recur
+below (Part 4's proxy reaches the control plane over these). The cloud host must have
+IP forwarding on so it routes the store's traffic into the pod network. This is the distinction between identity and
 connectivity: SPIFFE provides identity; this step provides connectivity.
+
+> **Demo shortcut:** connectivity here is a static route to hardcoded pod/service CIDRs
+> plus a hand-written resolver pointing at a hardcoded CoreDNS ClusterIP. Real deployments
+> use a managed overlay/VPN (WireGuard, a Tailscale subnet router, cross-cluster CNI, or
+> VPC peering) with real route management, and an HA, discovered DNS path. See
+> [Production notes → Networking](PRODUCTION-NOTES.md#networking).
 
 ---
 
@@ -187,13 +218,31 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 [cloud] kubectl apply -f spire-server.yaml                          # StatefulSet + NodePort :30081
 ```
 
+> **Demo shortcut:** the server's datastore is SQLite, its signing keys live on disk
+> (`KeyManager "disk"`), and it runs as a single StatefulSet replica with no HA. A real
+> SPIRE deployment uses a networked RDBMS with managed backups, a KMS/HSM-backed KeyManager,
+> and an HA server behind a stable endpoint. See
+> [Production notes → SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
+
 - `UpstreamAuthority "disk"` is the key setting: SPIRE signs under Linkerd's root, so
   every SVID chains to the anchor the mesh already trusts — **without the root key ever
   leaving the cluster.**
+
+> **Demo shortcut:** that root is delivered as a Kubernetes Secret and read from disk
+> (`UpstreamAuthority "disk"`). Keeping the key in-cluster is the honest boundary this demo
+> draws, but a cluster Secret is not HSM or offline-root custody. Real deployments keep the
+> root in external/offline PKI, an HSM, or Vault, and have SPIRE chain to a scoped
+> intermediate rather than signing under the root directly. See
+> [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
+> and [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
+
 - `NodeAttestor "join_token"` is how *agents* prove which node they are — a one-time
-  enrollment token (3b). It is a legitimate mechanism; production commonly binds
-  enrollment to a device identity (TPM/DevID, enterprise PKI, or a cloud instance
-  identity) instead.
+  enrollment token (3b).
+
+> **Demo shortcut:** `join_token` node attestation is a one-time bearer token — legitimate,
+> but real deployments usually bind enrollment to a hardware/device identity (TPM/DevID) or
+> a cloud instance identity (`aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`). See
+> [Production notes → Attestation](PRODUCTION-NOTES.md#attestation).
 
 ### 3b. Enroll the store's agent (store)
 
@@ -205,10 +254,12 @@ store (only the public cert material and a single-use token leave the cluster �
 key):
 
 ```bash
-[cloud] kubectl -n spire exec spire-server-0 -- spire-server bundle show > bundle.pem
-[cloud] kubectl -n spire exec spire-server-0 -- spire-server token generate \
+[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server bundle show > bundle.pem
+[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server token generate \
           -spiffeID spiffe://root.linkerd.cluster.local/store/042/agent
-# copy bundle.pem to the store at /opt/spire/certs/bundle.pem
+# Copy BOTH public files to the store (only public material + a single-use token leave the cluster):
+#   bundle.pem -> /opt/spire/certs/bundle.pem   (the agent's pinned server bundle)
+#   ca.crt     -> /opt/spire/certs/ca.crt       (from Part 1; the trust anchor the proxy reads in Part 4c)
 ```
 
 `agent.cfg` on the store:
@@ -238,6 +289,17 @@ plugins {
 [store] sudo spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
 ```
 
+> **Demo shortcut:** the agent's pinned trust bundle is a file copied to the store by hand,
+> and the agent runs as a bare process (the `# (a service unit in practice)` note above)
+> rather than under supervision. Real deployments distribute bundles via a SPIFFE
+> trust-bundle endpoint / federation and run the agent as a supervised service (a systemd
+> unit, or a DaemonSet for in-cluster agents) with restart policies. See
+> [Production notes → Trust & CA](PRODUCTION-NOTES.md#trust--ca) and
+> [SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
+
+- The `spire-server` binary inside the container lives at `/opt/spire/bin/` and is
+  **not on `$PATH`**, so every `kubectl exec … spire-server` command here (and the
+  registration in 3c) invokes it by full path.
 - `trust_bundle_path` pins the server: the agent authenticates the server's certificate
   against this bundle. `insecure_bootstrap` (trust-on-first-use) is **not** used now that
   the agent talks to a *remote* server.
@@ -253,12 +315,17 @@ Registration says which *identity* a given process may receive — an administra
 against the server. Do it on the cloud:
 
 ```bash
-[cloud] kubectl -n spire exec spire-server-0 -- spire-server entry create \
+[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server entry create \
           -parentID spiffe://root.linkerd.cluster.local/store/042/agent \
           -spiffeID spiffe://root.linkerd.cluster.local/store/042/inventory-sync \
           -selector unix:uid:2102 \
           -selector unix:path:/opt/linkerd-proxy/linkerd-proxy
 ```
+
+> **Demo shortcut:** each workload identity is registered by hand with
+> `spire-server entry create`. Real deployments drive registration from the SPIRE
+> Controller Manager (`ClusterSPIFFEID` CRDs) or a registrar/GitOps pipeline. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
 
 - `-spiffeID …/store/042/inventory-sync` is the identity to grant.
 - `-parentID …/store/042/agent` is the store's agent (attested in 3b) that will deliver it.
@@ -266,9 +333,13 @@ against the server. Do it on the cloud:
   proxy binary at that path. That is the `linkerd2-proxy`, which runs as a dedicated
   non-root user (Part 4) and holds the SVID on the app's behalf. This is
   **least-privilege isolation between ordinary processes** — an unrelated process (even
-  one running as root) does not match, so it does not get this identity. It is **not** a
-  defense against a full root compromise of the store host, which could run the permitted
-  binary as the permitted uid. See [Production notes](PRODUCTION-NOTES.md).
+  one running as root) does not match, so it does not get this identity.
+
+> **Demo shortcut:** `unix:uid` + `unix:path` attestation isolates ordinary processes, but
+> it is **not** a defense against a full root compromise of the store host, which could run
+> the permitted binary as the permitted uid. See
+> [Production notes → Security boundaries](PRODUCTION-NOTES.md#security-boundaries-what-this-does-and-does-not-protect)
+> and [Attestation](PRODUCTION-NOTES.md#attestation).
 
 ---
 
@@ -284,6 +355,13 @@ it, matching the control-plane version exactly.
 [store] sudo docker cp "$id:/usr/lib/linkerd/linkerd2-proxy" /opt/linkerd-proxy/linkerd-proxy
 [store] sudo docker rm -v "$id"
 ```
+
+> **Demo shortcut:** the proxy binary is hand-extracted from the image and kept in
+> version-match by discipline (`$LINKERD_VERSION`), and the image is pulled by tag rather
+> than digest. Real deployments ship the proxy as a versioned, signed package with automated
+> version-match checks, and pin images by digest. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation)
+> and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 ### 4b. Redirect traffic through the proxy (iptables)
 
@@ -321,7 +399,7 @@ The proxy is configured entirely through environment variables:
 [store] export LINKERD2_PROXY_IDENTITY_SPIRE_WORKLOAD_API_ADDRESS="unix:///tmp/spire-agent/public/api.sock"
 [store] export LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS="$(cat /opt/spire/certs/ca.crt)"
 # Run the proxy as a dedicated non-root user (uid 2102), not root:
-[store] sudo useradd -r -u 2102 -s /usr/sbin/nologin linkerd-proxy
+[store] sudo useradd -M -u 2102 -s /usr/sbin/nologin linkerd-proxy
 [store] sudo -E setpriv --reuid=2102 --regid=2102 --clear-groups /opt/linkerd-proxy/linkerd-proxy
 ```
 
@@ -354,6 +432,17 @@ which confirms SPIRE issued the SVID and the proxy has joined the mesh.
 Back on the cloud side, register the store as an `ExternalWorkload`. This is how the
 mesh knows the workload exists, what identity it carries, and (for a server) how to
 route to it — and it's what the `POLICY_WORKLOAD` reference above resolves against.
+
+First create the namespace the external workload and the cloud app share, with Linkerd
+injection enabled — the cloud app (Part 6) must be meshed for the Part 7 identity
+policy to take effect:
+
+```bash
+[cloud] kubectl create namespace mixed-env
+[cloud] kubectl annotate namespace mixed-env linkerd.io/inject=enabled
+```
+
+Then register the store as an `ExternalWorkload`:
 
 ```yaml
 apiVersion: workload.linkerd.io/v1beta1
@@ -389,6 +478,11 @@ The endpoint is treated as NotReady until a `Ready` status condition exists; set
           -p '{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Manual","message":"demo","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
 ```
 
+> **Demo shortcut:** the workload's `Ready` status is forced by hand with a hardcoded
+> `lastTransitionTime`. Real systems drive readiness from real health signals, never a
+> static forced condition. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
+
 ---
 
 ## Part 6 — The application and the data flow
@@ -409,6 +503,12 @@ and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
   the (unmeshed) browser can load it.
 - `:8090` — the meshed **ingest** endpoint the store pushes to. This is the port we
   protect by identity in Part 7.
+
+> **Demo shortcut:** the `:8080` dashboard and its `/api/data` are served over plain HTTP
+> with no TLS and no authentication, so an unmeshed browser can load them directly. Real
+> systems terminate TLS at an ingress/gateway and require auth for the UI and any control
+> endpoints. See
+> [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 It caches the latest report and renders it. When the store's pushes are refused, the
 cached data stops updating, which is the behavior a real ingest pipeline would show.
@@ -468,6 +568,16 @@ The store's next push returns **403**, even though its route, address, and firew
 are unchanged. In the demo, the dashboard's *Void authorization* button applies this
 same patch, using an RBAC Role granted to `retail-cloud`.
 
+> **Demo shortcut:** that *Void authorization* button lets the served `retail-cloud` app
+> patch the very `MeshTLSAuthentication` that protects it — RBAC to rewrite its own
+> authorization policy, reachable from an unauthenticated browser endpoint. This is the
+> demo's headline simplification: vivid for teaching, but it means the workload can rewrite
+> the policy that governs it, and any code-execution bug in the app inherits that power.
+> Real systems author authorization policy in a source of truth, never mutated by the
+> workload it governs, and never grant an app write access to its own policy. See
+> [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
+> and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
+
 ---
 
 ## Part 8 — Verify
@@ -475,15 +585,16 @@ same patch, using an RBAC Role granted to `retail-cloud`.
 Watch the identities on the wire from the cloud side:
 
 ```bash
-[cloud] linkerd -n mixed-env viz tap deploy/retail-cloud
+[cloud] linkerd -n mixed-env viz tap -o wide deploy/retail-cloud
 ```
 
-Each inbound row shows `tls=true` and
-`client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync` with
-`src_external_workload=store-pos` — a workload outside Kubernetes, on another
-machine, authenticated by SPIFFE identity as it pushes. Apply the revoke patch above
-and the rows become `403`; restore it and they return to `200`. Nothing about the
-network moved — only which identity was allowed.
+Each inbound row shows `tls=true`, and with `-o wide`,
+`src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync` — the
+store's identity, on traffic arriving from the external host outside Kubernetes,
+authenticated by SPIFFE as it pushes (`-o wide` also shows the `dst_srv_name` and
+`dst_authz_name` that admitted it). Apply the revoke patch above and the rows become
+`403`; restore it and they return to `200`. Nothing about the network moved — only
+which identity was allowed.
 
 ---
 
