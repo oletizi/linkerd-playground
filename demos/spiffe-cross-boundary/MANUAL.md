@@ -342,10 +342,13 @@ plugins {
   (`/tmp/spire-agent/public/api.sock`); the proxy reads its identity from there. This
   socket stays **local** to the store — it is never exposed over the network.
 
-### 3c. Register the workload (cluster)
+### 3c. Register the workload with the SPIRE server (cluster)
 
-Registration says which *identity* a given process may receive — an administrative act
-against the server. Do it on the cluster:
+Registration tells the **SPIRE server** which *identity* a process may receive if it matches
+a set of conditions (the *selectors* below) — here, the store's **proxy**. It is an
+administrative act an operator performs on the SPIRE server, not something the workload does,
+and it is separate from telling *Linkerd* the workload exists (the `ExternalWorkload`, Part
+5). Do it on the cluster:
 
 ```bash
 [cluster] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server entry create \
