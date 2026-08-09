@@ -53,12 +53,20 @@ path*. The agent matches them against a **registration** an operator made ahead 
 "a process with these properties may receive this SPIFFE ID" — and issues the matching
 SVID.
 
+So the attested workload is specifically the **proxy** — the `linkerd2-proxy` running as
+uid 2102 — not the other two processes on the machine. The store's **application** is never
+attested and never talks to SPIRE at all: its outbound traffic is transparently redirected
+into the proxy, which holds the identity and does mTLS on its behalf, exactly as an
+in-cluster sidecar fronts a pod. (So although the SVID is *named* for the inventory-sync
+job, the process that carries it is the proxy.) The SPIRE **agent** is attested too, but
+separately — as a *node*, via its join token — and it is the party *doing* the attesting
+here, not a workload receiving this SVID.
+
 The process cannot lie its way into an identity: its user ID and its binary come from the
 kernel, not from its own say-so. This is the off-cluster counterpart to Kubernetes
 identity — in the cluster a pod's identity is tied to its ServiceAccount, verified by the
 Kubernetes API; off-cluster, SPIRE ties identity to OS-level properties, verified by the
-kernel. (SPIRE attests at two levels: the **agent** first proves which node it is to the
-server, then each **workload** is attested locally as described here.)
+kernel.
 
 The [manual](/demos/spiffe-cross-boundary/manual/) shows the exact selectors and
 registration in Part 3.
