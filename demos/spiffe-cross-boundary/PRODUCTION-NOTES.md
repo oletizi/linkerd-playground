@@ -10,35 +10,44 @@ exploitable security shortcuts first, then the broader operational and architect
 simplifications. The [manual](MANUAL.md) explains how each piece is built; this page
 explains where each piece departs from production practice.
 
-## The four that matter most
+## Resolved by the current SPIRE topology
 
-- **The trust domain's root key is copied onto the edge machine.** SPIRE's
-  `UpstreamAuthority "disk"` signs with Linkerd's root `ca.key`, so a compromise of the
-  store host compromises the entire trust domain — every identity in the cluster
-  included — with no revocation path. Production: give the edge a scoped **intermediate**
-  from a managed CA and keep the root offline.
+This demo runs the SPIRE **server in the cluster** and an **agent only** on the store,
+which resolves three of the original findings: the **root key is off the edge** (it stays
+in the cluster, mounted into the server as a Secret); **workload attestation** is scoped
+to a dedicated non-root proxy by `unix:uid:2102` + `unix:path` (least-privilege isolation,
+not host-root defense — see Security boundaries); and the agent **bootstrap is pinned** to
+the server's trust bundle (no `insecure_bootstrap`). The remaining simplifications are
+documented below.
+
+## The ones that remain
+
 - **The application can rewrite its own authorization policy.** The `retail-cloud` pod
   holds RBAC to `patch` the `MeshTLSAuthentication` that protects it, and the *Void
   authorization* button does so from an unauthenticated web endpoint. Production:
   authorization policy is authored by operators in a GitOps source of truth, never
   mutated by the workload it governs.
-- **Workload identity is bound to "any root process."** The registration selector is
-  `unix:uid:0` and the proxy runs as root, so any root process on the edge that can open
-  the Workload API socket obtains the `store-pos` identity. Production: attest a specific
-  non-root binary (path + hash, or a platform attestor).
+- **The root key lives in a Kubernetes Secret.** Off the edge (the important fix), but a
+  cluster Secret is not HSM / offline-root custody. Production: back the root with
+  external or offline PKI, an HSM, or Vault.
 - **One trust domain spans both environments.** The edge reuses the cluster's trust
-  domain, which is the whole point of the demo but removes the isolation boundary between
+  domain — the whole point of the demo, but it removes the isolation boundary between
   on-prem and cloud. Production: give each environment its own trust domain and connect
   them with **SPIFFE federation**.
+- **Full host-root compromise of the store is out of scope.** UID + path attestation
+  isolates ordinary processes, but a root attacker on the store can run the permitted
+  binary as the permitted uid, or attack the agent and read its node credentials. This is
+  a demo boundary, stated honestly — not a bug to fix with more selectors.
 
 ## Security shortcuts
 
-These are exploitable as written, not merely non-ideal.
+Several of these are now **resolved** (marked ✓ by the SPIRE re-architecture); the rest
+are exploitable as written.
 
-- **Root CA private key on the edge (and staged through `/tmp`).** As above: whole-trust-
-  domain blast radius, no revocation. → Scoped intermediate from a managed CA (Vault,
-  cert-manager, AWS Private CA); root stays offline; transport secrets over an
-  authenticated channel, never shared `/tmp`.
+- **✓ Resolved — root CA key is off the edge.** The SPIRE server runs in the cluster; only
+  a one-time join token and the public trust bundle go to the store. Residual: the root
+  still lives in a cluster Secret (see "The ones that remain"). Production: managed/offline
+  CA, HSM, or Vault.
 - **Unauthenticated policy mutation on a browser-facing NodePort.** `POST /api/policy`
   has no auth and is published on the node, so anyone who reaches it can flip the store's
   authorization (a remote, credential-free denial of service, and CSRF-able). → Require
@@ -49,13 +58,16 @@ These are exploitable as written, not merely non-ideal.
   in the app yields policy control. → Do not grant the served app write access to its own
   policy; disable token automount; mediate any real control action through a separate,
   narrowly scoped controller.
-- **Identity bound only to `unix:uid:0`.** Weak, broadly held selector; the proxy runs as
-  root. → Composite selectors (`unix:path` + `unix:sha256`) or a platform/container
-  attestor, and run the proxy as a dedicated non-root user.
-- **Trust-on-first-use bootstrap and a bearer join token.** `insecure_bootstrap = true`
-  and a `join_token` passed on the command line (visible in `/proc`). → Pin the server's
-  trust bundle; use platform node attestation (`aws_iid`, `gcp_iit`, `k8s_psat`,
-  `x509pop`).
+- **✓ Resolved — workload attestation is uid + path.** The proxy runs as a dedicated
+  non-root user (uid 2102), attested by `unix:uid:2102` + `unix:path`; an unrelated process
+  (even one running as root) does not match. This is least-privilege isolation between
+  ordinary processes, **not** a defense against host-root (see Security boundaries).
+  `unix:sha256` is left as an optional production tightening.
+- **✓ Resolved (bootstrap) — the agent pins the server's trust bundle** (`trust_bundle_path`;
+  no `insecure_bootstrap`). Node enrollment uses a **one-time join token** — a legitimate
+  SPIRE node-attestation mechanism, not a shortcut to remove. Production commonly binds
+  enrollment to a **device identity** (TPM/DevID, enterprise PKI, or a cloud instance
+  identity: `aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`) rather than a token.
 - **Long-lived, password-less, unrevocable root.** A 10-year software root written
   unencrypted, with long SVID/CA TTLs and no revocation. → Encrypt keys at rest or hold
   them in an HSM/KMS; shorten TTLs (SPIRE rotates automatically); rely on short TTLs plus
@@ -63,10 +75,9 @@ These are exploitable as written, not merely non-ideal.
 - **Unverified, unpinned downloads.** `curl | sh` for Linkerd, "latest" SPIRE, an
   unchecked `.deb`, and `:latest` images. → Pin exact versions, verify checksums and
   signatures, pin images by digest.
-- **Blanket root-egress exemption in iptables.** `--uid-owner 0 -j RETURN` sends all
-  root-originated traffic outside the mesh in cleartext, and forces the app to run
-  non-root to be captured. → Run the proxy as a dedicated non-root uid and exempt only
-  that uid.
+- **✓ Resolved — app-scoped iptables.** The redirect matches only the app's uid (1000) →
+  the proxy; all other host traffic (SPIRE agent, DNS, SSH, proxy egress) is untouched. No
+  blanket root exemption, and no setup-ordering dependency.
 - **Web pod runs as root with no `securityContext` and unbounded request bodies.** Memory-
   exhaustion DoS and a high-value target for any code-exec bug. → `runAsNonRoot`, dropped
   capabilities, read-only rootfs, resource limits, and request-size caps.
@@ -88,9 +99,9 @@ Not directly exploitable, but not how a production system is built.
 
 ### SPIRE topology
 
-- **Server and agent co-located on one edge host**, so every edge is its own signing root
-  and single point of failure → a central, hardened, **HA SPIRE server** with lightweight
-  agents on edge nodes that hold no signing authority.
+- **Single-replica server, no HA.** The server is now central (in the cluster) with an
+  agent-only edge — the correct topology — but it is one replica, not an HA server set.
+  Production: an **HA SPIRE server** behind a stable endpoint with a networked datastore.
 - **SQLite datastore** → a networked RDBMS (PostgreSQL/MySQL) with managed backups.
 - **`KeyManager "disk"`** (plaintext signing keys) → a KMS/HSM-backed KeyManager
   (`aws_kms`, `gcp_kms`, PKCS#11).
@@ -99,10 +110,11 @@ Not directly exploitable, but not how a production system is built.
 
 ### Attestation
 
-- **`join_token` node attestation** → platform attestation bound to hardware or cloud
-  identity.
-- **`unix:uid:0` workload selector** → composite/binary-scoped selectors or a
-  container/platform attestor.
+- **`join_token` node enrollment** — a legitimate one-time mechanism (kept). Production
+  commonly binds enrollment to a device identity (TPM/DevID, enterprise PKI, or a cloud
+  instance identity).
+- **✓ Workload attestation is `unix:uid:2102` + `unix:path`** (resolved from `uid:0`) —
+  least-privilege isolation, not host-root defense. `unix:sha256` optional.
 
 ### Lifecycle & automation
 
@@ -128,9 +140,8 @@ Not directly exploitable, but not how a production system is built.
 
 ### App & runtime
 
-- **Proxy runs as root; the app is forced non-root only to satisfy the iptables
-  exemption** → run the proxy as a dedicated non-root user with only the capabilities it
-  needs, keyed to that uid and binary.
+- **✓ The proxy runs as a dedicated non-root user (uid 2102)**, attested by uid + path, and
+  the iptables redirect is scoped to the app's uid. (Resolved.)
 - **The served app holds RBAC to mutate its own policy** (the Void button) → policy lives
   in GitOps; any runtime toggle goes through a separate, minimally privileged operator
   tool.
@@ -147,5 +158,19 @@ Not directly exploitable, but not how a production system is built.
 - **No monitoring, alerting, or backup for SPIRE** → enable SPIRE's Prometheus telemetry,
   alert on issuance failures and bundle expiry, back up the datastore and key material.
 - **`log_level = "DEBUG"` left on** → `INFO`/`WARN` with structured log shipping.
-- **SPIRE and `step` installed at "latest"** (inconsistent with the demo's own Linkerd
-  pinning) → pin and verify tooling versions.
+- **SPIRE and `step` installed at "latest"** (the SPIRE server image is pinned; the agent
+  is pinned to match it) → pin and verify all tooling versions.
+
+## Security boundaries (what this does and does not protect)
+
+Two limitations the demo states explicitly, so the security claims are honest:
+
+- **Demo PKI simplification.** The root CA key is removed from the edge but is stored in a
+  Kubernetes Secret in the cluster — **not** protected by external/offline PKI, an HSM, or
+  Vault. The correction that matters is that the key left the less-trusted edge host; its
+  in-cluster Secret custody is still a demo simplification.
+- **Edge host trust assumption.** Full **root compromise** of the store host can compromise
+  that store's node and workload identities: root can run the permitted binary as the
+  permitted uid, or attack the agent and read its node credentials. UID + executable-path
+  workload attestation provides **least-privilege isolation between ordinary processes**,
+  not a boundary against a hostile host administrator.
