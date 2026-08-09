@@ -6,14 +6,14 @@ the data based on cryptographic SPIFFE identity rather than IP or network.
 
 `store-pos` runs on an edge machine that is not part of the cluster; Linkerd **mesh
 expansion** joins it to the mesh with a SPIRE-issued identity
-(`spiffe://root.linkerd.cluster.local/store-pos`) chained to the cluster's trust anchor.
+(`spiffe://root.linkerd.cluster.local/store/042/inventory-sync`) chained to the cluster's trust anchor.
 It sends its data to `retail-cloud` over mTLS; the store initiates the connection,
 because the cloud cannot assume the store is reachable. A **Void authorization** button
 changes the Linkerd policy so the store's requests are refused with a 403, with no change
 to the network.
 
 > **This is a teaching demo, not a production blueprint.** It takes deliberate shortcuts
-> — starting with copying the trust domain's root key onto the store host — to keep the
+> — for example, the dashboard app holds permission to change its own authorization policy — to keep the
 > mechanics legible. Do not run this configuration in a real environment.
 > [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) lists every shortcut and what to do instead.
 
@@ -38,13 +38,16 @@ both identities remain on screen.
 |---|---|---|
 | Physical | one machine | a **different** machine |
 | VM (Lima, optional) | `linkerd-cluster` | `linkerd-edge` |
-| Runs | k3s + Linkerd + viz + SPIRE **trust anchor** + **`retail-cloud`** app | SPIRE server+agent + `linkerd2-proxy` + **`store-pos`** service |
+| Runs | k3s + Linkerd + viz + trust anchor + **SPIRE server** + **`retail-cloud`** app | **SPIRE agent** + `linkerd2-proxy` (non-root) + **`store-pos`** service |
 
-**SPIRE runs on the edge**, rooted at Linkerd's trust anchor (copied over), so the
-edge's SVID chains to the same root as in-cluster identities — one trust domain,
-no federation. `store-pos` pushes to `retail-cloud`'s ingest endpoint over mTLS; an
-`AuthorizationPolicy` on that endpoint allows only the `store-pos` identity, and the
-Void button patches that policy.
+The **SPIRE server runs in the cluster** — the root key never leaves it. The store runs
+only the **SPIRE agent**, which enrolls with a one-time join token and authenticates the
+server with a pinned trust bundle. The agent hands the store's SVID
+(`spiffe://root.linkerd.cluster.local/store/042/inventory-sync`) to a **non-root**
+`linkerd2-proxy` (attested by uid + binary path), so the edge identity chains to the same
+root as in-cluster identities — one trust domain, no federation. `store-pos` pushes to
+`retail-cloud`'s ingest endpoint over mTLS; an `AuthorizationPolicy` allows only that
+identity, and the Void button patches the policy.
 
 ## Prerequisites
 
@@ -100,24 +103,32 @@ limactl shell linkerd-cluster -- bash <demo>/cluster/install-linkerd.sh  # + Gat
 
 Confirm the printed `kube-dns` ClusterIP matches `COREDNS_ADDR` (default `10.43.0.10`).
 
-### Copy the trust anchor to the store
+### Box A → deploy the SPIRE server (root stays in the cluster)
 
 ```bash
-limactl shell linkerd-cluster -- cat linkerd-certs/ca.crt > /tmp/ca.crt
-limactl shell linkerd-cluster -- cat linkerd-certs/ca.key > /tmp/ca.key
-# transport both to Box B, then on Box B:
-limactl shell linkerd-edge -- sudo mkdir -p /opt/spire/certs
-cat /tmp/ca.crt | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/ca.crt >/dev/null
-cat /tmp/ca.key | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/ca.key >/dev/null
+limactl shell linkerd-cluster -- bash <demo>/cluster/spire/apply.sh   # StatefulSet + NodePort + register; prints a join token
 ```
 
-### Box B — on-prem store (SPIRE + proxy + store-pos)
+`apply.sh` mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
+registers the store's workload identity (selectors `unix:uid:2102` + the proxy path), and
+prints a one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`). Copy only
+the bundle and the public root cert to the store — the root **key** never leaves the
+cluster:
+
+```bash
+limactl shell linkerd-cluster -- cat spire-bundle.pem > /tmp/bundle.pem
+limactl shell linkerd-cluster -- cat linkerd-certs/ca.crt > /tmp/ca.crt
+limactl shell linkerd-edge -- sudo mkdir -p /opt/spire/certs
+cat /tmp/bundle.pem | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/bundle.pem >/dev/null
+cat /tmp/ca.crt    | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/ca.crt    >/dev/null
+```
+
+### Box B — on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
 just demo spiffe-cross-boundary edge-up
 limactl shell linkerd-edge -- bash <demo>/net/shim.sh
-limactl shell linkerd-edge -- bash <demo>/edge/install-spire.sh
-limactl shell linkerd-edge -- bash <demo>/edge/register-workload.sh      # registers store-pos identity
+limactl shell linkerd-edge -- bash <demo>/edge/install-spire-agent.sh <join-token>   # agent-only; pinned bundle
 limactl shell linkerd-edge -- bash <demo>/edge/extract-proxy.sh
 limactl shell linkerd-edge -- bash <demo>/edge/iptables.sh
 limactl shell linkerd-edge -- bash <demo>/store-pos/run-store-pos.sh     # the POS — pushes to the cloud
@@ -150,7 +161,7 @@ the traffic while the dashboard polls:
 linkerd -n mixed-env viz tap deploy/retail-cloud
 ```
 
-Each inbound row shows `tls=true` and `client_id=spiffe://root.linkerd.cluster.local/store-pos`
+Each inbound row shows `tls=true` and `client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync`
 (with `src_external_workload=store-pos`) — a workload outside Kubernetes, on another
 machine, authenticated by SPIFFE identity as it pushes. Click **Void** and the
 store's pushes become 403; `linkerd viz stat` shows them fail. Nothing about the
@@ -181,7 +192,7 @@ RetailCloud and the beats share one edge proxy (one identity), so run one or the
 ## Scope — this is a teaching demo
 
 Built for explanatory clarity, not production practice. It takes deliberate shortcuts —
-the root CA key on the edge, `join_token` attestation, processes run without supervision,
+the app holding RBAC to change its own policy, `join_token` attestation, processes run without supervision,
 the app holding RBAC to change its own policy, and more.
 [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) catalogues each shortcut and the production
 practice that should replace it.
