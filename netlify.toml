@@ -6,6 +6,13 @@
   base = "site"
   command = "npm run build"
   publish = "dist"
+  # The canonical demo docs live OUTSIDE base (at demos/), and the build's
+  # prebuild step (sync-docs) pulls them into site/. With base="site", Netlify's
+  # default change-detection watches only site/, so a docs-only edit under demos/
+  # was skipped ("no content change") and never deployed. Rebuild when EITHER
+  # site/ or demos/ changed. ':(top)' makes the pathspecs repo-root-relative even
+  # though this runs from base. Exit 0 => skip; non-zero => build.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ':(top)site' ':(top)demos'"
 
 [build.environment]
   # Match the toolchain the site is developed against (Astro 5 needs >=18.20.8).
