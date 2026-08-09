@@ -91,8 +91,8 @@ root as its `UpstreamAuthority` — the root key stays in the cluster the whole 
 
 > **Demo shortcut:** this root is a password-less, 10-year, self-signed *software* root
 > written straight to disk — quick to generate and inspect, but with no HSM, no encryption
-> at rest, and no rotation or revocation plan. Production backs the root with an HSM or
-> managed CA and defines rotation and cross-signing up front. See
+> at rest, and no rotation or revocation plan. Real-world PKI keeps the root in an HSM or
+> managed CA, with rotation and cross-signing planned up front. See
 > [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts) and
 > [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
 
@@ -115,8 +115,8 @@ Gateway API CRDs present first:
   them.
 
 > **Demo shortcut:** the Gateway API CRDs and Linkerd here — and `step` and the SPIRE
-> tooling in the prerequisites — are pulled from unpinned, unverified sources. Production
-> pins exact versions and verifies checksums and signatures for all tooling and images.
+> tooling in the prerequisites — are pulled from unpinned, unverified sources. Real systems
+> pin exact versions and verify checksums and signatures for all tooling and images.
 > See [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 Install the viz extension now — Part 8's verification uses `linkerd viz tap`, and
@@ -213,9 +213,9 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 ```
 
 > **Demo shortcut:** the server's datastore is SQLite, its signing keys live on disk
-> (`KeyManager "disk"`), and it runs as a single StatefulSet replica with no HA.
-> Production uses a networked RDBMS with managed backups, a KMS/HSM-backed KeyManager, and
-> an HA server behind a stable endpoint. See
+> (`KeyManager "disk"`), and it runs as a single StatefulSet replica with no HA. A real
+> SPIRE deployment uses a networked RDBMS with managed backups, a KMS/HSM-backed KeyManager,
+> and an HA server behind a stable endpoint. See
 > [Production notes → SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
 
 - `UpstreamAuthority "disk"` is the key setting: SPIRE signs under Linkerd's root, so
@@ -224,9 +224,9 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 
 > **Demo shortcut:** that root is delivered as a Kubernetes Secret and read from disk
 > (`UpstreamAuthority "disk"`). Keeping the key in-cluster is the honest boundary this demo
-> draws, but a cluster Secret is not HSM or offline-root custody. Production backs the root
-> with external/offline PKI, an HSM, or Vault, and has SPIRE chain to a scoped intermediate
-> rather than signing under the root directly. See
+> draws, but a cluster Secret is not HSM or offline-root custody. Real deployments keep the
+> root in external/offline PKI, an HSM, or Vault, and have SPIRE chain to a scoped
+> intermediate rather than signing under the root directly. See
 > [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
 > and [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
 
@@ -234,8 +234,8 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
   enrollment token (3b).
 
 > **Demo shortcut:** `join_token` node attestation is a one-time bearer token — legitimate,
-> but production commonly binds enrollment to a hardware/device identity (TPM/DevID) or a
-> cloud instance identity (`aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`). See
+> but real deployments usually bind enrollment to a hardware/device identity (TPM/DevID) or
+> a cloud instance identity (`aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`). See
 > [Production notes → Attestation](PRODUCTION-NOTES.md#attestation).
 
 ### 3b. Enroll the store's agent (store)
@@ -285,9 +285,9 @@ plugins {
 
 > **Demo shortcut:** the agent's pinned trust bundle is a file copied to the store by hand,
 > and the agent runs as a bare process (the `# (a service unit in practice)` note above)
-> rather than under supervision. Production distributes bundles via a SPIFFE trust-bundle
-> endpoint / federation and runs the agent as a supervised service (a systemd unit, or a
-> DaemonSet for in-cluster agents) with restart policies. See
+> rather than under supervision. Real deployments distribute bundles via a SPIFFE
+> trust-bundle endpoint / federation and run the agent as a supervised service (a systemd
+> unit, or a DaemonSet for in-cluster agents) with restart policies. See
 > [Production notes → Trust & CA](PRODUCTION-NOTES.md#trust--ca) and
 > [SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
 
@@ -317,8 +317,8 @@ against the server. Do it on the cloud:
 ```
 
 > **Demo shortcut:** each workload identity is registered by hand with
-> `spire-server entry create`. Production drives registration from the SPIRE Controller
-> Manager (`ClusterSPIFFEID` CRDs) or a registrar/GitOps pipeline. See
+> `spire-server entry create`. Real deployments drive registration from the SPIRE
+> Controller Manager (`ClusterSPIFFEID` CRDs) or a registrar/GitOps pipeline. See
 > [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
 
 - `-spiffeID …/store/042/inventory-sync` is the identity to grant.
@@ -352,8 +352,8 @@ it, matching the control-plane version exactly.
 
 > **Demo shortcut:** the proxy binary is hand-extracted from the image and kept in
 > version-match by discipline (`$LINKERD_VERSION`), and the image is pulled by tag rather
-> than digest. Production ships the proxy as a versioned, signed package with automated
-> version-match checks, and pins images by digest. See
+> than digest. Real deployments ship the proxy as a versioned, signed package with automated
+> version-match checks, and pin images by digest. See
 > [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation)
 > and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
@@ -473,7 +473,7 @@ The endpoint is treated as NotReady until a `Ready` status condition exists; set
 ```
 
 > **Demo shortcut:** the workload's `Ready` status is forced by hand with a hardcoded
-> `lastTransitionTime`. Production drives readiness from real health signals, never a
+> `lastTransitionTime`. Real systems drive readiness from real health signals, never a
 > static forced condition. See
 > [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
 
@@ -499,9 +499,9 @@ and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
   protect by identity in Part 7.
 
 > **Demo shortcut:** the `:8080` dashboard and its `/api/data` are served over plain HTTP
-> with no TLS and no authentication, so an unmeshed browser can load them directly.
-> Production terminates TLS at an ingress/gateway and requires auth for the UI and any
-> control endpoints. See
+> with no TLS and no authentication, so an unmeshed browser can load them directly. Real
+> systems terminate TLS at an ingress/gateway and require auth for the UI and any control
+> endpoints. See
 > [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 It caches the latest report and renders it. When the store's pushes are refused, the
@@ -567,8 +567,8 @@ same patch, using an RBAC Role granted to `retail-cloud`.
 > authorization policy, reachable from an unauthenticated browser endpoint. This is the
 > demo's headline simplification: vivid for teaching, but it means the workload can rewrite
 > the policy that governs it, and any code-execution bug in the app inherits that power.
-> Production authors authorization policy in a GitOps source of truth, never mutated by the
-> workload it governs, and never grants an app write access to its own policy. See
+> Real systems author authorization policy in a source of truth, never mutated by the
+> workload it governs, and never grant an app write access to its own policy. See
 > [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
 > and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
