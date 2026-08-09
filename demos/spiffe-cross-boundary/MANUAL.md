@@ -275,8 +275,12 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 
 ### 3b. Enroll the store's agent (store)
 
-The store runs the **agent only**. It authenticates the server with a **pinned trust
-bundle** (not trust-on-first-use), and attests itself with a one-time join token.
+The store runs the **agent only**. It **authenticates the server** with a **pinned trust
+bundle** — the server's CA certificates, delivered out of band, so it trusts only the
+genuine server rather than *trust-on-first-use* (accepting whatever certificate it is handed
+on the first connection). And it **proves itself to the server** with a **one-time join
+token** — a single-use bearer secret, minted on the server and bound to this node's SPIFFE
+ID, good for exactly one enrollment; afterwards the agent uses its own node certificate.
 
 Export the server's bundle and mint a token on the cluster, then copy the bundle to the
 store (only the public cert material and a single-use token leave the cluster — never the
