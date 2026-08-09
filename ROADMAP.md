@@ -20,8 +20,8 @@ edit this file directly, then run `stackctl roadmap order` to revalidate the
 graph (it fails loud on a cycle / dangling ref / duplicate id).
 
 ## design:feature/astro-docs-site
-- status: planned
+- status: closed
+- validated: yes
 - design-approved: yes
 - design: docs/superpowers/specs/2026-08-08-astro-docs-site-design.md
-- ref: https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/MANUAL.md
 Astro website serving the project's documentation for the SPIFFE-in-Linkerd RetailCloud demo (from-scratch manual, tutorial concepts, reference). All UX/UI design + implementation via the frontend-design plugin.
