@@ -89,6 +89,13 @@ root as its `UpstreamAuthority` — the root key stays in the cluster the whole 
   them (as a read-only Secret) to sign the external workload's certificates. The key never
   goes to the store.
 
+> **Demo shortcut:** this root is a password-less, 10-year, self-signed *software* root
+> written straight to disk — quick to generate and inspect, but with no HSM, no encryption
+> at rest, and no rotation or revocation plan. Production backs the root with an HSM or
+> managed CA and defines rotation and cross-signing up front. See
+> [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts) and
+> [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
+
 Install Linkerd with these certs instead of generated ones. Linkerd needs the
 Gateway API CRDs present first:
 
@@ -106,6 +113,11 @@ Gateway API CRDs present first:
   will trust. Because the in-cluster SPIRE server signs under the matching `ca.key`, the
   SVIDs it issues to the off-cluster workload chain to this root and the cluster accepts
   them.
+
+> **Demo shortcut:** the Gateway API CRDs and Linkerd here — and `step` and the SPIRE
+> tooling in the prerequisites — are pulled from unpinned, unverified sources. Production
+> pins exact versions and verifies checksums and signatures for all tooling and images.
+> See [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 Install the viz extension now — Part 8's verification uses `linkerd viz tap`, and
 installing it *before* the workloads means their proxies are tap-enabled from the
@@ -200,13 +212,31 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 [cloud] kubectl apply -f spire-server.yaml                          # StatefulSet + NodePort :30081
 ```
 
+> **Demo shortcut:** the server's datastore is SQLite, its signing keys live on disk
+> (`KeyManager "disk"`), and it runs as a single StatefulSet replica with no HA.
+> Production uses a networked RDBMS with managed backups, a KMS/HSM-backed KeyManager, and
+> an HA server behind a stable endpoint. See
+> [Production notes → SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
+
 - `UpstreamAuthority "disk"` is the key setting: SPIRE signs under Linkerd's root, so
   every SVID chains to the anchor the mesh already trusts — **without the root key ever
   leaving the cluster.**
+
+> **Demo shortcut:** that root is delivered as a Kubernetes Secret and read from disk
+> (`UpstreamAuthority "disk"`). Keeping the key in-cluster is the honest boundary this demo
+> draws, but a cluster Secret is not HSM or offline-root custody. Production backs the root
+> with external/offline PKI, an HSM, or Vault, and has SPIRE chain to a scoped intermediate
+> rather than signing under the root directly. See
+> [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
+> and [Trust & CA](PRODUCTION-NOTES.md#trust--ca).
+
 - `NodeAttestor "join_token"` is how *agents* prove which node they are — a one-time
-  enrollment token (3b). It is a legitimate mechanism; production commonly binds
-  enrollment to a device identity (TPM/DevID, enterprise PKI, or a cloud instance
-  identity) instead.
+  enrollment token (3b).
+
+> **Demo shortcut:** `join_token` node attestation is a one-time bearer token — legitimate,
+> but production commonly binds enrollment to a hardware/device identity (TPM/DevID) or a
+> cloud instance identity (`aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`). See
+> [Production notes → Attestation](PRODUCTION-NOTES.md#attestation).
 
 ### 3b. Enroll the store's agent (store)
 
@@ -253,6 +283,14 @@ plugins {
 [store] sudo spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
 ```
 
+> **Demo shortcut:** the agent's pinned trust bundle is a file copied to the store by hand,
+> and the agent runs as a bare process (the `# (a service unit in practice)` note above)
+> rather than under supervision. Production distributes bundles via a SPIFFE trust-bundle
+> endpoint / federation and runs the agent as a supervised service (a systemd unit, or a
+> DaemonSet for in-cluster agents) with restart policies. See
+> [Production notes → Trust & CA](PRODUCTION-NOTES.md#trust--ca) and
+> [SPIRE topology](PRODUCTION-NOTES.md#spire-topology).
+
 - The `spire-server` binary inside the container lives at `/opt/spire/bin/` and is
   **not on `$PATH`**, so every `kubectl exec … spire-server` command here (and the
   registration in 3c) invokes it by full path.
@@ -278,15 +316,24 @@ against the server. Do it on the cloud:
           -selector unix:path:/opt/linkerd-proxy/linkerd-proxy
 ```
 
+> **Demo shortcut:** each workload identity is registered by hand with
+> `spire-server entry create`. Production drives registration from the SPIRE Controller
+> Manager (`ClusterSPIFFEID` CRDs) or a registrar/GitOps pipeline. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
+
 - `-spiffeID …/store/042/inventory-sync` is the identity to grant.
 - `-parentID …/store/042/agent` is the store's agent (attested in 3b) that will deliver it.
 - The **two selectors** are the condition: the caller must be **uid 2102** **and** the
   proxy binary at that path. That is the `linkerd2-proxy`, which runs as a dedicated
   non-root user (Part 4) and holds the SVID on the app's behalf. This is
   **least-privilege isolation between ordinary processes** — an unrelated process (even
-  one running as root) does not match, so it does not get this identity. It is **not** a
-  defense against a full root compromise of the store host, which could run the permitted
-  binary as the permitted uid. See [Production notes](PRODUCTION-NOTES.md).
+  one running as root) does not match, so it does not get this identity.
+
+> **Demo shortcut:** `unix:uid` + `unix:path` attestation isolates ordinary processes, but
+> it is **not** a defense against a full root compromise of the store host, which could run
+> the permitted binary as the permitted uid. See
+> [Production notes → Security boundaries](PRODUCTION-NOTES.md#security-boundaries-what-this-does-and-does-not-protect)
+> and [Attestation](PRODUCTION-NOTES.md#attestation).
 
 ---
 
@@ -302,6 +349,13 @@ it, matching the control-plane version exactly.
 [store] sudo docker cp "$id:/usr/lib/linkerd/linkerd2-proxy" /opt/linkerd-proxy/linkerd-proxy
 [store] sudo docker rm -v "$id"
 ```
+
+> **Demo shortcut:** the proxy binary is hand-extracted from the image and kept in
+> version-match by discipline (`$LINKERD_VERSION`), and the image is pulled by tag rather
+> than digest. Production ships the proxy as a versioned, signed package with automated
+> version-match checks, and pins images by digest. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation)
+> and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 ### 4b. Redirect traffic through the proxy (iptables)
 
@@ -418,6 +472,11 @@ The endpoint is treated as NotReady until a `Ready` status condition exists; set
           -p '{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Manual","message":"demo","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
 ```
 
+> **Demo shortcut:** the workload's `Ready` status is forced by hand with a hardcoded
+> `lastTransitionTime`. Production drives readiness from real health signals, never a
+> static forced condition. See
+> [Production notes → Lifecycle & automation](PRODUCTION-NOTES.md#lifecycle--automation).
+
 ---
 
 ## Part 6 — The application and the data flow
@@ -438,6 +497,12 @@ and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
   the (unmeshed) browser can load it.
 - `:8090` — the meshed **ingest** endpoint the store pushes to. This is the port we
   protect by identity in Part 7.
+
+> **Demo shortcut:** the `:8080` dashboard and its `/api/data` are served over plain HTTP
+> with no TLS and no authentication, so an unmeshed browser can load them directly.
+> Production terminates TLS at an ingress/gateway and requires auth for the UI and any
+> control endpoints. See
+> [Production notes → Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 It caches the latest report and renders it. When the store's pushes are refused, the
 cached data stops updating, which is the behavior a real ingest pipeline would show.
@@ -496,6 +561,16 @@ different one:
 The store's next push returns **403**, even though its route, address, and firewall
 are unchanged. In the demo, the dashboard's *Void authorization* button applies this
 same patch, using an RBAC Role granted to `retail-cloud`.
+
+> **Demo shortcut:** that *Void authorization* button lets the served `retail-cloud` app
+> patch the very `MeshTLSAuthentication` that protects it — RBAC to rewrite its own
+> authorization policy, reachable from an unauthenticated browser endpoint. This is the
+> demo's headline simplification: vivid for teaching, but it means the workload can rewrite
+> the policy that governs it, and any code-execution bug in the app inherits that power.
+> Production authors authorization policy in a GitOps source of truth, never mutated by the
+> workload it governs, and never grants an app write access to its own policy. See
+> [Production notes → The ones that matter most](PRODUCTION-NOTES.md#the-ones-that-matter-most)
+> and [Security shortcuts](PRODUCTION-NOTES.md#security-shortcuts).
 
 ---
 
