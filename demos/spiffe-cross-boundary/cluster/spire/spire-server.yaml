@@ -28,7 +28,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: spire-server
-          image: ghcr.io/spiffe/spire-server:1.11.2
+          image: ghcr.io/spiffe/spire-server:1.15.2
           args: ["-config", "/run/spire/conf/server.cfg"]
           ports:
             - containerPort: 8081
