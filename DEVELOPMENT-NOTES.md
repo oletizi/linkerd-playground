@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-08-09: <!-- session title -->
+
+**Goal:** <!-- compose: what we set out to do -->
+
+**Accomplished:**
+- <!-- compose -->
+
+**Didn't Work:**
+- <!-- compose -->
+
+**Course Corrections:**
+- <!-- compose -->
+
+**Insights:**
+- <!-- compose -->
+
+**Quantitative (auto-derived from git; verify before publishing):**
+- Commits: 4
+  - docs(spiffe-demo): validate MANUAL from scratch; add runlog; fix blocking gaps
+  - chore(roadmap): close design:feature/astro-docs-site
+  - docs: production-notes describes the current demo, not the change history
+  - Merge pull request #11 from oletizi/design/spire-trust-architecture
+- Files changed: 5
+- Backlog touched: (none)
+
 ## 2026-08-09: Docs site finished; SPIRE trust-architecture change (root key off the edge)
 
 **Goal:** Finish + deploy the demo's docs site, then act on a security/best-practice
