@@ -34,7 +34,7 @@ both identities remain on screen.
 
 ## What runs where
 
-| | Box A — cloud cluster | Box B — on-prem store |
+| | Box A — Kubernetes cluster | Box B — on-prem store |
 |---|---|---|
 | Physical | one machine | a **different** machine |
 | VM (Lima, optional) | `linkerd-cluster` | `linkerd-edge` |
@@ -58,7 +58,7 @@ identity, and the Void button patches the policy.
 ```bash
 cp config.example.env config.local.env
 # then edit:
-CLUSTER_NODE_ADDR=<address the store uses to reach the cloud cluster>
+CLUSTER_NODE_ADDR=<address the store uses to reach the cluster>
 EDGE_ADDR=<address the cluster uses to reach the store>
 ```
 
@@ -92,7 +92,7 @@ The steps below use the repo's scripts. To understand every piece instead — ea
 config file and command, with the *why* behind them — follow the from-scratch
 manual: [`MANUAL.md`](MANUAL.md).
 
-### Box A — cloud cluster
+### Box A — Kubernetes cluster
 
 ```bash
 just demo spiffe-cross-boundary cluster-up          # (Lima) create the linkerd-cluster VM
