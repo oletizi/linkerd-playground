@@ -8,3 +8,6 @@ ca.crt
 site/node_modules/
 site/dist/
 site/.astro/
+
+# Local Netlify folder
+.netlify
