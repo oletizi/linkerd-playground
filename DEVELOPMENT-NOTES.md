@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-08-09: <!-- session title -->
+
+**Goal:** <!-- compose: what we set out to do -->
+
+**Accomplished:**
+- <!-- compose -->
+
+**Didn't Work:**
+- <!-- compose -->
+
+**Course Corrections:**
+- <!-- compose -->
+
+**Insights:**
+- <!-- compose -->
+
+**Quantitative (auto-derived from git; verify before publishing):**
+- Commits: 8
+  - docs(spiffe-demo): clarify the Part 2 'before any SPIFFE' phrasing
+  - chore: gitignore .netlify (local CLI state, added by netlify CLI)
+  - chore(site): untrack sync-docs output (build artifacts, not source)
+  - ci(netlify): rebuild when demos/ changes, not just site/
+  - docs(site): regenerate demo pages so committed output matches canonical source
+  - docs(spiffe-demo): add networking callout; deperzonify production notes
+  - docs(spiffe-demo): reword callouts so they do not imply a production twin
+  - docs(spiffe-demo): add inline deviation callouts linking to production notes
+- Files changed: 7
+- Backlog touched: (none)
+
 ## 2026-08-09: Validated the SPIFFE MANUAL from scratch; fixed blocking gaps; closed docs-site
 
 **Goal:** Walk `demos/spiffe-cross-boundary/MANUAL.md` end-to-end *from scratch* to
