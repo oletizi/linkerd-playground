@@ -78,6 +78,13 @@ certs. Normally `linkerd install` generates both for you and you never see the r
 key. We generate the pair ourselves so the in-cluster SPIRE server (Part 3) can use the
 root as its `UpstreamAuthority` — the root key stays in the cluster the whole time.
 
+Run these on the **cluster host**, in a working directory you then stay in (e.g.
+`mkdir ~/linkerd-certs && cd ~/linkerd-certs`). `step` is offline — it only writes the four
+cert files locally and never touches the cluster. Several later `[cluster]` steps read them
+back by relative name — the issuer command below, `linkerd install`, the SPIRE Secret
+(Part 3a), and the copy to the store (Part 3b) — so run all of those from this same
+directory.
+
 ```bash
 [cluster] step certificate create root.linkerd.cluster.local ca.crt ca.key \
           --profile root-ca --no-password --insecure --not-after=87600h
