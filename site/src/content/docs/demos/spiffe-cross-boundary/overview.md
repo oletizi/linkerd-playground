@@ -3,6 +3,14 @@ title: Overview
 description: SPIFFE identity for a workload outside Kubernetes, joined to a Linkerd mesh across a machine boundary.
 ---
 
+:::caution[This is a teaching demo]
+It is built for explanatory clarity, not as a model of best practice. It takes
+deliberate shortcuts — starting with copying the trust domain's root key onto the store
+host — that are unsafe in production. See
+[Production notes](/demos/spiffe-cross-boundary/production-notes/) for every shortcut and
+what to do instead.
+:::
+
 This demo runs a workload outside Kubernetes and gives it a SPIFFE identity that an
 in-cluster service trusts. A point-of-sale service (`store-pos`) runs on a separate
 machine that is not part of the cluster. Linkerd's mesh expansion adds it to the mesh
