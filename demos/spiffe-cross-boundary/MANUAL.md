@@ -16,7 +16,7 @@ configuration incrementally.
 > environment. [Production notes](PRODUCTION-NOTES.md) lists every shortcut and what to
 > do instead.
 
-> Convention: commands prefixed `[cloud]` run on the Kubernetes host; `[store]` run
+> Convention: commands prefixed `[cluster]` run on the Kubernetes host; `[store]` run
 > on the external machine. The trust domain throughout is
 > `root.linkerd.cluster.local` (Linkerd's default).
 
@@ -54,7 +54,7 @@ gives you identity; it does not give you connectivity.
   you may need a shared VM-to-VM network, e.g. Lima's `user-v2`, or the
   [Tailscale recipe](connectivity-tailscale.md). This reachability is a precondition,
   covered in Part 2.)
-- On the **cloud** host: a Kubernetes cluster (k3s is fine) and the `linkerd` CLI
+- On the **cluster** host: a Kubernetes cluster (k3s is fine) and the `linkerd` CLI
   (edge channel — mesh expansion needs 2.15+), plus [`step`](https://smallstep.com/docs/step-cli/)
   to make certificates.
 - On the **store** host: the SPIRE **agent** binary (`spire-agent`) — the server runs
@@ -65,7 +65,7 @@ gives you identity; it does not give you connectivity.
 
 ---
 
-## Part 1 — One root of trust (cloud)
+## Part 1 — One root of trust (cluster)
 
 Linkerd's identity system has two certificates: a long-lived **trust anchor** (the
 root CA) and a shorter-lived **issuer** (an intermediate) that actually signs proxy
@@ -74,10 +74,10 @@ key. We generate the pair ourselves so the in-cluster SPIRE server (Part 3) can 
 root as its `UpstreamAuthority` — the root key stays in the cluster the whole time.
 
 ```bash
-[cloud] step certificate create root.linkerd.cluster.local ca.crt ca.key \
+[cluster] step certificate create root.linkerd.cluster.local ca.crt ca.key \
           --profile root-ca --no-password --insecure --not-after=87600h
 
-[cloud] step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
+[cluster] step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
           --profile intermediate-ca --not-after 8760h --no-password --insecure \
           --ca ca.crt --ca-key ca.key
 ```
@@ -100,13 +100,13 @@ Install Linkerd with these certs instead of generated ones. Linkerd needs the
 Gateway API CRDs present first:
 
 ```bash
-[cloud] kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
-[cloud] linkerd install --crds | kubectl apply -f -
-[cloud] linkerd install \
+[cluster] kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+[cluster] linkerd install --crds | kubectl apply -f -
+[cluster] linkerd install \
           --identity-trust-anchors-file ca.crt \
           --identity-issuer-certificate-file issuer.crt \
           --identity-issuer-key-file issuer.key | kubectl apply -f -
-[cloud] linkerd check
+[cluster] linkerd check
 ```
 
 - `--identity-trust-anchors-file ca.crt` pins the root every proxy in the cluster
@@ -125,7 +125,7 @@ start (installing viz later requires a `kubectl rollout restart` on each workloa
 `tap` to see it):
 
 ```bash
-[cloud] linkerd viz install | kubectl apply -f -
+[cluster] linkerd viz install | kubectl apply -f -
 ```
 
 ---
@@ -144,8 +144,8 @@ How you satisfy this is up to your network (a flat LAN, a VPN, an overlay). On a
 flat LAN it's a static route plus a resolver entry — nothing Linkerd-specific:
 
 ```bash
-[store] sudo ip route add 10.42.0.0/16 via <cloud-host-ip>
-[store] sudo ip route add 10.43.0.0/16 via <cloud-host-ip>
+[store] sudo ip route add 10.42.0.0/16 via <cluster-host-ip>
+[store] sudo ip route add 10.43.0.0/16 via <cluster-host-ip>
 [store] printf '[Resolve]\nDNS=10.43.0.10\nDomains=~cluster.local\n' \
           | sudo tee /etc/systemd/resolved.conf.d/cluster.conf
 [store] sudo systemctl restart systemd-resolved
@@ -155,7 +155,7 @@ flat LAN it's a static route plus a resolver entry — nothing Linkerd-specific:
 kube-dns`). The pod/service CIDRs and this DNS IP are **k3s defaults, not portable** —
 on any other cluster, discover yours (`kubectl -n kube-system get svc kube-dns` for
 CoreDNS; your distro's config for the CIDRs) and substitute them wherever they recur
-below (Part 4's proxy reaches the control plane over these). The cloud host must have
+below (Part 4's proxy reaches the control plane over these). The cluster host must have
 IP forwarding on so it routes the store's traffic into the pod network. This is the distinction between identity and
 connectivity: SPIFFE provides identity; this step provides connectivity.
 
@@ -167,15 +167,15 @@ connectivity: SPIFFE provides identity; this step provides connectivity.
 
 ---
 
-## Part 3 — An identity source: SPIRE server in the cloud, agent on the store
+## Part 3 — An identity source: SPIRE server in the cluster, agent on the store
 
 SPIRE has two roles. The **server** issues identities and holds signing authority; it
-runs in the cloud next to the rest of the control plane and never exposes its signing key
+runs in the cluster next to the rest of the control plane and never exposes its signing key
 to the store. The **agent** runs on the store, attests local processes, and hands them
 SVIDs the server issued — over a local socket. This is SPIRE's normal topology, and it
 keeps the root key off the less-trusted store host.
 
-### 3a. Deploy the SPIRE server (cloud)
+### 3a. Deploy the SPIRE server (cluster)
 
 Run the server in the cluster, using the Linkerd root as its `UpstreamAuthority` so the
 SVIDs it issues chain to the same anchor the mesh trusts. The root cert **and** key are
@@ -211,11 +211,11 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 (a host firewall rule scoped to the Tailscale interface):
 
 ```bash
-[cloud] kubectl create namespace spire
-[cloud] kubectl -n spire create secret generic spire-upstream-ca \
+[cluster] kubectl create namespace spire
+[cluster] kubectl -n spire create secret generic spire-upstream-ca \
           --from-file=ca.crt=ca.crt --from-file=ca.key=ca.key      # root stays here, in-cluster
-[cloud] kubectl -n spire create configmap spire-server-config --from-file=server.cfg
-[cloud] kubectl apply -f spire-server.yaml                          # StatefulSet + NodePort :30081
+[cluster] kubectl -n spire create configmap spire-server-config --from-file=server.cfg
+[cluster] kubectl apply -f spire-server.yaml                          # StatefulSet + NodePort :30081
 ```
 
 > **Demo shortcut:** the server's datastore is SQLite, its signing keys live on disk
@@ -249,13 +249,13 @@ reach (the demo does this in `cluster/spire/`), and restrict that NodePort to yo
 The store runs the **agent only**. It authenticates the server with a **pinned trust
 bundle** (not trust-on-first-use), and attests itself with a one-time join token.
 
-Export the server's bundle and mint a token on the cloud, then copy the bundle to the
+Export the server's bundle and mint a token on the cluster, then copy the bundle to the
 store (only the public cert material and a single-use token leave the cluster — never the
 key):
 
 ```bash
-[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server bundle show > bundle.pem
-[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server token generate \
+[cluster] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server bundle show > bundle.pem
+[cluster] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server token generate \
           -spiffeID spiffe://root.linkerd.cluster.local/store/042/agent
 # Copy BOTH public files to the store (only public material + a single-use token leave the cluster):
 #   bundle.pem -> /opt/spire/certs/bundle.pem   (the agent's pinned server bundle)
@@ -268,7 +268,7 @@ key):
 agent {
     data_dir = "/opt/spire/data/agent"
     trust_domain = "root.linkerd.cluster.local"
-    server_address = "<cloud-node-addr>"
+    server_address = "<cluster-node-addr>"
     server_port = 30081
     trust_bundle_path = "/opt/spire/certs/bundle.pem"    # pinned; no insecure_bootstrap
 }
@@ -309,13 +309,13 @@ plugins {
   (`/tmp/spire-agent/public/api.sock`); the proxy reads its identity from there. This
   socket stays **local** to the store — it is never exposed over the network.
 
-### 3c. Register the workload (cloud)
+### 3c. Register the workload (cluster)
 
 Registration says which *identity* a given process may receive — an administrative act
-against the server. Do it on the cloud:
+against the server. Do it on the cluster:
 
 ```bash
-[cloud] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server entry create \
+[cluster] kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server entry create \
           -parentID spiffe://root.linkerd.cluster.local/store/042/agent \
           -spiffeID spiffe://root.linkerd.cluster.local/store/042/inventory-sync \
           -selector unix:uid:2102 \
@@ -429,7 +429,7 @@ which confirms SPIRE issued the SVID and the proxy has joined the mesh.
 
 ## Part 5 — Tell the cluster about the workload (ExternalWorkload)
 
-Back on the cloud side, register the store as an `ExternalWorkload`. This is how the
+Back on the cluster side, register the store as an `ExternalWorkload`. This is how the
 mesh knows the workload exists, what identity it carries, and (for a server) how to
 route to it — and it's what the `POLICY_WORKLOAD` reference above resolves against.
 
@@ -438,8 +438,8 @@ injection enabled — the cloud app (Part 6) must be meshed for the Part 7 ident
 policy to take effect:
 
 ```bash
-[cloud] kubectl create namespace mixed-env
-[cloud] kubectl annotate namespace mixed-env linkerd.io/inject=enabled
+[cluster] kubectl create namespace mixed-env
+[cluster] kubectl annotate namespace mixed-env linkerd.io/inject=enabled
 ```
 
 Then register the store as an `ExternalWorkload`:
@@ -474,7 +474,7 @@ The endpoint is treated as NotReady until a `Ready` status condition exists; set
 (status is a subresource, so `kubectl apply` of the spec above won't):
 
 ```bash
-[cloud] kubectl -n mixed-env patch externalworkload store-pos --subresource=status --type=merge \
+[cluster] kubectl -n mixed-env patch externalworkload store-pos --subresource=status --type=merge \
           -p '{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Manual","message":"demo","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
 ```
 
@@ -497,7 +497,7 @@ Because it runs as `--user 1000`, its outbound POST is redirected through the pr
 and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
 `retail-cloud.mixed-env.svc.cluster.local` via the cluster DNS from Part 2.
 
-**`retail-cloud` (cloud, a normal meshed pod).** Listens on two ports:
+**`retail-cloud` (cluster, a normal meshed pod).** Listens on two ports:
 
 - `:8080` — the browser dashboard and its `/api/data`. No policy on this port, so
   the (unmeshed) browser can load it.
@@ -519,7 +519,7 @@ cached data stops updating, which is the behavior a real ingest pipeline would s
 
 By default a meshed port is open to any meshed client. We make the ingest port
 **default-deny except for the store's identity** with three policy resources on the
-cloud side:
+cluster side:
 
 ```yaml
 # 1. Declare the protected port. Creating a Server flips :8090 to default-deny.
@@ -560,7 +560,7 @@ spec:
 different one:
 
 ```bash
-[cloud] kubectl -n mixed-env patch meshtlsauthentication allow-store --type=merge \
+[cluster] kubectl -n mixed-env patch meshtlsauthentication allow-store --type=merge \
           -p '{"spec":{"identities":["spiffe://root.linkerd.cluster.local/nobody"]}}'
 ```
 
@@ -582,10 +582,10 @@ same patch, using an RBAC Role granted to `retail-cloud`.
 
 ## Part 8 — Verify
 
-Watch the identities on the wire from the cloud side:
+Watch the identities on the wire from the cluster side:
 
 ```bash
-[cloud] linkerd -n mixed-env viz tap -o wide deploy/retail-cloud
+[cluster] linkerd -n mixed-env viz tap -o wide deploy/retail-cloud
 ```
 
 Each inbound row shows `tls=true`, and with `-o wide`,
