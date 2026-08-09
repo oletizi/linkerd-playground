@@ -2,29 +2,53 @@
 
 ---
 
-## 2026-08-09: <!-- session title -->
+## 2026-08-09: Validated the SPIFFE MANUAL from scratch; fixed blocking gaps; closed docs-site
 
-**Goal:** <!-- compose: what we set out to do -->
+**Goal:** Walk `demos/spiffe-cross-boundary/MANUAL.md` end-to-end *from scratch* to
+verify it is correct as written, record every error/gap to an **independent** runlog,
+then fix the manual. Also close the shipped `astro-docs-site` roadmap item.
 
 **Accomplished:**
-- <!-- compose -->
+- Stood the demo up **by hand** following the manual on two clean Lima VMs (cluster +
+  edge). Reached full end-to-end mTLS + SPIFFE-identity authorization — live: `push
+  -> 200`, revoke → `403`, restore → `200`, with `src_client_id=…/store/042/inventory-sync`
+  and `tls=true` on the wire (`viz tap`).
+- Wrote `demos/spiffe-cross-boundary/runlog.md` — an independent, two-pass record
+  (static cross-reference → live confirmation) of every finding.
+- Fixed the manual (blocking + cheap + notes): 4 blocking errors (bare `spire-server`
+  not on `$PATH`; `ca.crt` never copied to the store; `mixed-env` namespace never
+  created; injection never enabled), 3 non-blocking (store prereq, `viz tap -o wide`
+  /`src_client_id`, `useradd -M`), plus connectivity/portability/viz notes.
+- Closed `design:feature/astro-docs-site` (shipped + live on Netlify).
 
 **Didn't Work:**
-- <!-- compose -->
+- Default Lima `vz` networking gave both VMs the same isolated `192.168.5.15` — no
+  VM↔VM reachability; `socket_vmnet` shared needs host sudo I didn't have. Resolved
+  with Lima's `user-v2` network (userspace, no sudo, no Tailscale).
+- Four of my static predictions were **refuted live** — the manual was correct where I
+  feared errors: plain `kubectl apply` for the Gateway CRDs, no `mkdir` for
+  `resolved.conf.d`, IP forwarding alone (no MASQUERADE), ECDSA P-256 by default.
 
 **Course Corrections:**
-- <!-- compose -->
+- Adopted a two-pass method — cross-reference the manual against the known-good repo
+  scripts first, then confirm each prediction live — so refuted predictions were
+  retracted honestly instead of reported as manual "errors."
 
 **Insights:**
-- <!-- compose -->
+- The manual is **substantively correct**; its failures are a few small-but-blocking
+  doc gaps, concentrated where it delegates to the repo (namespace + injection live
+  only in `echo.yaml`) or assumes a container `$PATH`.
+- On a single machine, "two hosts that can reach each other" is the biggest unstated
+  hurdle; `user-v2` solves it cleanly. Substrate can't surface true cross-machine
+  issues (real NAT, path-MTU) — flagged in the runlog.
 
-**Quantitative (auto-derived from git; verify before publishing):**
-- Commits: 4
-  - docs(spiffe-demo): validate MANUAL from scratch; add runlog; fix blocking gaps
+**Quantitative (auto-derived from git; boundary over-reached into the prior session's
+merge tail — this session is the first two below):**
+- Commits (this session): 2
   - chore(roadmap): close design:feature/astro-docs-site
-  - docs: production-notes describes the current demo, not the change history
-  - Merge pull request #11 from oletizi/design/spire-trust-architecture
-- Files changed: 5
+  - docs(spiffe-demo): validate MANUAL from scratch; add runlog; fix blocking gaps
+- Files changed: `ROADMAP.md`, `demos/spiffe-cross-boundary/MANUAL.md` (+49/−19),
+  `demos/spiffe-cross-boundary/runlog.md` (new).
 - Backlog touched: (none)
 
 ## 2026-08-09: Docs site finished; SPIRE trust-architecture change (root key off the edge)
