@@ -38,6 +38,31 @@ expansion** adds it to the mesh: a standalone `linkerd2-proxy` runs alongside it
 trust anchor Linkerd uses inside the cluster. One trust domain then spans both
 machines, without federation and without requiring them to share a network.
 
+## Attestation
+
+Before SPIRE issues an SVID it has to answer one question: *which* identity does the
+process asking for one deserve? It answers by **attestation** — verifying facts about the
+caller that the operating system vouches for, instead of trusting anything the process
+claims about itself.
+
+When the store's proxy asks the local SPIRE agent for its identity, it presents no name or
+password. Because the request arrives over a Unix socket, the kernel tells the agent the
+caller's user ID, and the agent reads the process's executable path from the OS. Those
+become **selectors** — here, *runs as uid 2102* and *is the `linkerd2-proxy` binary at this
+path*. The agent matches them against a **registration** an operator made ahead of time —
+"a process with these properties may receive this SPIFFE ID" — and issues the matching
+SVID.
+
+The process cannot lie its way into an identity: its user ID and its binary come from the
+kernel, not from its own say-so. This is the off-cluster counterpart to Kubernetes
+identity — in the cluster a pod's identity is tied to its ServiceAccount, verified by the
+Kubernetes API; off-cluster, SPIRE ties identity to OS-level properties, verified by the
+kernel. (SPIRE attests at two levels: the **agent** first proves which node it is to the
+server, then each **workload** is attested locally as described here.)
+
+The [manual](/demos/spiffe-cross-boundary/manual/) shows the exact selectors and
+registration in Part 3.
+
 ## Trust domains: one or many?
 
 A trust domain is the unit of *ambient* trust: every workload whose SVID chains to the
