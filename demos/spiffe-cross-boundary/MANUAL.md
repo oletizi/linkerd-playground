@@ -159,6 +159,12 @@ below (Part 4's proxy reaches the control plane over these). The cloud host must
 IP forwarding on so it routes the store's traffic into the pod network. This is the distinction between identity and
 connectivity: SPIFFE provides identity; this step provides connectivity.
 
+> **Demo shortcut:** connectivity here is a static route to hardcoded pod/service CIDRs
+> plus a hand-written resolver pointing at a hardcoded CoreDNS ClusterIP. Real deployments
+> use a managed overlay/VPN (WireGuard, a Tailscale subnet router, cross-cluster CNI, or
+> VPC peering) with real route management, and an HA, discovered DNS path. See
+> [Production notes → Networking](PRODUCTION-NOTES.md#networking).
+
 ---
 
 ## Part 3 — An identity source: SPIRE server in the cloud, agent on the store
