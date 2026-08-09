@@ -20,7 +20,7 @@ metadata:
   name: allow-store
 spec:
   identities:
-    - "spiffe://root.linkerd.cluster.local/store-pos"
+    - "spiffe://root.linkerd.cluster.local/store/042/inventory-sync"
 ---
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
