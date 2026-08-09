@@ -70,6 +70,11 @@ http.createServer(async (req, res) => {
     return json(res, {
       ok: reporting && !voided, voided, reporting, ageMs,
       identities: { cloud: CLOUD_ID, store: STORE_ID },
+      enrollment: {
+        method: 'one-time demo join token',
+        production: 'device-bound identity (TPM or enterprise PKI)',
+        heldBy: 'local Linkerd proxy',
+      },
       inventory: latest.inventory, sales: latest.sales,
     });
   }
