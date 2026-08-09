@@ -16,12 +16,19 @@ export LINKERD2_PROXY_POLICY_SVC_ADDR="linkerd-policy.linkerd.svc.cluster.local.
 export LINKERD2_PROXY_IDENTITY_SPIRE_WORKLOAD_API_ADDRESS="unix:///tmp/spire-agent/public/api.sock"
 LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS="$(cat /opt/spire/certs/ca.crt)"; export LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS
 
+# Ensure the dedicated non-root proxy user exists (idempotent).
+id -u linkerd-proxy >/dev/null 2>&1 || sudo useradd -r -u "${PROXY_UID:-2102}" -s /usr/sbin/nologin linkerd-proxy
+
 sudo pkill -f '/opt/linkerd-proxy/linkerd-proxy' 2>/dev/null || true
+sudo rm -f /tmp/linkerd-proxy.log
+# Run the proxy as the dedicated non-root uid. setpriv (unlike sudo) does not scrub the
+# exported LINKERD2_PROXY_* env; sudo -E already preserves it on this host.
 # shellcheck disable=SC2024
-sudo -E nohup /opt/linkerd-proxy/linkerd-proxy >/tmp/linkerd-proxy.log 2>&1 &
+sudo -E setsid setpriv --reuid="${PROXY_UID:-2102}" --regid="${PROXY_UID:-2102}" --clear-groups \
+  /opt/linkerd-proxy/linkerd-proxy >/tmp/linkerd-proxy.log 2>&1 </dev/null &
 sleep 5
 if grep -Eqi 'certified identity|obtained.*identity|SVID' /tmp/linkerd-proxy.log; then
-  echo "proxy has identity"
+  echo "proxy has identity (uid $(id -u linkerd-proxy))"
 else
   echo "proxy identity not confirmed in log — inspect /tmp/linkerd-proxy.log for the issued SVID:" >&2
   tail -n 40 /tmp/linkerd-proxy.log >&2
