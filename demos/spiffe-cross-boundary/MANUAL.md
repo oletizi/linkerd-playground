@@ -30,18 +30,18 @@ Four things have to line up:
    root CA (the *trust anchor*). We will make the external workload's certificates
    chain to that *same* root, so both sides validate each other. The result is one
    trust domain spanning two machines.
-2. **An identity source on the external machine.** In the cluster, the control-plane
+2. **A data-plane proxy on the external machine.** A standalone `linkerd2-proxy`
+   runs next to the workload, gets its identity from SPIRE (item 3), and does mTLS on the
+   workload's behalf — exactly like an injected sidecar does in the cluster.
+3. **An identity source on the external machine.** In the cluster, the control-plane
    component `linkerd-identity` issues certificates, trusting a pod's Kubernetes
    ServiceAccount. Off-cluster there is no Kubernetes, so **SPIRE** plays that role:
    it **attests** a local workload — verifies its OS-level identity (the user it runs as
    and the binary it is) rather than trusting a claim it makes — and issues it a short-lived
-   SVID. The workload it attests here is the standalone **proxy** (item 3), which carries the
+   SVID. The workload it attests here is the standalone **proxy** (item 2), which carries the
    identity on the app's behalf — not the app itself (which never talks to SPIRE), and not
    the SPIRE *agent* (a separate party: attested as a *node* via its join token, and the one
    doing the attesting). (See [Concepts → Attestation](/demos/spiffe-cross-boundary/concepts/#attestation).)
-3. **A data-plane proxy on the external machine.** A standalone `linkerd2-proxy`
-   runs next to the workload, gets its identity from SPIRE, and does mTLS on the
-   workload's behalf — exactly like an injected sidecar does in the cluster.
 4. **The cluster's awareness of the workload.** An `ExternalWorkload` resource tells
    Linkerd this off-cluster process exists and what identity it carries, so policy
    and discovery treat it like any other mesh endpoint.
