@@ -10,6 +10,16 @@ shortcuts first, then the broader operational and architectural simplifications.
 [manual](MANUAL.md) explains how each piece is built; this page explains where each piece
 departs from production practice.
 
+> **A design choice, not a shortcut.** This demo deliberately uses one SPIFFE trust domain
+> spanning both environments — a unified identity fabric across infrastructure is its whole
+> point, and a legitimate architecture in its own right. The tradeoff is isolation: within a
+> single domain every identity can in principle be a peer, all anchored by one root. When you
+> want a hard boundary — production vs staging, separate teams or business units, a distinct
+> compliance scope — you give each its own trust domain and connect only the ones that must
+> interoperate with **SPIFFE federation**. The demo's *Concepts* page works through when and
+> why (*Trust domains: one or many?*); the shortcuts catalogued below are a different thing —
+> corners cut for legibility.
+
 ## The ones that matter most
 
 - **The application can rewrite its own authorization policy.** The `retail-cloud` pod
@@ -21,10 +31,6 @@ departs from production practice.
   one-time join token and the public trust bundle go to the edge — but a cluster Secret is
   not HSM / offline-root custody. A real system backs the root with external or offline
   PKI, an HSM, or Vault.
-- **One trust domain spans both environments.** The store reuses the cluster's trust
-  domain — the whole point of the demo, but it removes the isolation boundary between
-  on-prem and cloud. A real system gives each environment its own trust domain and connects
-  them with **SPIFFE federation**.
 
 ## Security shortcuts
 
