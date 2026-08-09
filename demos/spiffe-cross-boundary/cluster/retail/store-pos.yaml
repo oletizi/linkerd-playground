@@ -9,8 +9,8 @@ metadata:
     workload_name: store-pos
 spec:
   meshTLS:
-    identity: "spiffe://root.linkerd.cluster.local/store-pos"
-    serverName: "store-pos.cluster.local"
+    identity: "spiffe://root.linkerd.cluster.local/store/042/inventory-sync"
+    serverName: "inventory-sync.cluster.local"
   workloadIPs:
   - ip: "__EDGE_ADDR__"
   ports:
