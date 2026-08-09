@@ -13,6 +13,12 @@ application (`retail-cloud`) running in the cluster. The cloud service accepts t
 data only from the store's verified SPIFFE identity. The sections below build this
 configuration incrementally.
 
+> **This is a teaching demo, not a production blueprint.** It takes deliberate
+> shortcuts — for example, the dashboard app holds permission to change its own
+> authorization policy — to keep the mechanics legible in one sitting. Do not run this configuration in a real
+> environment. [Production notes](/demos/spiffe-cross-boundary/production-notes/) lists every shortcut and what to
+> do instead.
+
 > Convention: commands prefixed `[cloud]` run on the Kubernetes host; `[store]` run
 > on the external machine. The trust domain throughout is
 > `root.linkerd.cluster.local` (Linkerd's default).
@@ -63,8 +69,8 @@ gives you identity; it does not give you connectivity.
 Linkerd's identity system has two certificates: a long-lived **trust anchor** (the
 root CA) and a shorter-lived **issuer** (an intermediate) that actually signs proxy
 certs. Normally `linkerd install` generates both for you and you never see the root
-key. We need the root key later (SPIRE will sign with it), so we generate the pair
-ourselves.
+key. We generate the pair ourselves so the in-cluster SPIRE server (Part 3) can use the
+root as its `UpstreamAuthority` — the root key stays in the cluster the whole time.
 
 ```bash
 [cloud] step certificate create root.linkerd.cluster.local ca.crt ca.key \
@@ -78,8 +84,9 @@ ourselves.
 - `root.linkerd.cluster.local` is the trust anchor's common name; the trust domain
   in every SPIFFE ID derives from it.
 - Linkerd requires **ECDSA P-256** keys — `step` uses that profile by default.
-- Keep `ca.crt` **and** `ca.key`: the root key is what makes cross-machine trust
-  possible, because SPIRE will use it to sign the external workload's certificates.
+- Keep `ca.crt` **and** `ca.key` here in the cluster: the in-cluster SPIRE server mounts
+  them (as a read-only Secret) to sign the external workload's certificates. The key never
+  goes to the store.
 
 Install Linkerd with these certs instead of generated ones. Linkerd needs the
 Gateway API CRDs present first:
@@ -95,8 +102,9 @@ Gateway API CRDs present first:
 ```
 
 - `--identity-trust-anchors-file ca.crt` pins the root every proxy in the cluster
-  will trust. Because we hold the matching `ca.key`, we can now mint *sibling*
-  certificates off-cluster that this cluster will accept.
+  will trust. Because the in-cluster SPIRE server signs under the matching `ca.key`, the
+  SVIDs it issues to the off-cluster workload chain to this root and the cluster accepts
+  them.
 
 (Optionally `linkerd viz install | kubectl apply -f -` to get `linkerd viz tap`,
 which we use to see identities on the wire.)
@@ -131,135 +139,139 @@ connectivity: SPIFFE provides identity; this step provides connectivity.
 
 ---
 
-## Part 3 — An identity source on the store (SPIRE)
+## Part 3 — An identity source: SPIRE server in the cloud, agent on the store
 
-### 3a. Give SPIRE the cluster's root
+SPIRE has two roles. The **server** issues identities and holds signing authority; it
+runs in the cloud next to the rest of the control plane and never exposes its signing key
+to the store. The **agent** runs on the store, attests local processes, and hands them
+SVIDs the server issued — over a local socket. This is SPIRE's normal topology, and it
+keeps the root key off the less-trusted store host.
 
-Copy the trust anchor from Part 1 onto the store machine. SPIRE will use it as its
-**upstream authority** — meaning SPIRE issues an intermediate below this root and
-signs workload SVIDs with it, so they chain to the exact same root Linkerd uses.
+### 3a. Deploy the SPIRE server (cloud)
 
-```bash
-[store] sudo mkdir -p /opt/spire/certs
-# transport ca.crt and ca.key here by whatever secure means you have, then:
-[store] sudo cp ca.crt ca.key /opt/spire/certs/
-```
+Run the server in the cluster, using the Linkerd root as its `UpstreamAuthority` so the
+SVIDs it issues chain to the same anchor the mesh trusts. The root cert **and** key are
+mounted as a read-only Kubernetes Secret — they stay in the cluster.
 
-> **Trade-off to understand:** putting the root *key* on the store lets a local
-> SPIRE server sign certificates, but it also means the root key now lives outside
-> the cluster. Fine for a demo; in production you'd hand SPIRE an *intermediate*
-> (via the `UpstreamAuthority` of your choice) rather than the root itself.
-
-### 3b. The SPIRE server config
-
-`/opt/spire/server.cfg`:
+`server.cfg` (mounted from a ConfigMap):
 
 ```hcl
 server {
-    bind_address = "127.0.0.1"
+    bind_address = "0.0.0.0"
     bind_port = "8081"
     trust_domain = "root.linkerd.cluster.local"
-    data_dir = "/opt/spire/data/server"
+    data_dir = "/run/spire/data"
     ca_ttl = "168h"
     default_x509_svid_ttl = "48h"
 }
 plugins {
-    DataStore "sql" {
-        plugin_data { database_type = "sqlite3"
-            connection_string = "/opt/spire/data/server/datastore.sqlite3" }
-    }
-    KeyManager "disk" { plugin_data { keys_path = "/opt/spire/data/server/keys.json" } }
+    DataStore "sql" { plugin_data { database_type = "sqlite3"
+        connection_string = "/run/spire/data/datastore.sqlite3" } }
+    KeyManager "disk" { plugin_data { keys_path = "/run/spire/data/keys.json" } }
     NodeAttestor "join_token" { plugin_data {} }
     UpstreamAuthority "disk" {
         plugin_data {
-            cert_file_path = "/opt/spire/certs/ca.crt"
-            key_file_path  = "/opt/spire/certs/ca.key"
+            cert_file_path = "/run/spire/secret/ca.crt"   # mounted from the Secret
+            key_file_path  = "/run/spire/secret/ca.key"
         }
     }
 }
 ```
 
-Field by field:
+Deploy it as a StatefulSet with the root as a Secret and a NodePort the store's agent can
+reach (the demo does this in `cluster/spire/`), and restrict that NodePort to your overlay
+(a host firewall rule scoped to the Tailscale interface):
 
-- `trust_domain` **must** equal Linkerd's (`root.linkerd.cluster.local`). If it
-  differs, the SPIFFE IDs won't match what the mesh expects and mTLS won't validate.
-- `default_x509_svid_ttl = "48h"` is how long each issued SVID lives before it must
-  be rotated. Short-lived certs are the SPIFFE norm; rotation is automatic (Part 4).
-- `KeyManager "disk"` persists SPIRE's own signing keys across restarts.
-- `NodeAttestor "join_token"` chooses how *agents* prove their identity to the
-  server. `join_token` is a one-time shared secret — the simplest, works on any
-  infrastructure. (On real infra you'd swap in cloud-instance or x509 attestation.)
-- `UpstreamAuthority "disk"` is the key setting: it points SPIRE at Linkerd's
-  `ca.crt`/`ca.key`, so everything SPIRE signs chains to that root.
+```bash
+[cloud] kubectl create namespace spire
+[cloud] kubectl -n spire create secret generic spire-upstream-ca \
+          --from-file=ca.crt=ca.crt --from-file=ca.key=ca.key      # root stays here, in-cluster
+[cloud] kubectl -n spire create configmap spire-server-config --from-file=server.cfg
+[cloud] kubectl apply -f spire-server.yaml                          # StatefulSet + NodePort :30081
+```
 
-### 3c. The SPIRE agent config
+- `UpstreamAuthority "disk"` is the key setting: SPIRE signs under Linkerd's root, so
+  every SVID chains to the anchor the mesh already trusts — **without the root key ever
+  leaving the cluster.**
+- `NodeAttestor "join_token"` is how *agents* prove which node they are — a one-time
+  enrollment token (3b). It is a legitimate mechanism; production commonly binds
+  enrollment to a device identity (TPM/DevID, enterprise PKI, or a cloud instance
+  identity) instead.
 
-`/opt/spire/agent.cfg`:
+### 3b. Enroll the store's agent (store)
+
+The store runs the **agent only**. It authenticates the server with a **pinned trust
+bundle** (not trust-on-first-use), and attests itself with a one-time join token.
+
+Export the server's bundle and mint a token on the cloud, then copy the bundle to the
+store (only the public cert material and a single-use token leave the cluster — never the
+key):
+
+```bash
+[cloud] kubectl -n spire exec spire-server-0 -- spire-server bundle show > bundle.pem
+[cloud] kubectl -n spire exec spire-server-0 -- spire-server token generate \
+          -spiffeID spiffe://root.linkerd.cluster.local/store/042/agent
+# copy bundle.pem to the store at /opt/spire/certs/bundle.pem
+```
+
+`agent.cfg` on the store:
 
 ```hcl
 agent {
     data_dir = "/opt/spire/data/agent"
     trust_domain = "root.linkerd.cluster.local"
-    server_address = "localhost"
-    server_port = 8081
-    insecure_bootstrap = true
+    server_address = "<cloud-node-addr>"
+    server_port = 30081
+    trust_bundle_path = "/opt/spire/certs/bundle.pem"    # pinned; no insecure_bootstrap
 }
 plugins {
     KeyManager "disk" { plugin_data { directory = "/opt/spire/data/agent" } }
     NodeAttestor "join_token" { plugin_data {} }
-    WorkloadAttestor "unix" { plugin_data {} }
+    WorkloadAttestor "unix" {
+        plugin_data {
+            discover_workload_path = true     # required to emit the unix:path selector
+            workload_size_limit    = -1       # we don't use unix:sha256, so skip hashing
+        }
+    }
 }
 ```
 
-- `server_address`/`server_port` point the agent at the local SPIRE server (both run
-  on the store in this demo).
-- `insecure_bootstrap = true` skips verifying the server's TLS on first contact —
-  acceptable because server and agent are the same host here.
-- `NodeAttestor "join_token"` matches the server's node attestor: the agent presents
-  a join token to prove which node it is.
-- `WorkloadAttestor "unix"` is how the agent later identifies *workloads* that ask
-  for a certificate: it inspects the calling process's Unix properties (uid, gid,
-  path). This is what ties "the process asking" to "the identity it's allowed."
-
-### 3d. Start the server, then bootstrap the agent
-
 ```bash
-[store] sudo spire-server run -config /opt/spire/server.cfg &   # (use a service unit in practice)
-
-# Mint a one-time join token bound to the agent's SPIFFE ID:
-[store] TOKEN=$(sudo spire-server token generate \
-                 -spiffeID spiffe://root.linkerd.cluster.local/agent | awk '{print $2}')
-
-[store] sudo spire-agent run -config /opt/spire/agent.cfg -joinToken "$TOKEN" &
-
-[store] sudo spire-server healthcheck && sudo spire-agent healthcheck \
-          -socketPath /tmp/spire-agent/public/api.sock
+[store] sudo spire-agent run -config /opt/spire/agent.cfg -joinToken "$TOKEN"   # (a service unit in practice)
+[store] sudo spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
 ```
 
-That `token generate` → `-joinToken` handshake is **node attestation**: the agent
-proves to the server it's an authorized node, and thereafter can request SVIDs. Note
-the agent exposes the **SPIFFE Workload API** on a Unix socket
-(`/tmp/spire-agent/public/api.sock`) — the proxy will read its identity from there.
+- `trust_bundle_path` pins the server: the agent authenticates the server's certificate
+  against this bundle. `insecure_bootstrap` (trust-on-first-use) is **not** used now that
+  the agent talks to a *remote* server.
+- `discover_workload_path = true` is required for the `unix:path` selector in 3c — without
+  it the attestor never emits a path selector and attestation fails.
+- The agent exposes the **SPIFFE Workload API** on a local Unix socket
+  (`/tmp/spire-agent/public/api.sock`); the proxy reads its identity from there. This
+  socket stays **local** to the store — it is never exposed over the network.
 
-### 3e. Register the workload
+### 3c. Register the workload (cloud)
 
-Node attestation says "this agent is allowed to run." **Registration** says which
-*identity* a given process may receive. This is an administrative act against the
-server — the workload never names itself.
+Registration says which *identity* a given process may receive — an administrative act
+against the server. Do it on the cloud:
 
 ```bash
-[store] sudo spire-server entry create \
-          -parentID spiffe://root.linkerd.cluster.local/agent \
-          -spiffeID spiffe://root.linkerd.cluster.local/store-pos \
-          -selector unix:uid:0
+[cloud] kubectl -n spire exec spire-server-0 -- spire-server entry create \
+          -parentID spiffe://root.linkerd.cluster.local/store/042/agent \
+          -spiffeID spiffe://root.linkerd.cluster.local/store/042/inventory-sync \
+          -selector unix:uid:2102 \
+          -selector unix:path:/opt/linkerd-proxy/linkerd-proxy
 ```
 
-- `-spiffeID …/store-pos` is the identity to grant.
-- `-parentID …/agent` is the agent that will attest and deliver it.
-- `-selector unix:uid:0` is the condition the process must meet. **This uid is the
-  proxy's**, not the app's — the `linkerd2-proxy` runs as root, holds the SVID, and
-  does mTLS on the app's behalf. Registration *authorizes*; the `unix` workload
-  attestor later *enforces* by checking the caller's uid against this entry.
+- `-spiffeID …/store/042/inventory-sync` is the identity to grant.
+- `-parentID …/store/042/agent` is the store's agent (attested in 3b) that will deliver it.
+- The **two selectors** are the condition: the caller must be **uid 2102** **and** the
+  proxy binary at that path. That is the `linkerd2-proxy`, which runs as a dedicated
+  non-root user (Part 4) and holds the SVID on the app's behalf. This is
+  **least-privilege isolation between ordinary processes** — an unrelated process (even
+  one running as root) does not match, so it does not get this identity. It is **not** a
+  defense against a full root compromise of the store host, which could run the permitted
+  binary as the permitted uid. See [Production notes](/demos/spiffe-cross-boundary/production-notes/).
 
 ---
 
@@ -278,41 +290,31 @@ it, matching the control-plane version exactly.
 
 ### 4b. Redirect traffic through the proxy (iptables)
 
-Like an injected sidecar, the proxy only helps if the workload's traffic passes
-through it. These nat rules send inbound TCP to the proxy's inbound port (4143) and
-outbound TCP to its outbound port (4140):
+The proxy only helps if the workload's traffic passes through it. On a bare host you
+can't redirect "everything except the proxy" the way a pod's network namespace does —
+that would also capture the SPIRE agent, DNS, SSH, and the proxy's own egress and break
+the box. So the redirect is **scoped to the app's uid**: only the store-pos app (uid
+1000) has its outbound sent to the proxy; everything else on the host is left alone.
 
 ```bash
-[store] sudo iptables -t nat -N PROXY_INIT_REDIRECT
-[store] sudo iptables -t nat -A PROXY_INIT_REDIRECT -p tcp --match multiport --dports 4190,4191,4567,4568 -j RETURN
-[store] sudo iptables -t nat -A PROXY_INIT_REDIRECT -p tcp -j REDIRECT --to-port 4143
-[store] sudo iptables -t nat -A PREROUTING -j PROXY_INIT_REDIRECT
-
-[store] sudo iptables -t nat -N PROXY_INIT_OUTPUT
-[store] sudo iptables -t nat -A PROXY_INIT_OUTPUT -m owner --uid-owner 0 -j RETURN
-[store] sudo iptables -t nat -A PROXY_INIT_OUTPUT -o lo -j RETURN
-[store] sudo iptables -t nat -A PROXY_INIT_OUTPUT -p tcp --match multiport --dports 4567,4568 -j RETURN
-[store] sudo iptables -t nat -A PROXY_INIT_OUTPUT -p tcp -j REDIRECT --to-port 4140
-[store] sudo iptables -t nat -A OUTPUT -j PROXY_INIT_OUTPUT
+[store] sudo iptables -t nat -N PROXY_APP_OUTPUT
+[store] sudo iptables -t nat -A PROXY_APP_OUTPUT -o lo -j RETURN
+[store] sudo iptables -t nat -A PROXY_APP_OUTPUT -p tcp -j REDIRECT --to-port 4140
+[store] sudo iptables -t nat -A OUTPUT -m owner --uid-owner 1000 -p tcp -j PROXY_APP_OUTPUT
 ```
 
-The important line is `-m owner --uid-owner 0 -j RETURN`: traffic **from uid 0 is
-not redirected**. That's how the proxy (running as root) avoids redirecting its own
-outbound into an infinite loop.
-
-> **Consequence for the app:** because uid 0 is exempt, your workload must run as a
-> **non-root** user, or its outbound will bypass the proxy and lose mTLS + identity.
-> In RetailCloud the store pushes *out* to the cloud, so this matters: we run the
-> POS container with `--user 1000`. (A server-only workload, which only receives on
-> :4143 via PREROUTING, wouldn't hit this.)
+The invariant is simply: **app uid 1000 → the proxy; all other host traffic → normal
+networking.** Because only uid 1000 is redirected, there is no blanket root exemption and
+no setup-ordering dependency — the SPIRE agent (running as root) is never captured, so it
+can enroll before or after these rules are in place.
 
 ### 4c. Launch the proxy — identity from SPIRE
 
 The proxy is configured entirely through environment variables:
 
 ```bash
-[store] export LINKERD2_PROXY_IDENTITY_SERVER_ID="spiffe://root.linkerd.cluster.local/store-pos"
-[store] export LINKERD2_PROXY_IDENTITY_SERVER_NAME="store-pos.cluster.local"
+[store] export LINKERD2_PROXY_IDENTITY_SERVER_ID="spiffe://root.linkerd.cluster.local/store/042/inventory-sync"
+[store] export LINKERD2_PROXY_IDENTITY_SERVER_NAME="inventory-sync.cluster.local"
 [store] export LINKERD2_PROXY_POLICY_WORKLOAD='{"ns":"mixed-env","external_workload":"store-pos"}'
 [store] export LINKERD2_PROXY_DESTINATION_CONTEXT='{"ns":"mixed-env","nodeName":"store","external_workload":"store-pos"}'
 [store] export LINKERD2_PROXY_DESTINATION_SVC_ADDR="linkerd-dst-headless.linkerd.svc.cluster.local.:8086"
@@ -321,7 +323,9 @@ The proxy is configured entirely through environment variables:
 [store] export LINKERD2_PROXY_POLICY_SVC_NAME="linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local"
 [store] export LINKERD2_PROXY_IDENTITY_SPIRE_WORKLOAD_API_ADDRESS="unix:///tmp/spire-agent/public/api.sock"
 [store] export LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS="$(cat /opt/spire/certs/ca.crt)"
-[store] sudo -E /opt/linkerd-proxy/linkerd-proxy
+# Run the proxy as a dedicated non-root user (uid 2102), not root:
+[store] sudo useradd -r -u 2102 -s /usr/sbin/nologin linkerd-proxy
+[store] sudo -E setpriv --reuid=2102 --regid=2102 --clear-groups /opt/linkerd-proxy/linkerd-proxy
 ```
 
 What each group does:
@@ -330,9 +334,9 @@ What each group does:
   obtain and the SNI it presents. Must match the registered entry.
 - **`IDENTITY_SPIRE_WORKLOAD_API_ADDRESS`** — the key change: instead of talking to
   the in-cluster `linkerd-identity` service, the proxy fetches its SVID from the
-  **SPIRE agent's Workload API socket**. SPIRE attests the proxy (uid 0), matches the
-  registration entry, and streams it a certificate — rotating it before expiry, with
-  no restart.
+  **SPIRE agent's Workload API socket**. SPIRE attests the proxy (uid 2102 + binary
+  path), matches the registration entry, and streams it a certificate — rotating it
+  before expiry, with no restart.
 - **`IDENTITY_TRUST_ANCHORS`** — the root the proxy validates *peers* against. It's
   the same `ca.crt`, so it trusts everything else in the mesh.
 - **`DESTINATION_SVC_ADDR` / `POLICY_SVC_ADDR`** — where the proxy reaches the
@@ -343,7 +347,7 @@ What each group does:
   to those controllers: as the external workload `store-pos` in namespace
   `mixed-env`. This is why the `ExternalWorkload` (next part) must exist and match.
 
-On startup, the log line to look for is `Certified identity id=spiffe://…/store-pos`,
+On startup, the log line to look for is `Certified identity id=spiffe://…/store/042/inventory-sync`,
 which confirms SPIRE issued the SVID and the proxy has joined the mesh.
 
 ---
@@ -365,8 +369,8 @@ metadata:
     workload_name: store-pos
 spec:
   meshTLS:
-    identity: "spiffe://root.linkerd.cluster.local/store-pos"
-    serverName: "store-pos.cluster.local"
+    identity: "spiffe://root.linkerd.cluster.local/store/042/inventory-sync"
+    serverName: "inventory-sync.cluster.local"
   workloadIPs:
     - ip: "<store-host-ip>"
   ports:
@@ -399,7 +403,7 @@ displays it.
 inventory/sales model and POSTs a snapshot to the cloud's ingest endpoint every few
 seconds.
 Because it runs as `--user 1000`, its outbound POST is redirected through the proxy
-and carries the `store-pos` SVID over mTLS. It resolves
+and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
 `retail-cloud.mixed-env.svc.cluster.local` via the cluster DNS from Part 2.
 
 **`retail-cloud` (cloud, a normal meshed pod).** Listens on two ports:
@@ -436,7 +440,7 @@ kind: MeshTLSAuthentication
 metadata: { namespace: mixed-env, name: allow-store }
 spec:
   identities:
-    - "spiffe://root.linkerd.cluster.local/store-pos"
+    - "spiffe://root.linkerd.cluster.local/store/042/inventory-sync"
 ---
 # 3. Bind them: this Server requires that authentication.
 apiVersion: policy.linkerd.io/v1alpha1
@@ -478,7 +482,7 @@ Watch the identities on the wire from the cloud side:
 ```
 
 Each inbound row shows `tls=true` and
-`client_id=spiffe://root.linkerd.cluster.local/store-pos` with
+`client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync` with
 `src_external_workload=store-pos` — a workload outside Kubernetes, on another
 machine, authenticated by SPIFFE identity as it pushes. Apply the revoke patch above
 and the rows become `403`; restore it and they return to `200`. Nothing about the

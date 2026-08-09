@@ -3,6 +3,12 @@ title: Concepts
 description: How SPIFFE gives a workload a portable identity, and how authorization by identity differs from authorization by network.
 ---
 
+:::note
+This is a teaching demo. The setup is simplified for clarity, not hardened for
+production — see [Production notes](/demos/spiffe-cross-boundary/production-notes/) for
+the shortcuts it takes and what to do instead.
+:::
+
 On Kubernetes with a service mesh, workload identity is already familiar: Linkerd
 gives every pod a cryptographic identity derived from its ServiceAccount, and
 services authenticate with mutual TLS rather than trusting whatever responds at a

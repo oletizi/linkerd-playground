@@ -78,14 +78,14 @@
       <div class="eyebrow">Identity</div>
       <h2>Identity instead of location</h2>
       <p>SPIFFE gives every workload a cryptographic identity — a short-lived certificate called an SVID — inside a shared <b>trust domain</b>. The store’s service is identified by a SPIFFE ID rather than by an address:</p>
-      <div class="idbox">spiffe://root.linkerd.cluster.local/store-pos</div>
+      <div class="idbox">spiffe://root.linkerd.cluster.local/store/042/inventory-sync</div>
       <p class="note">That identity does not change with the network the workload runs on.</p>
     </div>
 
     <div class="concept">
       <div class="eyebrow">Mesh expansion</div>
       <h2>The store joins the mesh</h2>
-      <p>store-pos runs on a standalone VM, not in Kubernetes. Linkerd’s <b>mesh expansion</b> adds it to the mesh: a standalone <span class="mono">linkerd2-proxy</span> runs alongside it, and <b>SPIRE</b> issues its SVID, chained to the same trust anchor Linkerd uses inside the cluster. One trust domain then spans both machines.</p>
+      <p>store-pos runs on a standalone VM, not in Kubernetes. Linkerd’s <b>mesh expansion</b> adds it to the mesh: a standalone <span class="mono">linkerd2-proxy</span> runs alongside it, and a <b>SPIRE agent</b> — talking to the SPIRE server in the cloud — hands it an SVID chained to the same trust anchor Linkerd uses inside the cluster. One trust domain then spans both machines.</p>
     </div>
 
     <div class="concept">
@@ -109,7 +109,7 @@
       <p>In <b>Network topology</b>, find the two dashed boxes: the <b>cloud cluster</b> (machine A) and the <b>on-prem store</b> (machine B). <span class="mono">store-pos</span> runs on machine B, outside Kubernetes entirely.</p></div>
 
     <div class="step"><div class="n">2</div><h3>Read the identities</h3>
-      <p>In the top panel, read the two identities: the dashboard’s and the store’s <span class="mono">spiffe://…/store-pos</span>.</p>
+      <p>In the top panel, read the two identities: the dashboard’s and the store’s <span class="mono">spiffe://…/store/042/inventory-sync</span>.</p>
       <div class="watch">These are cryptographic identities, not IP addresses — the basis for trust.</div></div>
 
     <div class="step"><div class="n">3</div><h3>Observe the secure link</h3>
@@ -131,6 +131,7 @@
   <!-- BUILD IT -->
   <section class="tab" id="build">
     <p class="lede">Reproduce it on two Linux hosts (or VMs) that can reach each other. This is the outline; the exact scripts are in the repo.</p>
+    <p class="note">This is a teaching setup, simplified for clarity — not a production reference. See <a href="https://github.com/oletizi/linkerd-playground/blob/main/demos/spiffe-cross-boundary/PRODUCTION-NOTES.md" target="_blank" rel="noopener">PRODUCTION-NOTES.md</a> for the shortcuts it takes and what to do instead.</p>
 
     <div class="concept"><div class="eyebrow">Prerequisites</div><h2>What you need</h2>
       <ol class="plain">
@@ -150,13 +151,14 @@ linkerd install --identity-trust-anchors-file ca.crt \
     </div>
 
     <div class="concept"><div class="eyebrow">Step 2</div><h2>The store joins the mesh</h2>
-      <p>On the store host, run SPIRE rooted at that same anchor, register the workload’s identity, and run a standalone proxy beside store-pos.</p>
-<pre><span class="c"># on the store host — SPIRE server+agent use the copied ca.crt/ca.key</span>
+      <p>Run the SPIRE <b>server in the cluster</b> (the root key stays there); on the store, run only the SPIRE <b>agent</b>, enrolled with a one-time join token and a pinned trust bundle. Register the workload on the server, then run a <b>non-root</b> proxy beside store-pos.</p>
+<pre><span class="c"># on the SPIRE server (in the cluster) — the store's proxy runs as a dedicated non-root user</span>
 spire-server entry create \
-  -parentID spiffe://root.linkerd.cluster.local/agent \
-  -spiffeID spiffe://root.linkerd.cluster.local/store-pos \
-  -selector unix:uid:0
-<span class="c"># extract + run linkerd2-proxy (identity from SPIRE), set up iptables, run store-pos</span></pre>
+  -parentID spiffe://root.linkerd.cluster.local/store/042/agent \
+  -spiffeID spiffe://root.linkerd.cluster.local/store/042/inventory-sync \
+  -selector unix:uid:2102 \
+  -selector unix:path:/opt/linkerd-proxy/linkerd-proxy
+<span class="c"># on the store: enroll the agent (pinned bundle), extract + run linkerd2-proxy as uid 2102, iptables, run store-pos</span></pre>
     </div>
 
     <div class="concept"><div class="eyebrow">Step 3</div><h2>Register + authorize</h2>
@@ -165,7 +167,7 @@ spire-server entry create \
 kind: MeshTLSAuthentication
 spec:
   identities:
-    - spiffe://root.linkerd.cluster.local/store-pos</pre>
+    - spiffe://root.linkerd.cluster.local/store/042/inventory-sync</pre>
       <p class="note">Change that identity and the store’s requests receive a 403; the Void authorization button applies this same change.</p>
     </div>
 
