@@ -94,6 +94,23 @@ root as its `UpstreamAuthority` — the root key stays in the cluster the whole 
   them (as a read-only Secret) to sign the external workload's certificates. The key never
   goes to the store.
 
+The two certs have distinct jobs. The **issuer** is what `linkerd-identity` uses to sign
+**in-cluster pod** certs. The **root** is only the anchor — and it is also what the SPIRE
+server (Part 3) chains to: SPIRE is configured with the root as its **`UpstreamAuthority`**
+(SPIRE's term for a CA sitting *above* the server), so on startup it mints its **own**
+intermediate, signed by the root, and signs the external workload's SVIDs with that. SPIRE
+does **not** use the Linkerd issuer — it builds a separate, parallel intermediate. So one
+root ends up with two independent signing paths beneath it:
+
+```
+root.linkerd.cluster.local              ← trust anchor; every proxy pins this
+├── Linkerd issuer (issuer.crt)         ← linkerd-identity signs in-cluster pod certs
+└── SPIRE server CA (minted in Part 3)  ← signs the external workload's SVID
+```
+
+Both paths' leaf certs chain to the same root, so the mesh trusts them equally — that shared
+root is what lets an off-cluster identity work exactly like an in-cluster one.
+
 > **Demo shortcut:** this root is a password-less, 10-year, self-signed *software* root
 > written straight to disk — quick to generate and inspect, but with no HSM, no encryption
 > at rest, and no rotation or revocation plan. Real-world PKI keeps the root in an HSM or
