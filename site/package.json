@@ -3,11 +3,11 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "sync-manuals": "node scripts/sync-manuals.mjs",
-    "predev": "npm run sync-manuals",
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "predev": "npm run sync-docs",
     "dev": "astro dev",
     "start": "astro dev",
-    "prebuild": "npm run sync-manuals",
+    "prebuild": "npm run sync-docs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

@@ -13,6 +13,12 @@ application (`retail-cloud`) running in the cluster. The cloud service accepts t
 data only from the store's verified SPIFFE identity. The sections below build this
 configuration incrementally.
 
+> **This is a teaching demo, not a production blueprint.** It takes deliberate
+> shortcuts — starting with copying the trust domain's root key onto the store host — to
+> keep the mechanics legible in one sitting. Do not run this configuration in a real
+> environment. [Production notes](/demos/spiffe-cross-boundary/production-notes/) lists every shortcut and what to
+> do instead.
+
 > Convention: commands prefixed `[cloud]` run on the Kubernetes host; `[store]` run
 > on the external machine. The trust domain throughout is
 > `root.linkerd.cluster.local` (Linkerd's default).
