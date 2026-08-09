@@ -71,6 +71,20 @@
   .legend .sw{display:inline-block;width:22px;height:0;border-top:3px solid var(--market);vertical-align:middle;margin-right:6px}
   .legend .sw.ctrl{border-top-style:dotted;border-color:var(--muted)}
   .legend .sw.id{border-color:var(--tag)} .legend .sw.denied{border-color:var(--void)}
+  /* identity provenance ladder — node vs workload are two distinct attestations */
+  .prov{border:2px solid var(--ink);border-radius:3px;background:var(--card);margin-bottom:22px;overflow:hidden}
+  .prov .pbody{padding:4px 16px 12px}
+  .prow{display:flex;gap:11px;align-items:flex-start;padding:11px 6px;border-bottom:1px dashed var(--line)}
+  .prow:last-child{border-bottom:0}
+  .prow .ck{color:var(--market);font-weight:800;width:14px;flex:none;text-align:center}
+  .prow.denied .ck{color:var(--void)}
+  .prow .bd{flex:1;min-width:0}
+  .prow .tier{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .prow .lyr{font-family:"Bricolage Grotesque";font-weight:700;font-size:13.5px}
+  .prow .val{font-size:12.5px;margin-top:2px;word-break:break-all}
+  .prow .val.mono{font-family:"Spline Sans Mono";color:var(--market-d)}
+  .prow .note{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .prow.idlayer{background:rgba(26,107,74,.05);border-left:3px solid var(--market)}
 </style>
 </head>
 <body>
@@ -89,6 +103,10 @@
     </div>
     <div class="verdict" id="verdict"><span class="mark">…</span><span id="vtext">Connecting to the store…</span></div>
   </div>
+  <section class="prov">
+    <div class="phead"><h2>Identity provenance</h2><span class="src mono">store #042</span></div>
+    <div class="pbody" id="provbody"></div>
+  </section>
   <div class="ops">
     <button id="revoke" class="void">Void authorization</button>
     <button id="restore" class="restore" style="display:none">Reinstate authorization</button>
@@ -132,6 +150,24 @@
   function renderSales(sales){
     $('rlist').innerHTML=sales.map(s=>`<div class="r"><div><div>#${s.id}</div><div class="it">${s.items}</div></div><div class="amt">${money(s.amount)}</div></div>`).join('');
   }
+  function prow(cls,tier,layer,valHtml,note){
+    const ck = cls.indexOf('denied')>=0 ? '✕' : '✓';
+    return `<div class="prow ${cls}"><div class="ck">${ck}</div><div class="bd">`
+      + (tier?`<div class="tier">${tier}</div>`:'')
+      + `<div class="lyr">${layer}</div><div class="val">${valHtml}</div>`
+      + (note?`<div class="note">${note}</div>`:'') + `</div></div>`;
+  }
+  function renderProvenance(d){
+    const e=d.enrollment||{}, sid=(d.identities&&d.identities.store)||'', voided=d.voided;
+    $('provbody').innerHTML =
+      prow('idlayer','Node attestation','Node enrollment','Enrolled with a '+(e.method||'one-time token'),
+           'Production: '+(e.production||'device-bound identity (TPM or enterprise PKI)')) +
+      prow('idlayer','Workload attestation','Workload identity','<span class="mono">'+sid+'</span>',
+           'held by the '+(e.heldBy||'local Linkerd proxy')) +
+      prow(voided?'conn denied':'conn','','Connection',
+           voided?'denied — this identity is not authorized (403)':'mTLS authenticated','') +
+      prow('svc','','Cloud service','inventory ingest','');
+  }
   function setState(d){
     const voided=d.voided, reporting=d.reporting;
     b.classList.toggle('void',voided);
@@ -152,7 +188,7 @@
     try{
       const d=await (await fetch('/api/data')).json();
       $('cloudId').textContent=d.identities.cloud; $('storeId').textContent=d.identities.store;
-      setState(d); updateTopo(d);
+      setState(d); updateTopo(d); renderProvenance(d);
       renderInv(d.inventory||[]); renderSales(d.sales||[]);
     }catch(e){/* keep last state */}
   }
