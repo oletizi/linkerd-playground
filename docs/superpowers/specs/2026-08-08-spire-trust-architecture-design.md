@@ -1,6 +1,6 @@
 # SPIRE trust-architecture change (spiffe-cross-boundary) — design
 
-**Status:** proposed (awaiting third-party review)
+**Status:** approved for implementation (two rounds of third-party review)
 **Demo:** `demos/spiffe-cross-boundary/` (the RetailCloud demo)
 **Author:** design produced via the superpowers brainstorming flow.
 
@@ -100,10 +100,16 @@ weaknesses (as opposed to operational machinery).
 - **Edge reachability:** the server API is exposed via a **NodePort** (`:30081`); the edge
   agent dials `<cluster-node-addr>:30081`. (Reachable directly over Tailscale; not via the
   pod-CIDR route.) **Invariant (defense in depth):** `:30081` is reachable from the edge
-  over the **Tailscale path only**, not intentionally exposed on unrelated node interfaces
-  — enforced via a host firewall rule or kube-proxy `--nodeport-addresses` scoped to the
-  tailnet CIDR. The pinned bundle + join-token + root-chained server cert are the actual
-  identity boundary; interface scoping is *only* defense in depth.
+  over the **Tailscale path only**, not intentionally exposed on unrelated node
+  interfaces. **Preferred enforcement:** a **host firewall rule** on the cluster node
+  restricting TCP/30081 to the Tailscale interface — noting the rule must sit correctly
+  relative to kube-proxy's NodePort DNAT (it is *not* a naive `filter/INPUT` drop, since
+  the NodePort is DNAT'd to the pod and forwarded). Kube-proxy `nodePortAddresses` scoped
+  to the tailnet CIDR is a valid *alternative* but is **cluster-wide**, not per-Service;
+  it is appropriate here only because *every* NodePort in this demo (the dashboard
+  included) is meant to be tailnet-only. The pinned bundle, join-token attestation, and
+  SPIRE server certificate chain provide the **actual authentication**; interface scoping
+  is *only* defense in depth.
 - **Bootstrap:** the agent pins the server's trust bundle (`trust_bundle_path`);
   `insecure_bootstrap` is **removed** (defaults false).
 - **Workload attestation:** the proxy runs as a dedicated **non-root user (uid 2102**, the
@@ -144,7 +150,7 @@ weaknesses (as opposed to operational machinery).
   ServiceAccount with `automountServiceAccountToken: false` (join-token attestation needs
   no Kubernetes API); no extra RBAC; everything confined to the `spire` namespace.
 - `Service/spire-server` — type **NodePort**, `8081 → 30081`, scoped to the tailnet per
-  the reachability invariant above (host firewall / kube-proxy `--nodeport-addresses`).
+  the reachability invariant above (**preferred:** host firewall on the node).
 - Registration workflow via `kubectl -n spire exec`:
   - `bundle show` → the pinned bootstrap bundle for the edge.
   - `token generate -spiffeID …/store/042/agent` → the enrollment token.
@@ -157,9 +163,17 @@ weaknesses (as opposed to operational machinery).
   **Remove** the SPIRE server (binary/config/process).
 - `agent.cfg`: `server_address = <cluster-node-addr>`, `server_port = 30081`,
   `trust_bundle_path = /opt/spire/certs/bundle.pem`, `NodeAttestor "join_token"`,
-  `KeyManager "disk"`, and
-  `WorkloadAttestor "unix" { plugin_data { discover_workload_path = true, workload_size_limit = -1 } }`.
-  No `insecure_bootstrap`.
+  `KeyManager "disk"`, **no** `insecure_bootstrap`, and the unix workload attestor with
+  path discovery enabled (block-style HCL, as it appears in `agent.cfg`):
+
+  ```hcl
+  WorkloadAttestor "unix" {
+      plugin_data {
+          discover_workload_path = true
+          workload_size_limit    = -1
+      }
+  }
+  ```
 - Create user `linkerd-proxy` (uid 2102). `run-proxy.sh` launches the proxy **as 2102**
   (not root). The proxy reads the public Workload API socket; the `unix` attestor sees
   uid 2102 + the proxy binary path and matches the entry.
@@ -307,3 +321,9 @@ per the review).
   `automountServiceAccountToken: false`, no extra RBAC); "held by the local Linkerd proxy"
   in the UI; strengthen the edge-intermediate rejection (leaves signing material on the
   less-trusted host regardless of the path-length issue).
+- **Third-party design review (round 2, "approve with two corrections")** folded in:
+  prefer a host firewall for the NodePort restriction (kube-proxy `nodePortAddresses` is
+  cluster-wide, not per-Service; noted it fits this demo only because all NodePorts are
+  tailnet-only, and the host-firewall rule must sit relative to kube-proxy's DNAT); write
+  the unix workload attestor as block-style HCL; "actual authentication" rather than
+  "identity boundary" (server auth + node attestation + workload attestation are distinct).
