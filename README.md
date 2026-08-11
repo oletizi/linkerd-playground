@@ -17,3 +17,7 @@ just demo spiffe-cross-boundary status  # run a demo target
 ```
 
 Each demo is self-contained under `demos/<name>/` with its own README.
+
+---
+
+_Made with [Claude Code](https://claude.com/claude-code)._
