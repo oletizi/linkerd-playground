@@ -203,3 +203,7 @@ practice that should replace it.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).
+
+---
+
+_Made with [Claude Code](https://claude.com/claude-code)._

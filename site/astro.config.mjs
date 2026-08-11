@@ -11,6 +11,10 @@ export default defineConfig({
 			title: 'linkerd-playground',
 			description:
 				'Hands-on demos exploring Linkerd, service-mesh identity, and cross-infrastructure trust.',
+			components: {
+				// Site-wide footer override — appends a "Made with Claude Code" line.
+				Footer: './src/components/Footer.astro',
+			},
 			customCss: [
 				// Self-hosted faces (bundled at build — no runtime font CDN).
 				'@fontsource/space-grotesk/500.css',
