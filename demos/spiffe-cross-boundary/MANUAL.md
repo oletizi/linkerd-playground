@@ -647,3 +647,7 @@ which identity was allowed.
 
 The final row is the purpose of the setup: when identity is portable and
 cryptographic, authorization is defined in terms of workloads rather than networks.
+
+---
+
+_Made with [Claude Code](https://claude.com/claude-code)._
