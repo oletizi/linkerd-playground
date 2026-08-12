@@ -146,9 +146,15 @@ Each block runs **on the box named in its heading**. Shown here driven over ssh
 from your host, with `S` as a shorthand:
 
 ```bash
-S="ssh -F ~/.ssh/linkerd-playground.conf"
-D=~/linkerd-playground/demos/spiffe-cross-boundary
+S="ssh -F $HOME/.ssh/linkerd-playground.conf"
+D='~/linkerd-playground/demos/spiffe-cross-boundary'
 ```
+
+> Copy those two lines exactly, tildes and quotes included. `$HOME` in `S`
+> because a `~` inside double quotes is never expanded — `ssh` would take it
+> literally and fail with `Can't open user config file`. `D` is single-quoted for
+> the opposite reason: it must reach the **guest** shell unexpanded, since your
+> home on the host is not `demo`'s home in the VM.
 
 ### Box A — Kubernetes cluster
 
@@ -211,7 +217,7 @@ deploys the `retail-cloud` app, and applies the authorization policy.
 > pushing. The `ExternalWorkload` itself is **not** required for the push path —
 > the store's identity comes from SPIRE and the policy matches the SPIFFE ID
 > directly, so pushes are authorized even with no `ExternalWorkload` present. It is
-> what lets the mesh reach the store *as a server* (the appendix's beat3).
+> what lets the mesh reach the store *as a server*.
 
 ```bash
 $S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
@@ -300,22 +306,6 @@ just demo spiffe-cross-boundary down     # destroys both VMs and their disks
 If you ran the boxes on hardware instead: Box A `k3s-uninstall.sh`; Box B remove
 the `PROXY_APP_OUTPUT` iptables chain, `/opt/spire`, `/opt/linkerd-proxy`, the
 `store-pos` container and `/etc/systemd/resolved.conf.d/cluster.conf`.
-
-## Appendix — the original CLI beats (abstract variant)
-
-Before RetailCloud, this demo proved the same mechanics at the CLI with a plain
-`echo` server and an `edge-echo` identity, in four "beats" (cross-boundary mTLS,
-edge-as-client, identity authz 200→403, and authorized mTLS to the edge). Those
-scripts still live here: `cluster/echo.yaml`, `cluster/apply-echo.sh`,
-`cluster/externalworkload.yaml`, `cluster/authz*.yaml`, `edge/run-app.sh`, and
-`scripts/beat*.sh` (`just demo spiffe-cross-boundary beat1|beat2|beat3`).
-
-They use the **`edge-echo`** identity rather than `store-pos`, so to run them set the
-three identity vars in `config.local.env` back to the `edge-echo` values
-(`EDGE_WORKLOAD_NAME=edge-echo`, `EDGE_SPIFFE_ID=spiffe://…/edge-echo`,
-`EDGE_SERVER_NAME=edge-echo.cluster.local`) and use `apply-echo.sh` +
-`apply-externalworkload.sh` instead of `store-pos` + `cluster/retail/apply.sh`.
-RetailCloud and the beats share one edge proxy (one identity), so run one or the other.
 
 ## Scope — this is a teaching demo
 

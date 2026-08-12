@@ -10,9 +10,8 @@ DEMO="$(cd "$HERE/../.." && pwd)"
 export PATH="${HOME}/.linkerd2/bin:${PATH}"
 
 echo "== namespace =="
-# Nothing else in the RetailCloud path creates this. It is defined only in
-# cluster/echo.yaml, which belongs to the appendix "CLI beats" path, so a reader
-# following the README straight through lands here with no namespace at all.
+# Nothing else creates this namespace, so a reader following the README straight
+# through lands here without one.
 # The inject annotation is not optional: without it retail-cloud runs UNMESHED,
 # so there is no mTLS, the authorization policy has no identity to match, and the
 # Void button demonstrates nothing -- all silently.
@@ -45,7 +44,7 @@ kubectl apply -f "$HERE/authz.yaml"
 kubectl -n mixed-env rollout restart deploy/retail-cloud
 kubectl -n mixed-env rollout status deploy/retail-cloud --timeout=120s
 
-echo "== expose on the node (tailnet-reachable) =="
+echo "== expose the dashboard on the node =="
 kubectl -n mixed-env delete svc retail-cloud-lan --ignore-not-found >/dev/null 2>&1
 kubectl -n mixed-env expose deployment retail-cloud --name=retail-cloud-lan --type=NodePort --port=8080 --target-port=8080 >/dev/null
 kubectl -n mixed-env patch svc retail-cloud-lan --type=json \
