@@ -6,6 +6,9 @@ SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$(uname -s)" = "Linux" ]; then
   # shellcheck source=/dev/null
   . "$SCRIPTS/lib-libvirt.sh"
+  # Without this, a permission error from virsh makes vm_exists return false and
+  # we would cheerfully report "not defined" for VMs that are in fact running.
+  preflight
   for vm in "$CLUSTER_VM" "$EDGE_VM"; do
     if vm_exists "$vm"; then
       log "destroying $vm"
