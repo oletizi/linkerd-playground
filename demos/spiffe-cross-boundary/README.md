@@ -1,4 +1,4 @@
-# spiffe-cross-boundary — RetailCloud
+# Onboarding an external workload into a Linkerd mesh with SPIFFE
 
 This demo shows how Linkerd uses **SPIFFE** and **SPIRE** to onboard a workload that does not
 run in Kubernetes into the mesh. In the cluster, a pod's identity comes from its Kubernetes
