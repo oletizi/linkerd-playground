@@ -3,6 +3,9 @@
 A collection of hands-on demos exploring Linkerd, service-mesh identity, and
 cross-infrastructure trust.
 
+> **Made with [Claude Code](https://claude.com/claude-code).** These demos and their
+> documentation were built with Anthropic's agentic coding tool.
+
 ## Demos
 
 | Demo | What it shows |
@@ -17,7 +20,3 @@ just demo spiffe-cross-boundary status  # run a demo target
 ```
 
 Each demo is self-contained under `demos/<name>/` with its own README.
-
----
-
-_Made with [Claude Code](https://claude.com/claude-code)._
