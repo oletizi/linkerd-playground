@@ -10,6 +10,11 @@ if ! command -v linkerd >/dev/null 2>&1; then
   curl -sL https://run.linkerd.io/install-edge | LINKERD2_VERSION="${LINKERD_EDGE_VERSION}" sh
 fi
 export PATH="${HOME}/.linkerd2/bin:${PATH}"
+# The installer drops the CLI in ~/.linkerd2/bin, which no shell has on its PATH
+# -- not an interactive login, and not `ssh host '<command>'` either. Symlink it
+# next to k3s's kubectl so the `linkerd ...` commands in the README work as
+# written, however you reach the box.
+sudo ln -sf "${HOME}/.linkerd2/bin/linkerd" /usr/local/bin/linkerd
 
 # Linkerd requires the Gateway API CRDs to be present before install.
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml

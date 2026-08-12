@@ -14,11 +14,3 @@ edge-up:
     bash scripts/edge-up.sh
 down:
     bash scripts/down.sh
-
-# --- beats (Phase 5) ---
-beat1:
-    bash scripts/beat1-verify.sh
-beat2:
-    bash scripts/beat2-authz.sh
-beat3:
-    bash scripts/beat3-to-edge.sh

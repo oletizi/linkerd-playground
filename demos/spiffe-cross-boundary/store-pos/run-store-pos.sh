@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # bare-metal Linux edge, APP_UID has to move off the default 1000, because that
 # is the primary human user's uid and their whole egress would be redirected.
 APP_UID="${APP_UID:-1000}"
-sudo docker rm -f store-pos edge-echo 2>/dev/null || true
+sudo docker rm -f store-pos 2>/dev/null || true
 sudo docker run -d --name store-pos --restart=unless-stopped --network host --user "${APP_UID}:${APP_UID}" \
   -e STORE_ID=042 \
   -e INGEST_URL="http://retail-cloud.mixed-env.svc.cluster.local:8090/ingest" \
