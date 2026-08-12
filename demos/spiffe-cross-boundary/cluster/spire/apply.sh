@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs INSIDE the cluster VM. Deploys the in-cluster SPIRE server: the Linkerd root
 # (ca.crt+ca.key) as a read-only Secret, server.cfg as a ConfigMap, the StatefulSet +
-# NodePort Service, and the tailnet firewall on the NodePort. Then registers the
-# workload entry, exports the trust bundle, and mints a one-time join token.
+# NodePort Service, and a firewall on the NodePort. Then registers the workload
+# entry, exports the trust bundle, and mints a one-time join token.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMO="$(cd "$HERE/../.." && pwd)"
@@ -31,7 +31,7 @@ kubectl -n spire create configmap spire-server-config \
 kubectl -n spire rollout status statefulset/spire-server --timeout=180s
 
 bash "$HERE/firewall.sh"
-echo "spire server ready; NodePort 30081 (tailnet only)"
+echo "spire server ready; NodePort ${SPIRE_SERVER_PORT}"
 
 # --- registration + bootstrap material (consumed by the edge agent) ---
 SP="kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server"
