@@ -39,8 +39,7 @@ both identities remain on screen.
 
 | | Box A — Kubernetes cluster | Box B — on-prem store |
 |---|---|---|
-| Physical | one machine | a **different** machine |
-| VM (Lima, optional) | `linkerd-cluster` | `linkerd-edge` |
+| Recommended setup | a local VM (`linkerd-cluster`, `192.168.122.10`) | a **separate** local VM (`linkerd-edge`, `192.168.122.11`) |
 | Runs | k3s + Linkerd + viz + trust anchor + **SPIRE server** + **`retail-cloud`** app | **SPIRE agent** + `linkerd2-proxy` (non-root) + **`store-pos`** service |
 
 The **SPIRE server runs in the cluster** — the root key never leaves it. The store runs
@@ -54,127 +53,245 @@ identity, and the Void button patches the policy.
 
 ## Prerequisites
 
-- **Two Linux hosts** (bare metal, VMs, or [Lima](https://lima-vm.io) VMs) that can
-  reach each other by any means you already run.
-- Checkout of this repo on both; a `config.local.env` in this directory on both:
+The demo assumes two Linux hosts that can reach each other at L3. The **recommended
+and verified setup is one Linux host running both as local VMs**, which the repo
+provisions for you.
+
+- One Linux host with KVM (Ubuntu 26.04 verified), ~10 GiB free RAM and ~30 GiB disk.
+- A checkout of this repo, and [`just`](https://github.com/casey/just).
 
 ```bash
-cp config.example.env config.local.env
-# then edit:
-CLUSTER_NODE_ADDR=<address the store uses to reach the cluster>
-EDGE_ADDR=<address the cluster uses to reach the store>
+cd <repo>
+cp demos/spiffe-cross-boundary/config.example.env demos/spiffe-cross-boundary/config.local.env
+just demo spiffe-cross-boundary host-setup     # one time; installs libvirt, needs sudo
 ```
 
-`config.example.env` defaults to the RetailCloud (`store-pos`) identity; everything
-else (VM sizing, CIDRs, Linkerd version) has working defaults.
+> **Log out and log back in before continuing.** `host-setup` adds you to the
+> `libvirt` group, and group membership only applies to a **new login session** —
+> a new terminal window is not enough. Until you do, every command fails with
+> `Permission denied` on `/var/run/libvirt/libvirt-sock`. Verify with
+> `virsh -c qemu:///system list --all`.
 
-> Scripts under `cluster/`, `edge/`, `net/`, `store-pos/` run **inside** the
-> respective host/VM. With Lima, copy the repo into the guest first
-> (`tar -C <repo> -czf - . | limactl shell <vm> -- bash -c 'mkdir -p ~/linkerd-playground && tar -C ~/linkerd-playground -xzf -'`)
-> and invoke as `limactl shell <vm> -- bash ~/linkerd-playground/demos/spiffe-cross-boundary/<script>`.
-> Paths below are abbreviated `<demo>/`.
+Then bring up both boxes:
 
-## Connectivity (a precondition — bring your own)
+```bash
+just demo spiffe-cross-boundary cluster-up     # Box A at 192.168.122.10
+just demo spiffe-cross-boundary edge-up        # Box B at 192.168.122.11
+```
 
-The playground **does not provision or prescribe a network**. It needs only that
-the two machines already reach each other at L3, and it adds the minimal generic
+Each creates a libvirt VM on `virbr0` pinned to a fixed address by DHCP
+reservation, waits for cloud-init, copies this repo into the guest, and writes
+`~/.ssh/linkerd-playground.conf`. The first run downloads an Ubuntu cloud image
+(~600 MB) into `~/.cache/linkerd-playground`. No editing of `config.local.env` is
+needed — its defaults are the addresses these two commands assign.
+
+Reach either box with that generated config:
+
+```bash
+ssh -F ~/.ssh/linkerd-playground.conf linkerd-cluster '<command>'
+ssh -F ~/.ssh/linkerd-playground.conf linkerd-edge    '<command>'
+```
+
+**Running it somewhere else** — two physical machines, or macOS — is supported but
+not the verified path: see [Other topologies](#other-topologies) below, and set
+`CLUSTER_NODE_ADDR`/`EDGE_ADDR` in `config.local.env` to those boxes' real
+addresses. Both boxes need the **whole repo** (every script sources
+`lib/common.sh` from the repo root) and the same `config.local.env`.
+
+> **`APP_UID` on a bare-metal edge.** `edge/iptables.sh` redirects all outbound TCP
+> from `APP_UID` (default `1000`) through the proxy. On most Linux installs uid 1000
+> is the primary human user, so if Box B is a machine you care about, set `APP_UID`
+> to an unused uid first. The provisioned VMs are throwaway, so they leave it alone.
+
+Scripts under `cluster/`, `edge/`, `net/`, `store-pos/` run **on the box they name**.
+Paths below are abbreviated `<demo>/` = `~/linkerd-playground/demos/spiffe-cross-boundary`
+(where `cluster-up`/`edge-up` put the repo inside each guest).
+
+## Connectivity
+
+The demo needs the two boxes to reach each other at L3, plus the minimal generic
 plumbing Linkerd's data plane requires:
 
 - the edge reaches the cluster **pod + service CIDRs** (`10.42.0.0/16`, `10.43.0.0/16`), and
 - the edge resolves `*.cluster.local` via CoreDNS.
 
-`net/shim.sh` does both: on a flat LAN it installs a static route via
-`CLUSTER_NODE_ADDR` and points cluster DNS at CoreDNS; it detects routes an overlay
-already provides and only fills in what's missing. For machines not on the same LAN,
-an optional overlay recipe is in [`connectivity-tailscale.md`](connectivity-tailscale.md)
-(strictly optional; the demo doesn't depend on it).
+In the recommended setup the first part is handled for you: both VMs sit on
+libvirt's `virbr0`, a real host bridge, so VM↔VM and host↔VM are ordinary kernel
+routing with no overlay. `net/shim.sh` (a Box B step below) adds the second part —
+a static route for the two CIDRs via `CLUSTER_NODE_ADDR` and a resolver entry
+pointing `*.cluster.local` at CoreDNS. It detects routes an overlay already
+provides and only fills in what's missing.
+
+On any other topology, L3 reachability between the boxes is **yours to provide**;
+the playground does not prescribe a network. For machines not on the same LAN, an
+optional overlay recipe is in
+[`connectivity-tailscale.md`](connectivity-tailscale.md) (strictly optional; the
+demo doesn't depend on it).
 
 ## Build it
 
-The steps below use the repo's scripts. To understand every piece instead — each
-config file and command, with the *why* behind them — follow the from-scratch
-manual: [`MANUAL.md`](MANUAL.md).
+The steps below use the repo's scripts and are the **verified path**. To understand
+every piece instead — each config file and command, with the *why* behind them —
+follow the from-scratch manual: [`MANUAL.md`](MANUAL.md).
+
+Each block runs **on the box named in its heading**. Shown here driven over ssh
+from your host, with `S` as a shorthand:
+
+```bash
+S="ssh -F ~/.ssh/linkerd-playground.conf"
+D=~/linkerd-playground/demos/spiffe-cross-boundary
+```
 
 ### Box A — Kubernetes cluster
 
 ```bash
-just demo spiffe-cross-boundary cluster-up          # (Lima) create the linkerd-cluster VM
-limactl shell linkerd-cluster -- bash <demo>/cluster/gen-certs.sh        # trust anchor + issuer
-limactl shell linkerd-cluster -- bash <demo>/cluster/install-k3s.sh
-limactl shell linkerd-cluster -- bash <demo>/cluster/install-linkerd.sh  # + Gateway API CRDs + viz
+$S linkerd-cluster "bash $D/cluster/gen-certs.sh"        # trust anchor + issuer
+$S linkerd-cluster "bash $D/cluster/install-k3s.sh"      # prints the kube-dns ClusterIP
+$S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + viz; ends with `linkerd check`
 ```
 
-Confirm the printed `kube-dns` ClusterIP matches `COREDNS_ADDR` (default `10.43.0.10`).
+`install-k3s.sh` ends by printing the `kube-dns` ClusterIP — confirm it matches
+`COREDNS_ADDR` (default `10.43.0.10`). `install-linkerd.sh` ends with
+`Status check results are √`.
 
 ### Box A → deploy the SPIRE server (root stays in the cluster)
 
 ```bash
-limactl shell linkerd-cluster -- bash <demo>/cluster/spire/apply.sh   # StatefulSet + NodePort + register; prints a join token
+$S linkerd-cluster "bash $D/cluster/spire/apply.sh"   # StatefulSet + NodePort + register; prints a join token
 ```
 
-`apply.sh` mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
-registers the store's workload identity (selectors `unix:uid:2102` + the proxy path), and
-prints a one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`). Copy only
-the bundle and the public root cert to the store — the root **key** never leaves the
-cluster:
+It mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
+registers the store's workload identity (selectors `unix:uid:2102` + the proxy
+path), restricts the SPIRE NodePort to the interface the edge reaches this host on
+(derived from `EDGE_ADDR`; override with `SPIRE_NODEPORT_IFACE`), and prints a
+one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`).
+
+Copy only the bundle and the public root cert to the store — the root **key** never
+leaves the cluster. The two boxes have no SSH access to each other, so relay
+through your host:
 
 ```bash
-limactl shell linkerd-cluster -- cat spire-bundle.pem > /tmp/bundle.pem
-limactl shell linkerd-cluster -- cat linkerd-certs/ca.crt > /tmp/ca.crt
-limactl shell linkerd-edge -- sudo mkdir -p /opt/spire/certs
-cat /tmp/bundle.pem | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/bundle.pem >/dev/null
-cat /tmp/ca.crt    | limactl shell linkerd-edge -- sudo tee /opt/spire/certs/ca.crt    >/dev/null
+$S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
+$S linkerd-cluster 'cat ~/spire-bundle.pem'      | $S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
+$S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | $S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
 ```
 
 ### Box B — on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
-just demo spiffe-cross-boundary edge-up
-limactl shell linkerd-edge -- bash <demo>/net/shim.sh
-limactl shell linkerd-edge -- bash <demo>/edge/install-spire-agent.sh <join-token>   # agent-only; pinned bundle
-limactl shell linkerd-edge -- bash <demo>/edge/extract-proxy.sh
-limactl shell linkerd-edge -- bash <demo>/edge/iptables.sh
-limactl shell linkerd-edge -- bash <demo>/store-pos/run-store-pos.sh     # the POS — pushes to the cloud
+$S linkerd-edge "bash $D/net/shim.sh"
+$S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"   # agent-only; pinned bundle
+$S linkerd-edge "bash $D/edge/extract-proxy.sh"
+$S linkerd-edge "bash $D/edge/iptables.sh"
+$S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
 ```
+
+`install-spire-agent.sh` ends with `Agent is healthy.` `extract-proxy.sh` ends by
+running the proxy binary once, which exits with `Invalid configuration: no
+destination service configured` — that is expected; it is just a version check.
+
+`store-pos` will log `push error: ENOTFOUND` until the next step creates the
+`retail-cloud` Service. That is expected.
 
 ### Box A → deploy RetailCloud, THEN Box B → start the proxy
 
-The proxy fetches its inbound policy from the cluster, so the `ExternalWorkload`
-must exist before it starts. `cluster/retail/apply.sh` registers `store-pos` (and
-marks it Ready), deploys the `retail-cloud` app, and applies the authorization
-policy.
+`cluster/retail/apply.sh` creates the `mixed-env` namespace (annotated for
+injection), registers `store-pos` as an `ExternalWorkload` (and marks it Ready),
+deploys the `retail-cloud` app, and applies the authorization policy.
+
+> Do Box A first, so the `retail-cloud` Service exists when the store starts
+> pushing. The `ExternalWorkload` itself is **not** required for the push path —
+> the store's identity comes from SPIRE and the policy matches the SPIFFE ID
+> directly, so pushes are authorized even with no `ExternalWorkload` present. It is
+> what lets the mesh reach the store *as a server* (the appendix's beat3).
 
 ```bash
-# Box A:
-limactl shell linkerd-cluster -- bash <demo>/cluster/retail/apply.sh   # prints the dashboard URL
-# Box B:
-limactl shell linkerd-edge -- bash <demo>/edge/run-proxy.sh
+$S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
+$S linkerd-edge    "bash $D/edge/run-proxy.sh"
 ```
 
-Open `http://<CLUSTER_NODE_ADDR>:30080/` — the store is now pushing its inventory
-and sales to the cloud over the mesh. Click **Void authorization** to watch
-identity-based authz refuse the store's pushes for real.
+`run-proxy.sh` confirms the identity it received:
+
+```
+proxy has identity (uid 2102)
+```
+
+Open **`http://192.168.122.10:30080/`** — the store is now pushing its inventory
+and sales to the cloud over the mesh, and
+
+```bash
+$S linkerd-edge 'sudo docker logs -f store-pos'
+```
+
+shows `push -> 200`. Click **Void authorization** to watch identity-based authz
+refuse the store's pushes for real (`push -> 403 (authorization voided by cloud)`).
 
 ## Inspect the traffic
 
 The dashboard is a wrapper; the CLI shows the same facts directly. On the cluster, tap
-the traffic while the dashboard polls:
+the traffic while the dashboard polls. **`-o wide` is required** — the default output
+stops at `tls=true` and shows no identity:
 
 ```bash
-linkerd -n mixed-env viz tap deploy/retail-cloud
+linkerd -n mixed-env viz tap deploy/retail-cloud -o wide
 ```
 
-Each inbound row shows `tls=true` and `client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync`
-(with `src_external_workload=store-pos`) — a workload outside Kubernetes, on another
-machine, authenticated by SPIFFE identity as it pushes. Click **Void** and the
-store's pushes become 403; `linkerd viz stat` shows them fail. Nothing about the
-network changed — only the allowed identity.
+```
+req id=1:0 proxy=in src=<edge-addr>:47914 dst=10.42.0.15:8090 tls=true
+  :method=POST :path=/ingest
+  src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+  src_tls=true dst_authz_kind=authorizationpolicy dst_authz_name=ingest-allow-store
+```
+
+`src_client_id` is the whole point — a workload outside Kubernetes, on another
+machine, authenticated by SPIFFE identity as it pushes; `dst_authz_name` names the
+policy that admitted it. Click **Void** and the store's pushes become 403;
+`linkerd viz stat` shows them fail. Nothing about the network changed — only the
+allowed identity.
+
+## Other topologies
+
+Everything below works but is **not** the verified path. Only the Linux
+single-host setup above is tested end to end; if one of these breaks, please file
+an issue.
+
+**Two physical Linux hosts.** Skip `host-setup`/`cluster-up`/`edge-up` entirely.
+Put the repo and a matching `config.local.env` on both, set `CLUSTER_NODE_ADDR`
+and `EDGE_ADDR` to their real addresses, and run the **Build it** steps on each
+box directly (`bash <demo>/cluster/gen-certs.sh`, etc.). Mind `APP_UID` on Box B.
+
+**macOS — Lima.** `cluster-up`/`edge-up` fall back to Lima off Linux. The stock
+Lima network gives every VM the same address, so attach one that allows VM-to-VM —
+`limactl edit <vm> --network lima:user-v2`, while stopped — then copy the **repo
+root** into each guest:
+
+```bash
+tar --exclude=.git -C <repo> -czf - . \
+  | limactl shell <vm> -- bash -c 'mkdir -p ~/linkerd-playground && tar -C ~/linkerd-playground -xzf -'
+limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-boundary/<script>'
+```
+
+> Quote the path as shown. Written unquoted, `~` expands on the **host**, and the
+> guest home is never the host's — the guest then gets a path that doesn't exist.
+
+**Lima on Linux is not recommended.** Its only VM-to-VM network (`user-v2`) rides
+a QEMU socket netdev that aborts the VM under sustained download load
+(`net_fill_rstate: Assertion 'size == 0' failed`), which the Linkerd install
+reliably triggers. See [`runlog-linux.md`](runlog-linux.md) F4b. This is why the
+Linux path uses libvirt.
+
+**Across networks / NAT.** An optional Tailscale overlay recipe is in
+[`connectivity-tailscale.md`](connectivity-tailscale.md).
 
 ## Teardown
 
 ```bash
-just demo spiffe-cross-boundary down     # on each box
+just demo spiffe-cross-boundary down     # destroys both VMs and their disks
 ```
+
+If you ran the boxes on hardware instead: Box A `k3s-uninstall.sh`; Box B remove
+the `PROXY_APP_OUTPUT` iptables chain, `/opt/spire`, `/opt/linkerd-proxy`, the
+`store-pos` container and `/etc/systemd/resolved.conf.d/cluster.conf`.
 
 ## Appendix — the original CLI beats (abstract variant)
 
@@ -195,14 +312,18 @@ RetailCloud and the beats share one edge proxy (one identity), so run one or the
 ## Scope — this is a teaching demo
 
 Built for explanatory clarity, not production practice. It takes deliberate shortcuts —
-the app holding RBAC to change its own policy, `join_token` attestation, processes run without supervision,
-the app holding RBAC to change its own policy, and more.
+the app holding RBAC to change its own policy, `join_token` attestation, processes run
+without supervision, and more.
 [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) catalogues each shortcut and the production
 practice that should replace it.
 
-- **Verified end-to-end on Lima/Apple-Silicon (arm64)** over the optional overlay recipe;
-  the default LAN path uses the same `net/shim.sh` mechanism. Other providers/arches are
-  config-driven and arch-aware but not independently verified.
+- **Verified end-to-end on Linux/x86_64**: an Ubuntu 26.04 host running both boxes
+  as libvirt VMs (Ubuntu 24.04 guests) on the static-route path — the setup this
+  README describes, built from scratch with these scripts. See
+  [`runlog-linux.md`](runlog-linux.md). Also verified on **Lima/Apple-Silicon
+  (arm64)** over the optional Tailscale overlay, following `MANUAL.md` by hand —
+  see [`runlog.md`](runlog.md). Other topologies are config-driven and arch-aware
+  but not independently verified.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).

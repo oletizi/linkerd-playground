@@ -4,7 +4,10 @@ set shell := ["bash", "-cu"]
 status:
     bash scripts/status.sh
 
-# --- provisioning (Task 4) ---
+# --- provisioning ---
+# One-time, needs root; then log out and back in (Linux/libvirt only)
+host-setup:
+    sudo bash scripts/host-setup.sh
 cluster-up:
     bash scripts/cluster-up.sh
 edge-up:
