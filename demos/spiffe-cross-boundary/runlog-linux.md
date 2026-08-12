@@ -19,9 +19,22 @@ macOS too and were simply masked by the first pass's method.
 - Host: Ubuntu 26.04 LTS, x86_64, 8 cores, 15.4 GiB RAM. KVM available (an ACL
   grants `orion` rw on `/dev/kvm`; the user is *not* in the `kvm` group). No
   passwordless sudo on the host.
-- Substrate: Lima 2.2.0 driving QEMU/KVM (not macOS `vz`), Ubuntu 24.04 cloud
-  image, guest arch x86_64. Host tooling installed per F2.
+- Substrate, first attempt: Lima 2.2.0 driving QEMU/KVM (not macOS `vz`), Ubuntu
+  24.04 cloud image, guest arch x86_64. Host tooling installed per F2.
+  **Abandoned** — see F4b: Lima's only VM-to-VM option on Linux repeatedly crashed
+  QEMU under download load.
+- Substrate, second attempt (the one that carried the run): two **libvirt/KVM**
+  VMs on the default `virbr0` bridge, same Ubuntu 24.04 cloud image, static
+  addresses `192.168.122.10` (cluster) and `192.168.122.11` (edge). virbr0 is a
+  real host bridge with a tap device per VM, so both directions route natively
+  with no overlay — and the QEMU socket-netdev code that aborts under Lima is
+  never reached.
 - Started: 2026-08-12.
+
+> **On substrate choice.** Ubuntu 24.04 is the image the repo itself pins in both
+> Lima provisioners, kept here for parity with the macOS pass. It is an LTS, in
+> standard support until 2029 — but the pin is two years old and worth revisiting
+> as maintenance.
 
 ## F1 [BUG, platform-independent] `just demo spiffe-cross-boundary cluster-up` fails
 
@@ -258,4 +271,42 @@ to nothing else and the collision cannot occur.
 
 `APP_UID` is already configurable in `config.local.env`; the gap is that nothing
 warns a Linux user to change it, and 1000 is the worst possible default there.
-To re-confirm on the edge VM (where the rule actually gets installed).
+
+## F5b [BUG, platform-independent] changing `APP_UID` silently breaks the demo
+
+Discovered while preparing the fix for F5. `APP_UID` is only half-honoured:
+
+- `edge/iptables.sh` reads `APP_UID="${APP_UID:-1000}"` and redirects that uid;
+- `store-pos/run-store-pos.sh` **hardcodes** `docker run … --user 1000:1000`.
+
+So the documented remedy for F5 — set `APP_UID` in `config.local.env` — makes the
+two disagree: the redirect rule targets the new uid while the container still runs
+as 1000, whose traffic is no longer redirected. `store-pos` then talks to
+`retail-cloud` without going through the proxy at all, so it has no SPIFFE
+identity and the authorization policy rejects it. The failure looks like a policy
+or identity bug, nowhere near the uid.
+
+Fix applied: `run-store-pos.sh` now sources the config and uses
+`--user "${APP_UID}:${APP_UID}"`.
+
+## F8 [BUG, platform-independent] `install-k3s.sh` races CoreDNS and exits 1
+
+The script's last two lines query the cluster immediately after the k3s installer
+returns, but CoreDNS has not been created yet:
+
+```
+NAME              STATUS     ROLES    AGE   VERSION
+linkerd-cluster   NotReady   <none>   0s    v1.36.3+k3s1
+Error from server (NotFound): services "kube-dns" not found
+```
+
+Under `set -euo pipefail` that is exit 1, so the step reports failure on a
+perfectly good install. Reproduced identically on both substrates, so it is not
+Linux-specific — just never noticed, since the macOS pass ran the manual by hand.
+
+It also breaks the README's very next instruction — *"Confirm the printed
+`kube-dns` ClusterIP matches `COREDNS_ADDR`"* — because nothing is printed. A
+follower has no way to perform the check they are told to perform. Waiting for the
+service first (`kubectl -n kube-system rollout status deploy/coredns`, or a poll)
+would fix both. Once CoreDNS settles, the value is correct: `10.43.0.10`, matching
+the stock `COREDNS_ADDR`.
