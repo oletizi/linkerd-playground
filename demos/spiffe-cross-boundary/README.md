@@ -1,5 +1,13 @@
 # spiffe-cross-boundary — RetailCloud
 
+This demo shows how Linkerd uses **SPIFFE** and **SPIRE** to onboard a workload that does not
+run in Kubernetes into the mesh. In the cluster, a pod's identity comes from its Kubernetes
+ServiceAccount; off-cluster there is no Kubernetes, so **SPIRE** issues the workload a
+cryptographic identity that chains to the same trust anchor Linkerd already uses — what Linkerd
+calls **mesh expansion**. With that identity the external process does mutual TLS and is
+authorized by *who it is* rather than its IP or network location, just like any in-cluster pod.
+The **RetailCloud** example below makes it concrete.
+
 A store's point-of-sale system (`store-pos`) runs on a machine outside Kubernetes and
 sends live inventory and sales to a cloud dashboard (`retail-cloud`). The cloud accepts
 the data based on cryptographic SPIFFE identity rather than IP or network.
