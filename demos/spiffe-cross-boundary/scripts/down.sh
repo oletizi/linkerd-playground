@@ -19,8 +19,8 @@ if [ "$(uname -s)" = "Linux" ]; then
       log "$vm not defined"
     fi
     # The seed ISO is not always caught by --remove-all-storage.
-    virsh -c qemu:///system vol-delete --pool default "${vm}-seed.iso" >/dev/null 2>&1 || true
-    virsh -c qemu:///system vol-delete --pool default "${vm}.qcow2"    >/dev/null 2>&1 || true
+    virsh -c qemu:///system vol-delete --pool "$POOL" "${vm}-seed.iso" >/dev/null 2>&1 || true
+    virsh -c qemu:///system vol-delete --pool "$POOL" "${vm}.qcow2"    >/dev/null 2>&1 || true
   done
 else
   # shellcheck source=/dev/null
