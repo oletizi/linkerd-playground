@@ -9,6 +9,16 @@ DEMO="$(cd "$HERE/../.." && pwd)"
 [ "$EDGE_ADDR" != "CHANGE_ME" ] || die "set EDGE_ADDR in config.local.env"
 export PATH="${HOME}/.linkerd2/bin:${PATH}"
 
+echo "== namespace =="
+# Nothing else in the RetailCloud path creates this. It is defined only in
+# cluster/echo.yaml, which belongs to the appendix "CLI beats" path, so a reader
+# following the README straight through lands here with no namespace at all.
+# The inject annotation is not optional: without it retail-cloud runs UNMESHED,
+# so there is no mTLS, the authorization policy has no identity to match, and the
+# Void button demonstrates nothing -- all silently.
+kubectl get namespace mixed-env >/dev/null 2>&1 || kubectl create namespace mixed-env
+kubectl annotate --overwrite namespace mixed-env linkerd.io/inject=enabled
+
 echo "== retail-cloud app code -> ConfigMap =="
 kubectl -n mixed-env create configmap retail-cloud-app \
   --from-file=server.js="$DEMO/retail-cloud/server.js" \
