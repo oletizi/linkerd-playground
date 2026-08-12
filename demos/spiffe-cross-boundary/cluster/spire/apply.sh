@@ -5,8 +5,20 @@
 # workload entry, exports the trust bundle, and mints a one-time join token.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEMO="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=/dev/null
+. "$(cd "$DEMO/../.." && pwd)/lib/common.sh"; load_config "$DEMO"
 export PATH="${HOME}/.linkerd2/bin:${PATH}"
 CERTS="${HOME}/linkerd-certs"
+
+# firewall.sh restricts the SPIRE NodePort to the interface the edge box reaches
+# this host on. Work it out from EDGE_ADDR unless the caller said otherwise, so
+# the common case needs no configuration. Falls back to firewall.sh's own default.
+if [ -z "${SPIRE_NODEPORT_IFACE:-}" ] && [ -z "${TAILSCALE_IFACE:-}" ] && [ "${EDGE_ADDR:-CHANGE_ME}" != "CHANGE_ME" ]; then
+  SPIRE_NODEPORT_IFACE="$(ip -o route get "$EDGE_ADDR" 2>/dev/null | grep -oP 'dev \K\S+' || true)"
+  [ -n "$SPIRE_NODEPORT_IFACE" ] && export SPIRE_NODEPORT_IFACE \
+    && log "SPIRE NodePort will be restricted to $SPIRE_NODEPORT_IFACE (route to EDGE_ADDR=$EDGE_ADDR)"
+fi
 [ -f "$CERTS/ca.key" ] || { echo "missing $CERTS/ca.key (run cluster/gen-certs.sh)" >&2; exit 1; }
 
 kubectl apply -f "$HERE/spire-server.yaml"     # ns/spire, SA (automount off), StatefulSet, NodePort Service
@@ -35,6 +47,6 @@ else
 fi
 
 $SP bundle show > "$HOME/spire-bundle.pem"
-echo "bundle -> $HOME/spire-bundle.pem ($(grep -c CERTIFICATE "$HOME/spire-bundle.pem") cert(s))"
+echo "bundle -> $HOME/spire-bundle.pem ($(grep -c 'BEGIN CERTIFICATE' "$HOME/spire-bundle.pem") cert(s))"
 echo "join token:"
 $SP token generate -spiffeID "$AGENT"
