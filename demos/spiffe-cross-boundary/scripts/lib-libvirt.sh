@@ -36,6 +36,26 @@ Run the one-time host setup first:
 and then log out and back in (group membership is only picked up by a new login)."
   virsh -c qemu:///system net-info "$LIBVIRT_NET" >/dev/null 2>&1 \
     || die "libvirt network '$LIBVIRT_NET' not found — run scripts/host-setup.sh"
+  ensure_pool
+}
+
+# The storage pool backing /var/lib/libvirt/images is called 'default' on some
+# distros and 'images' on others (Ubuntu 26.04), so discover it rather than
+# assuming. POOL is used for the VM disks and cloud-init seeds.
+ensure_pool() {
+  [ -n "${POOL:-}" ] && return 0
+  if [ -n "${LIBVIRT_POOL:-}" ]; then
+    virsh -c qemu:///system pool-info "$LIBVIRT_POOL" >/dev/null 2>&1 \
+      || die "configured LIBVIRT_POOL='$LIBVIRT_POOL' does not exist"
+    POOL="$LIBVIRT_POOL"; return 0
+  fi
+  local p
+  for p in default images; do
+    if virsh -c qemu:///system pool-info "$p" >/dev/null 2>&1; then POOL="$p"; return 0; fi
+  done
+  POOL="$(virsh -c qemu:///system pool-list --name 2>/dev/null | head -1)"
+  [ -n "$POOL" ] || die "no libvirt storage pool found — run scripts/host-setup.sh"
+  return 0
 }
 
 ensure_ssh_key() {
@@ -50,7 +70,9 @@ ensure_base_image() {
   BASE_IMG="$CACHE_DIR/$(basename "$VM_IMAGE_URL")"
   if [ ! -s "$BASE_IMG" ]; then
     log "downloading base image (~600MB, once): $VM_IMAGE_URL"
-    curl -fSL --progress-bar "$VM_IMAGE_URL" -o "$BASE_IMG.part" && mv "$BASE_IMG.part" "$BASE_IMG"
+    # A progress bar is nice on a terminal and 200KB of noise in a captured log.
+    local progress=-sS; [ -t 2 ] && progress=--progress-bar
+    curl -fSL "$progress" "$VM_IMAGE_URL" -o "$BASE_IMG.part" && mv "$BASE_IMG.part" "$BASE_IMG"
   fi
 }
 
@@ -75,16 +97,16 @@ make_volumes() { # name disk_gb userdata_file
   seed="$(mktemp -d)/seed.iso"
   cloud-localds "$seed" "$userdata"
 
-  virsh -c qemu:///system vol-delete --pool default "${name}.qcow2"    >/dev/null 2>&1 || true
-  virsh -c qemu:///system vol-delete --pool default "${name}-seed.iso" >/dev/null 2>&1 || true
+  virsh -c qemu:///system vol-delete --pool "$POOL" "${name}.qcow2"    >/dev/null 2>&1 || true
+  virsh -c qemu:///system vol-delete --pool "$POOL" "${name}-seed.iso" >/dev/null 2>&1 || true
 
-  virsh -c qemu:///system vol-create-as default "${name}.qcow2" "${disk_gb}G" --format qcow2 >/dev/null
-  virsh -c qemu:///system vol-upload --pool default "${name}.qcow2" "$BASE_IMG"
-  virsh -c qemu:///system vol-resize --pool default "${name}.qcow2" "${disk_gb}G" >/dev/null
+  virsh -c qemu:///system vol-create-as "$POOL" "${name}.qcow2" "${disk_gb}G" --format qcow2 >/dev/null
+  virsh -c qemu:///system vol-upload --pool "$POOL" "${name}.qcow2" "$BASE_IMG"
+  virsh -c qemu:///system vol-resize --pool "$POOL" "${name}.qcow2" "${disk_gb}G" >/dev/null
 
-  virsh -c qemu:///system vol-create-as default "${name}-seed.iso" \
+  virsh -c qemu:///system vol-create-as "$POOL" "${name}-seed.iso" \
     "$(stat -c%s "$seed")" --format raw >/dev/null
-  virsh -c qemu:///system vol-upload --pool default "${name}-seed.iso" "$seed"
+  virsh -c qemu:///system vol-upload --pool "$POOL" "${name}-seed.iso" "$seed"
   rm -rf "$(dirname "$seed")"
 }
 
@@ -129,8 +151,8 @@ vm_create() { # name ip cpus mem_mib disk_gb packages...
 
   virt-install --connect qemu:///system --name "$name" \
     --memory "$mem" --vcpus "$cpus" \
-    --disk "vol=default/${name}.qcow2,bus=virtio" \
-    --disk "vol=default/${name}-seed.iso,device=cdrom" \
+    --disk "vol=${POOL}/${name}.qcow2,bus=virtio" \
+    --disk "vol=${POOL}/${name}-seed.iso,device=cdrom" \
     --os-variant ubuntu24.04 \
     --network "network=${LIBVIRT_NET},model=virtio,mac=${mac}" \
     --graphics none --import --noautoconsole >/dev/null

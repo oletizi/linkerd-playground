@@ -26,6 +26,18 @@ virsh net-autostart default >/dev/null 2>&1 || true
 virsh net-start default >/dev/null 2>&1 || true
 virsh net-info default | sed -n '1,4p'
 
+echo "== storage pool =="
+# Distros differ: some ship a pool called 'default', Ubuntu 26.04 ships 'images',
+# and some ship none. The demo discovers the name; here we just guarantee one exists.
+if ! virsh pool-list --name | grep -q .; then
+  echo "no storage pool defined; creating 'default' at /var/lib/libvirt/images"
+  virsh pool-define-as default dir --target /var/lib/libvirt/images
+  virsh pool-build default || true
+  virsh pool-start default
+  virsh pool-autostart default
+fi
+virsh pool-list
+
 echo "== granting ${TARGET_USER} libvirt access =="
 usermod -aG libvirt,kvm "$TARGET_USER"
 
