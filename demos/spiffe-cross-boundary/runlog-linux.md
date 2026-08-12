@@ -222,7 +222,82 @@ on the source line. The README's `<repo>` placeholder is correct but easy to rea
 as "the thing you're working in", and the abbreviated `<demo>/` paths used
 everywhere else in the doc encourage exactly that misreading.
 
-## F6 [BLOCKER, suspected — platform-independent] `cluster/spire/apply.sh` hard-requires Tailscale
+## F9 [BLOCKER, platform-independent] the RetailCloud path never creates its namespace
+
+Following the README straight through, `cluster/retail/apply.sh` dies on its first
+command:
+
+```
+== retail-cloud app code -> ConfigMap ==
+Error from server (NotFound): error when creating "STDIN": namespaces "mixed-env" not found
+```
+
+Nothing in the RetailCloud path creates `mixed-env`. It is declared in exactly one
+place — `cluster/echo.yaml` — which belongs to the **appendix** "original CLI
+beats" path that the README tells RetailCloud users *not* to run ("RetailCloud and
+the beats share one edge proxy, so run one or the other"). `MANUAL.md` gets it
+right at L477-478, so this is specific to the scripted path. The macOS pass
+followed the manual, which is why it never surfaced.
+
+**The obvious workaround is a trap.** A reader who fixes this the natural way —
+`kubectl create namespace mixed-env` — gets a namespace with no
+`linkerd.io/inject: enabled` annotation (`echo.yaml` carries it; a bare `create`
+does not, and `retail-cloud.yaml` has no pod-level inject annotation of its own).
+`retail-cloud` then runs **unmeshed**: no proxy, so no mTLS, no identity for the
+`AuthorizationPolicy` to match, and a Void button that changes nothing. Every
+symptom is silent — the app still serves, the dashboard still renders, and the
+demo simply stops demonstrating what it claims to.
+
+Fix applied: `apply.sh` now creates the namespace if absent and always applies the
+inject annotation, with a comment explaining why the annotation is load-bearing.
+
+## F10 [ERROR] the "Inspect the traffic" tap output is documented wrong
+
+README's verification step is:
+
+```bash
+linkerd -n mixed-env viz tap deploy/retail-cloud
+```
+
+> Each inbound row shows `tls=true` and `client_id=spiffe://…/store/042/inventory-sync`
+> (with `src_external_workload=store-pos`)
+
+Three things are wrong, against Linkerd `edge-26.7.2`:
+
+1. **The plain command shows no identity at all.** Default `tap` output stops at
+   `tls=true`; `-o wide` is required for any identity field. As written, the
+   reader runs the command and cannot see the thing the section exists to show.
+2. **The field is `src_client_id`, not `client_id`.**
+3. **`src_external_workload` does not exist in the output.** Grepping the wide
+   output for it returns nothing.
+
+What actually appears, and it does prove the claim:
+
+```
+req id=1:0 proxy=in src=192.168.122.11:47914 dst=10.42.0.15:8090 tls=true
+  :method=POST :path=/ingest
+  src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+  src_tls=true dst_authz_kind=authorizationpolicy dst_authz_name=ingest-allow-store
+  dst_srv_kind=server dst_srv_name=retail-ingest
+```
+
+`dst_authz_name=ingest-allow-store` is a bonus the README doesn't mention and is
+arguably the most convincing field present — it names the authorization policy
+that admitted the request.
+
+## F11 [NIT] `apply.sh` double-counts the certificates in the bundle
+
+```bash
+echo "bundle -> $HOME/spire-bundle.pem ($(grep -c CERTIFICATE "$HOME/spire-bundle.pem") cert(s))"
+```
+
+prints `2 cert(s)` for a bundle containing **one** certificate, because
+`grep -c CERTIFICATE` matches both the `BEGIN` and `END` lines. Confirmed: the
+exported `bundle.pem` is 599 bytes, one PEM block, byte-identical in size to
+`ca.crt`. Harmless, but it invites a reader to think the bundle contains a chain.
+`grep -c 'BEGIN CERTIFICATE'` is the fix.
+
+## F6 [BLOCKER, CONFIRMED live — platform-independent] `cluster/spire/apply.sh` hard-requires Tailscale
 
 `cluster/spire/apply.sh` runs under `set -euo pipefail` and calls
 `bash "$HERE/firewall.sh"` partway through. `firewall.sh` does:
@@ -244,8 +319,25 @@ open on all interfaces). Via the scripts it is not a missing-hardening gap but a
 hard stop. Masked on macOS because that run used the Tailscale overlay recipe and
 followed MANUAL.md by hand rather than running the scripts.
 
-Workaround for this run: `TAILSCALE_IFACE=<inter-VM iface>`, which keeps the
-intent (restrict the NodePort to the trusted inter-host interface).
+**Confirmed live.** Run unmodified on the libvirt topology (no `tailscale0`), the
+StatefulSet deploys and then:
+
+```
+partitioned roll out complete: 1 new pods have been updated...
+no tailscale0 interface on this host          <- exit 1
+```
+
+It aborts before `entry create`, before `bundle show`, and before
+`token generate` — so the edge box gets no workload registration, no trust bundle
+and no join token. Every subsequent step is blocked. Re-running with
+`TAILSCALE_IFACE=enp1s0` (the VM's real inter-box NIC) completed and produced all
+three, which keeps the rule's intent: restrict the NodePort to the trusted
+inter-host interface.
+
+The existing runlog entry at L156-163 records the manual's version of this as a
+**[GAP]** — the hardening recipe doesn't apply, so the NodePort stays open. Via
+the scripts it is not a missing-hardening gap but a hard stop, on the path the
+README calls the default.
 
 ## F5 [GAP, Linux-specific — CONFIRMED] uid 1000 collision on a Linux host
 
@@ -310,3 +402,94 @@ follower has no way to perform the check they are told to perform. Waiting for t
 service first (`kubectl -n kube-system rollout status deploy/coredns`, or a poll)
 would fix both. Once CoreDNS settles, the value is correct: `10.43.0.10`, matching
 the stock `COREDNS_ADDR`.
+
+---
+
+# Verified working on Linux/x86_64
+
+With the fixes above applied, the demo runs end to end and demonstrates what it
+claims. Nothing below required an arch-specific or OS-specific change: every
+upstream artifact resolved a working amd64 build on its own
+(`step` .deb via `dpkg --print-architecture`, `spire-*-linux-amd64-musl`, k3s
+`sha256sum-amd64.txt`, and multi-arch images for `linkerd2-proxy`,
+`spire-server` and `node:20-alpine`).
+
+| Component | Result |
+|---|---|
+| `cluster/gen-certs.sh` | ✓ ECDSA P-256 root + intermediate, `step-cli` 0.30.6 resolved for amd64 |
+| `cluster/install-k3s.sh` | ✓ k3s v1.36.3+k3s1, node InternalIP correct, kube-dns `10.43.0.10` (matches stock `COREDNS_ADDR`) — modulo F8 |
+| `cluster/install-linkerd.sh` | ✓ **93/93 `linkerd check` green**, control plane + viz |
+| `cluster/spire/apply.sh` | ✓ after F6 — StatefulSet ready, workload entry registered, bundle + join token issued |
+| `net/shim.sh` | ✓ both CIDR routes installed, cluster DNS resolving across the boundary |
+| `edge/install-spire-agent.sh` | ✓ `spire-agent` 1.15.2, join-token attestation, `Agent is healthy.` |
+| `edge/extract-proxy.sh` | ✓ `linkerd2-proxy` 2.363.0 extracted from the image |
+| `edge/iptables.sh` | ✓ uid-scoped REDIRECT chain installed |
+| `store-pos/run-store-pos.sh` | ✓ container up and pushing |
+| `cluster/retail/apply.sh` | ✓ after F9 — ExternalWorkload Ready, app + policy applied, NodePort 30080 |
+| `edge/run-proxy.sh` | ✓ non-root uid 2102, SPIRE-issued SVID |
+
+## The claims, checked
+
+**Cross-boundary SPIFFE identity.** The proxy on the edge box obtains its identity
+from the SPIRE agent, chained to the cluster's trust anchor:
+
+```
+INFO linkerd2_proxy: Local identity is spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+INFO daemon:identity: Certified identity id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+```
+
+**mTLS with that identity, from outside the cluster.** `viz tap` on the receiving
+deployment (see F10 for the doc corrections):
+
+```
+req proxy=in src=192.168.122.11 dst=10.42.0.15:8090 tls=true :path=/ingest
+  src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+  src_tls=true dst_authz_name=ingest-allow-store
+```
+
+**Identity-based authorization, with no network change.** Driving the dashboard's
+own Void button (`POST /api/policy {"allow":false}`, which exercises the RBAC Role
+the app holds to patch its own `MeshTLSAuthentication`):
+
+```
+push -> 200                                    # before
+push -> 403 (authorization voided by cloud)    # after voiding
+push -> 200                                    # after restoring
+```
+
+The dashboard reflects it (`"voided":true` → `false`), and `/api/data` shows the
+link live with both identities and `ageMs` in the low seconds. `/` and `/tutorial`
+both serve.
+
+**The root key never leaves the cluster.** `/opt/spire/certs/` on the edge holds
+only `bundle.pem` and `ca.crt` (599 bytes each, the public root); the guard in
+`install-spire-agent.sh` that refuses to run if `ca.key` is present was satisfied
+throughout.
+
+## Notable positive: the default LAN path is now verified
+
+The macOS pass ran over the optional Tailscale overlay, leaving the README's
+**default** flat-LAN static-route path unverified. This run exercised it directly
+— two hosts on one L2 segment, `net/shim.sh` installing the pod/service routes and
+pointing cluster DNS at CoreDNS — and it works:
+
+```
+10.42.0.0/16 via 192.168.122.10 dev enp1s0
+10.43.0.0/16 via 192.168.122.10 dev enp1s0
+$ getent hosts kubernetes.default.svc.cluster.local
+10.43.0.1       kubernetes.default.svc.cluster.local
+```
+
+That is the path most readers will take, and it had never been run before.
+
+## Verdict
+
+**The demo works on Linux/x86_64.** Nothing about Linux or amd64 broke it — the
+one genuinely Linux-specific finding (F4b) is a QEMU bug in a substrate *choice*,
+not in the demo, and disappeared entirely on libvirt.
+
+The more useful result is that driving the **scripts** rather than the manual
+exposed six defects the macOS pass could not have seen, two of them
+(F6, F9) hard blockers on the README's own documented path, and one (F9's
+workaround trap) capable of leaving a follower with a demo that appears to run but
+silently proves nothing.
