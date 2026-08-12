@@ -16,6 +16,9 @@ configuration incrementally.
 > environment. [Production notes](PRODUCTION-NOTES.md) lists every shortcut and what to
 > do instead.
 
+> **Made with [Claude Code](https://claude.com/claude-code).** This demo and its
+> documentation were built with Anthropic's agentic coding tool.
+
 > Convention: commands prefixed `[cluster]` run on the Kubernetes host; `[store]` run
 > on the external machine. The trust domain throughout is
 > `root.linkerd.cluster.local` (Linkerd's default).
@@ -647,7 +650,3 @@ which identity was allowed.
 
 The final row is the purpose of the setup: when identity is portable and
 cryptographic, authorization is defined in terms of workloads rather than networks.
-
----
-
-_Made with [Claude Code](https://claude.com/claude-code)._
