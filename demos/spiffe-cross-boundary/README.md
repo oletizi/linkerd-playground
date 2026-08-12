@@ -50,7 +50,7 @@ identity, and the Void button patches the policy.
 
 ## Prerequisites
 
-The demo needs two Linux boxes that can reach each other at L3. The **recommended
+The demo assumes two Linux hosts that can reach each other at L3. The **recommended
 and verified setup is one Linux host running both as local VMs**, which the repo
 provisions for you.
 
