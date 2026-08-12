@@ -158,10 +158,15 @@ bash <demo>/store-pos/run-store-pos.sh     # the POS — pushes to the cloud
 
 ### Box A → deploy RetailCloud, THEN Box B → start the proxy
 
-The proxy fetches its inbound policy from the cluster, so the `ExternalWorkload`
-must exist before it starts. `cluster/retail/apply.sh` creates the `mixed-env`
-namespace (annotated for injection), registers `store-pos` (and marks it Ready),
+`cluster/retail/apply.sh` creates the `mixed-env` namespace (annotated for
+injection), registers `store-pos` as an `ExternalWorkload` (and marks it Ready),
 deploys the `retail-cloud` app, and applies the authorization policy.
+
+> Do Box A first, so the `retail-cloud` Service exists when the store starts
+> pushing. The `ExternalWorkload` itself is **not** required for the push path —
+> the store's identity comes from SPIRE and the policy matches the SPIFFE ID
+> directly, so pushes are authorized even with no `ExternalWorkload` present. It is
+> what lets the mesh reach the store *as a server* (the appendix's beat3).
 
 ```bash
 # Box A:
