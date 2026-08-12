@@ -17,6 +17,9 @@ to the network.
 > mechanics legible. Do not run this configuration in a real environment.
 > [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) lists every shortcut and what to do instead.
 
+> **Made with [Claude Code](https://claude.com/claude-code).** This demo and its
+> documentation were built with Anthropic's agentic coding tool.
+
 Design spec: [`docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md`](../../docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md).
 
 ## See it
@@ -203,7 +206,3 @@ practice that should replace it.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).
-
----
-
-_Made with [Claude Code](https://claude.com/claude-code)._

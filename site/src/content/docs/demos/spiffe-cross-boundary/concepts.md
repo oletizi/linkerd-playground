@@ -9,6 +9,10 @@ production — see [Production notes](/demos/spiffe-cross-boundary/production-no
 the shortcuts it takes and what to do instead.
 :::
 
+:::note[Made with Claude Code]
+This demo and its documentation were built with [Claude Code](https://claude.com/claude-code), Anthropic's agentic coding tool.
+:::
+
 On Kubernetes with a service mesh, workload identity is already familiar: Linkerd
 gives every pod a cryptographic identity derived from its ServiceAccount, and
 services authenticate with mutual TLS rather than trusting whatever responds at a
