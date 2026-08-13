@@ -493,3 +493,141 @@ exposed six defects the macOS pass could not have seen, two of them
 (F6, F9) hard blockers on the README's own documented path, and one (F9's
 workaround trap) capable of leaving a follower with a demo that appears to run but
 silently proves nothing.
+
+---
+
+# Second pass — clean-host replay (2026-08-12)
+
+An independent re-run after the fixes above landed, on the same host but from a
+clean slate (no VMs, no ssh config), following the **README verbatim** without
+consulting this runlog — the point being to read the doc the way a first-time
+follower does. It found two more blockers, both in the section every follower
+must pass through, and both invisible to anyone who already had the environment
+in their head.
+
+## F12 [BLOCKER, platform-independent] the `S`/`D` shorthand cannot work as written
+
+"Build it" opens by defining the shorthand every later command block uses:
+
+```bash
+S="ssh -F ~/.ssh/linkerd-playground.conf"
+D=~/linkerd-playground/demos/spiffe-cross-boundary
+```
+
+Both lines are wrong, in opposite directions, and together they break **every**
+command block in the section.
+
+`S` puts the tilde inside double quotes, where bash never expands it. The first
+command fails before reaching the network:
+
+```
+Can't open user config file ~/.ssh/linkerd-playground.conf: No such file or directory
+```
+
+`D` is the subtler one and the same class of defect as F7 — except F7 is in the
+optional Lima appendix, while this is on the **verified path**. The tilde is
+unquoted, so it expands on the *host*, but `D` is only ever used inside commands
+that run in the *guest*:
+
+```
+$ D=~/linkerd-playground/demos/spiffe-cross-boundary; echo "$D"
+/home/orion/linkerd-playground/...     # host home
+$ ssh linkerd-cluster 'echo $HOME'
+/home/demo                             # guest home
+```
+
+So every `bash $D/…` step would have died on a path that does not exist in the
+guest. Fixed by using `$HOME` in `S` (expands, since it is a variable) and
+single-quoting `D` (so the guest shell expands the tilde), with a note in the
+README explaining why the two differ.
+
+That F7 and F12 are the same mistake in two places suggests the tilde-across-a-
+shell-boundary trap is worth a standing check on any new doc snippet.
+
+## F13 [BLOCKER, platform-independent] the `linkerd` CLI is on no shell's `PATH`
+
+"Inspect the traffic" tells the reader to run:
+
+```bash
+linkerd -n mixed-env viz tap deploy/retail-cloud -o wide
+```
+
+which fails:
+
+```
+timeout: failed to run command 'linkerd': No such file or directory
+```
+
+`install-linkerd.sh` does `export PATH="${HOME}/.linkerd2/bin:${PATH}"`, but that
+applies to its own process only — nothing persists it. The binary is really there,
+and reachable from **no** shell a follower would use:
+
+| how you reach the box | `command -v linkerd` |
+|---|---|
+| `ssh host '<command>'` (the README's own style) | not found |
+| `bash -lc` / interactive login | not found |
+| inside `install-linkerd.sh` | found (process-local export) |
+
+Ubuntu's `~/.bashrc` returns early for non-interactive shells, so even adding it
+there would not fix the `ssh host '<command>'` form the README uses throughout.
+Fixed by symlinking into `/usr/local/bin` next to the `kubectl` k3s already puts
+there, which works in every case above. This also makes the script's own
+`command -v linkerd` idempotence check meaningful on a re-run.
+
+## ✓ Teardown, verified
+
+`just demo spiffe-cross-boundary down` does what the README claims, and needed no
+fix:
+
+- both domains undefined; all four volumes gone, including the two `-seed.iso`
+  files that `--remove-all-storage` does not always catch and `down.sh` deletes
+  explicitly;
+- **idempotent** — a second run reports `not defined` for both boxes, exit 0;
+- **partial state** — with only Box A present it destroyed it and cleanly reported
+  the edge as not defined;
+- the ~600 MB cached cloud image is kept, so a rebuild does not re-download;
+- **the host is left rebuildable**: `cluster-up` after teardown recreated the VM on
+  fresh disks at the same address and reached `cluster-vm-ready`.
+
+Teardown deliberately leaves the two DHCP reservations in libvirt's `default`
+network. That is not a leak — `lib-libvirt.sh` uses deterministic MACs and
+`dhcp_reserve` deletes any stale entry for the MAC before adding, so a rebuild
+reuses them without conflict (confirmed by the rebuild above). The generated
+`~/.ssh/linkerd-playground{,.conf}` also survive, pointing at hosts that no longer
+exist until the next build. The README does not claim either is removed.
+
+The bare-metal teardown instructions remain **unverified** — they need physical
+hosts.
+
+## Also this pass
+
+- The `host-setup` step could not be re-executed (no passwordless sudo on this
+  host, unchanged since F2), but every effect it produces was verified already
+  present: the five packages, `libvirtd` enabled, the `default` network active, a
+  storage pool, and `libvirt`/`kvm` group membership. It was a genuine no-op here,
+  not a skipped step.
+- Two script messages claimed "tailnet" on the libvirt path (`spire/apply.sh` and
+  `retail/apply.sh`), a leftover from the macOS pass's overlay. Both are now
+  topology-neutral, and the SPIRE echo no longer hardcodes a port that config
+  already carries.
+- The **CLI "beats" variant was removed** — the appendix documenting it is gone and
+  the scripts had decayed past use: their `just` targets ran on the *host* while
+  the scripts require kubectl/linkerd on the cluster VM, `beat1b` was never wired
+  into the Justfile, and `beat1` expected a Lima-era hostname. Beat 3's direction
+  (authorized mTLS *to* the edge) is the one thing RetailCloud does not
+  demonstrate; that coverage was dropped deliberately.
+- The dashboard loads Cytoscape from `unpkg.com`, so the **browser** needs
+  internet for the topology to render. Not a defect, but it rules out an
+  air-gapped demo.
+
+## Second-pass verdict
+
+The demo itself was never broken — every fix in this pass is documentation or
+packaging. But both findings sat in the two sections a follower cannot skip, and
+neither would be caught by anyone who already has `linkerd` on their `PATH` and a
+working ssh alias in muscle memory. **A doc is only verified when it is replayed
+from a clean host by someone reading it literally.**
+
+With F12 and F13 fixed, the README now runs start to finish as written: `push ->
+200` with the SPIFFE identity in `viz tap -o wide`, Void producing a real 403 and
+restoring cleanly, and teardown returning the host to a rebuildable state.
