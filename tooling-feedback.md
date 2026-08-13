@@ -7,3 +7,7 @@
 
 ## session-end 2026-08-09
 - stackctl roadmap advance --to closed (close cascade) treats a roadmap node's ref: URL as a backlog id and fails loud ('unknown backlog id(s) https://...'), blocking a legitimate close. Had to hand-remove the ref: line from ROADMAP.md to close design:feature/astro-docs-site. The cascade should ignore non-id ref: values (URLs) or only treat backlog-shaped ids as closeable.
+
+## session-end 2026-08-13
+- gh and stackctl both live outside the PATH non-interactive shells get (/home/linuxbrew/.linuxbrew/bin), so every invocation this session needed an explicit PATH prefix. Environment quirk, not a tool defect.
+- host-setup needs interactive sudo, which an agent session cannot provide; its effects (packages, libvirtd, default network, storage pool, group membership) had to be verified individually instead of re-running the step.
