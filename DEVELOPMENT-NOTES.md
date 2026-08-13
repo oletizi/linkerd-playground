@@ -2,6 +2,76 @@
 
 ---
 
+## 2026-08-13: Clean-host replay of the SPIFFE demo README; removed the CLI beats
+
+**Goal:** Validate `demos/spiffe-cross-boundary/README.md` by following it literally on a
+clean host — no VMs, no ssh config — and deliberately *without* reading the existing
+runlog, so the doc got read the way a first-time follower reads it rather than the way
+someone who already has the environment in their head does. Fix whatever didn't work.
+
+**Accomplished:**
+- Built the demo end to end on two libvirt VMs and confirmed every documented checkpoint:
+  kube-dns `10.43.0.10`, `Status check results are √`, `Agent is healthy.`, the expected
+  `Invalid configuration: no destination service configured`, `push error: ENOTFOUND`
+  before the Service exists, `proxy has identity (uid 2102)`.
+- Verified the actual thesis: `push -> 200` with
+  `src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync` and
+  `dst_authz_name=ingest-allow-store` in `viz tap -o wide`; Void producing a real
+  `403 (authorization voided by cloud)`; restoring returning to 200.
+- Found and fixed **two blockers**, both on the path every follower must take (F12/F13 in
+  `runlog-linux.md`).
+- **Validated teardown** — idempotent, handles partial state, keeps the cached image, and
+  leaves the host rebuildable (proved by rebuilding after teardown, then tearing down again).
+- **Removed the CLI "beats" variant** (12 files, ~270 lines) and the four live references
+  that would have dangled.
+- Shipped as **#33** (fixes) and **#34** (runlog).
+
+**Didn't Work:**
+- `host-setup` could not be re-executed — no passwordless sudo for an agent session. Worked
+  around by verifying each of its effects was already present, so it reads as *verified
+  no-op* rather than *skipped*.
+- `stackctl session-end` failed on first attempt: no `node`/`npm` anywhere on the host, so
+  the plugin could not self-install. Unblocked once Node was installed mid-session.
+- The bare-metal teardown instructions remain unverified; they need physical hosts.
+
+**Course Corrections:**
+- Initially made the corrected script messages *specific* (naming `enp1s0`, the derived
+  interface). Operator redirected: keep static text **topology-neutral** so it cannot go
+  stale on the next substrate change. Computed values that re-derive at runtime are fine;
+  hardcoded ones rot. Applied that distinction — the SPIRE echo now names neither a
+  transport nor an interface, and takes the port from config.
+- Asked whether to keep, repair, or delete the beats after finding them broken; operator
+  chose delete. Confirmed nothing depended on them before removing.
+- Did **not** merge #34 on the strength of the earlier "open and merge" for #33 — a merge
+  authorization for one PR is not standing authorization for the next.
+
+**Insights:**
+- **F12 is F7 in a second location.** The tilde-across-a-shell-boundary trap (`~` expanding
+  on the host for a path used in the guest) was already recorded for the Lima appendix; it
+  was sitting unnoticed on the *verified* path too. One instance is a typo, two is a class
+  — worth a standing check on any new doc snippet that crosses a shell boundary.
+- **Both blockers were invisible to the author.** `S`/`D` and the missing `linkerd` on
+  `PATH` only fail for someone who has neither a working ssh alias in muscle memory nor the
+  CLI already on their path. A doc is only verified when it is replayed from a clean host by
+  someone reading it literally — which is the argument for doing this pass blind to the runlog.
+- **Process-local `export PATH` is not installation.** `install-linkerd.sh` exported PATH for
+  its own process and nothing persisted it; Ubuntu's `~/.bashrc` early-returns for
+  non-interactive shells, so even the usual fix would not have rescued the
+  `ssh host '<command>'` form the README uses throughout. A symlink into `/usr/local/bin` is
+  the only form that works in every case.
+- Teardown leaving DHCP reservations behind looks like a leak and is not: deterministic MACs
+  plus a delete-then-add reservation make it self-correcting on rebuild.
+
+**Quantitative (auto-derived from git; corrected boundary — the verb's merge-base fallback
+picked up 47 commits from prior sessions):**
+- Commits: 3 (since `388e6dd`, the merge of #32)
+  - docs(session): session-end record
+  - docs(spiffe-demo): record the clean-host replay in the Linux runlog
+  - fix(spiffe-demo): repair the documented path; remove the CLI beats (#33)
+- Files changed: 22
+- Backlog touched: (none)
+- PRs: #33 (merged, squash `fe3c5e9`), #34 (open, CI green)
+
 ## 2026-08-09: Deviation callouts in the SPIFFE manual; fixed the docs-site deploy pipeline
 
 **Goal:** Add inline disclaimers to `demos/spiffe-cross-boundary/MANUAL.md` at each point
