@@ -20,8 +20,11 @@ configuration incrementally.
 > documentation were built with Anthropic's agentic coding tool.
 
 > Convention: commands prefixed `[cluster]` run on the Kubernetes host; `[store]` run
-> on the external machine. The trust domain throughout is
-> `root.linkerd.cluster.local` (Linkerd's default).
+> on the external machine. The SPIFFE trust domain throughout is
+> `root.linkerd.cluster.local` — a name we choose in Part 3's SPIRE config, matching
+> Linkerd's default trust *anchor* name. (Linkerd's own trust-domain setting is a
+> separate thing and stays at its default, `cluster.local`. Both naming schemes appear
+> below; both work because they share one root.)
 
 ---
 
@@ -46,8 +49,9 @@ Four things have to line up:
    the SPIRE *agent* (a separate party: attested as a *node* via its join token, and the one
    doing the attesting). (See [Concepts → Attestation](/demos/spiffe-cross-boundary/concepts/#attestation).)
 4. **The cluster's awareness of the workload.** An `ExternalWorkload` resource tells
-   Linkerd this off-cluster process exists and what identity it carries, so policy
-   and discovery treat it like any other mesh endpoint.
+   Linkerd this off-cluster process exists, so discovery and inbound policy treat it
+   like any other mesh endpoint. It *records* the workload's identity; it does not
+   confer it — that comes from item 3.
 
 A fifth thing is a *prerequisite, not part of SPIFFE*: the two machines need plain
 IP reachability (the proxy dials cluster pod IPs and resolves cluster DNS). SPIFFE
@@ -97,8 +101,13 @@ directory.
           --ca ca.crt --ca-key ca.key
 ```
 
-- `root.linkerd.cluster.local` is the trust anchor's common name; the trust domain
-  in every SPIFFE ID derives from it.
+- `root.linkerd.cluster.local` is the trust anchor's common name. It is also the string
+  we set as SPIRE's `trust_domain` in Part 3, so the SPIFFE IDs read consistently — but
+  that is a convention, not a derivation: nothing reads a trust domain out of a
+  certificate. What makes this *one* trust domain is that both sides chain to this root.
+  (Linkerd's own `--identity-trust-domain` stays at its default, `cluster.local`, which
+  is why in-cluster identities look like
+  `linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local` in Part 4c.)
 - Linkerd requires **ECDSA P-256** keys — `step` uses that profile by default.
 - Keep `ca.crt` **and** `ca.key` here in the cluster: the in-cluster SPIRE server mounts
   them (as a read-only Secret) to sign the external workload's certificates. The key never
@@ -444,8 +453,11 @@ The proxy is configured entirely through environment variables:
 
 What each group does:
 
-- **`IDENTITY_SERVER_ID` / `IDENTITY_SERVER_NAME`** — the SPIFFE ID this proxy should
-  obtain and the SNI it presents. Must match the registered entry.
+- **`IDENTITY_SERVER_ID` / `IDENTITY_SERVER_NAME`** — both describe this proxy as a
+  *server*: the identity its own leaf certificate must carry (so it must match the
+  registered entry), and the name clients put in the SNI extension when they dial it.
+  They are the proxy-side half of the `ExternalWorkload`'s `meshTLS.identity` and
+  `meshTLS.serverName` (Part 5) — which is why the two sides must agree.
 - **`IDENTITY_SPIRE_WORKLOAD_API_ADDRESS`** — the key change: instead of talking to
   the in-cluster `linkerd-identity` service, the proxy fetches its SVID from the
   **SPIRE agent's Workload API socket**. SPIRE attests the proxy (uid 2102 + binary
@@ -469,8 +481,8 @@ which confirms SPIRE issued the SVID and the proxy has joined the mesh.
 ## Part 5 — Tell the cluster about the workload (ExternalWorkload)
 
 Back on the cluster side, register the store as an `ExternalWorkload`. This is how the
-mesh knows the workload exists, what identity it carries, and (for a server) how to
-route to it — and it's what the `POLICY_WORKLOAD` reference above resolves against.
+mesh knows the workload exists and how to route to it *as a server* — and it's what the
+`POLICY_WORKLOAD` reference above resolves against.
 
 First create the namespace the external workload and the cloud app share, with Linkerd
 injection enabled — the cloud app (Part 6) must be meshed for the Part 7 identity
@@ -503,11 +515,19 @@ spec:
       name: http
 ```
 
-- `meshTLS.identity` must equal the SPIFFE ID the proxy obtains. This is the identity
-  the mesh attributes to traffic from this workload.
+- `meshTLS.identity` must equal the SPIFFE ID the proxy obtains, and `meshTLS.serverName`
+  the `IDENTITY_SERVER_NAME` it was launched with. Those are the two `[store]` settings
+  from Part 4c, written here on the cluster side.
 - `workloadIPs` / `ports` describe how to reach it *as a server*. In the push-only
-  RetailCloud the store isn't dialed by anyone, so this is nominal — but the resource
-  still gives the workload its mesh identity, which is what we need.
+  RetailCloud the store isn't dialed by anyone, so this is nominal.
+
+The resource does **not** confer the workload's identity. That arrives in the SVID SPIRE
+issues (Part 3) and travels in the certificate; Part 7's policy matches the SPIFFE ID
+string directly. Delete the `ExternalWorkload` and the store's pushes still succeed, still
+over mTLS, still attributed to `store/042/inventory-sync`. What the resource provides is
+the cluster's *model* of the workload — routing to it as an endpoint, and the object its
+inbound policy attaches to. Both of those are the **inbound** direction, which is exactly
+what the `meshTLS` block above describes and what this demo's push-only flow never uses.
 
 The endpoint is treated as NotReady until a `Ready` status condition exists; set it
 (status is a subresource, so `kubectl apply` of the spec above won't):
@@ -556,7 +576,9 @@ cached data stops updating, which is the behavior a real ingest pipeline would s
 
 ## Part 7 — Authorization by identity
 
-By default a meshed port is open to any meshed client. We make the ingest port
+By default a meshed port is open to *any* client — Linkerd's default inbound policy is
+`all-unauthenticated`, so being in the mesh is not itself an authorization gate (which is
+why the unmeshed browser can load `:8080`). We make the ingest port
 **default-deny except for the store's identity** with three policy resources on the
 cluster side:
 
