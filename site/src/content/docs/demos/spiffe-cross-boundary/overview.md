@@ -11,6 +11,10 @@ host — that are unsafe in production. See
 what to do instead.
 :::
 
+:::note[Made with Claude Code]
+This demo and its documentation were built with [Claude Code](https://claude.com/claude-code), Anthropic's agentic coding tool.
+:::
+
 This demo runs a workload outside Kubernetes and gives it a SPIFFE identity that an
 in-cluster service trusts. A point-of-sale service (`store-pos`) runs on a separate
 machine that is not part of the cluster. Linkerd's mesh expansion adds it to the mesh
