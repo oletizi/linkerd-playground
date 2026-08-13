@@ -239,6 +239,13 @@ in `MANUAL.md`**, as is the side finding in `concepts.md`. The gaps and nits (C5
 are **recorded here, not applied**; C5 in particular is deferred by an explicit
 decision, not an oversight (see its Status note).
 
+> **Update — third pass, [`runlog-manual-linux.md`](runlog-manual-linux.md)
+> (2026-08-12).** That pass followed the manual by hand against a live cluster and
+> applied two more of these: **C6** (in corrected form — running the demo **refuted
+> its stated mechanism**; see its Status note) and **C7**. **C5 remains deferred.**
+> It also fixed three silent failure modes this review's method could not have seen,
+> because they only appear when the commands are actually run.
+
 ---
 
 ## C1 [ERROR] Part 5 says the `ExternalWorkload` is where the workload's identity comes from
@@ -402,6 +409,18 @@ SPIRE"); it never draws the consequence.
 [Production notes](PRODUCTION-NOTES.md#security-boundaries-what-this-does-and-does-not-protect)
 covers host-root compromise but not this, so it is not caught downstream either.
 
+> **Status: applied, with the mechanism corrected.** Tested live in
+> [`runlog-manual-linux.md`](runlog-manual-linux.md): the conclusion above is right and
+> the mechanism is wrong. **Connecting to `127.0.0.1:4140` directly does not work** — the
+> outbound proxy routes by the redirect's original destination (`SO_ORIGINAL_DST`), not by
+> `:authority`, so a direct connection resolves to the listener itself and is refused
+> (`Outbound proxy cannot initiate connections on the loopback interface`, HTTP 502). The
+> identity is borrowable a simpler way: *be* uid 1000. An unrelated `curl` under
+> `setpriv --reuid=1000` pushed a payload the cloud accepted as
+> `store/042/inventory-sync`, while the same request from a process that is **not**
+> redirected got a `403`. So the boundary is "who can run as uid 1000", not "who can open
+> a socket to the proxy" — which is how Part 4b now states it.
+
 ## C7 [NIT] `bundle.pem` and `ca.crt` are the same bytes here, and the manual doesn't say so
 
 Part 3b (L296-299) copies both to the store and distinguishes their roles precisely
@@ -417,6 +436,9 @@ One clause fixes it and teaches the distinction better than silence does: *these
 happen to be the same certificate in this setup, because SPIRE chains straight to
 the Linkerd root — they are different roles that would diverge the moment SPIRE
 chained to an intermediate instead.*
+
+> **Status: applied** in Part 3b, alongside the `ca.crt` permission fix the third pass
+> found in the same paragraph.
 
 ## C8 [NIT] The agent's socket path arrives from nowhere
 
