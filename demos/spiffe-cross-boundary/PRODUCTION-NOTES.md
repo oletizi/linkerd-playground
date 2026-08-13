@@ -5,6 +5,9 @@ across an infrastructure boundary easy to follow in one sitting. To keep the mov
 parts legible, it takes deliberate shortcuts that are **not safe or appropriate for
 production**. Do not copy this configuration into a real environment.
 
+> **Made with [Claude Code](https://claude.com/claude-code).** This demo and its
+> documentation were built with Anthropic's agentic coding tool.
+
 This page lists those shortcuts and what to do instead — the exploitable security
 shortcuts first, then the broader operational and architectural simplifications. The
 [manual](MANUAL.md) explains how each piece is built; this page explains where each piece
