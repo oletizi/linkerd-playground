@@ -29,7 +29,7 @@ short-lived certificate called an **SVID**, issued within a shared **trust domai
 The store's service is identified by a SPIFFE ID rather than by an address:
 
 ```
-spiffe://root.linkerd.cluster.local/store-pos
+spiffe://root.linkerd.cluster.local/store/042/inventory-sync
 ```
 
 That identity does not change with the network the workload runs on.

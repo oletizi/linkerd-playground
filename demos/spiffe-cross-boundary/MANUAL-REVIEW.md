@@ -210,4 +210,284 @@ wrong, and M5-M9 are accuracy and safety polish.
 
 ---
 
+# Second pass — validated as an intuition-builder (2026-08-12)
+
+**Why a second pass.** The first pass judged the manual as a *procedure*: can a
+literal follower stand the demo up from it? That is the README's job. The manual's
+job — it is published as *The manual* on the site, next to *Concepts* — is to build
+a correct mental model of how SPIFFE and SPIRE work. Judged against **that** bar,
+most of the first pass's blockers stop being blockers, and a different class of
+finding matters more: sentences a reader can absorb and come away **wrong**.
+
+There are five of those, plus four gaps. They are cheap to fix and none of them
+requires re-running anything.
+
+**Method.** Read start-to-finish as a learner, then every load-bearing claim
+cross-checked against upstream sources rather than against this repo (the first
+pass already did repo fidelity, and found it exact). Sources: `linkerd2-proxy`
+`linkerd/app/src/env.rs`, the `linkerd-control-plane` Helm chart, Linkerd's
+server-policy docs, and Linkerd's own *Adding non-Kubernetes workloads* task page.
+**No live cluster this pass** — the host carries no `k3s`, `kubectl`, `docker`,
+`step` or `spire-agent`; empirical claims cited below come from
+[`runlog-linux.md`](runlog-linux.md). Nothing here needed a cluster to settle.
+
+Legend: **[ERROR]** teaches something false · **[GAP]** the model has a hole ·
+**[NIT]** minor.
+
+**Disposition.** The four [ERROR]s — C1-C4, everything factually wrong — are **fixed
+in `MANUAL.md`**, as is the side finding in `concepts.md`. The gaps and nits (C5-C9)
+are **recorded here, not applied**; C5 in particular is deferred by an explicit
+decision, not an oversight (see its Status note).
+
+---
+
+## C1 [ERROR] Part 5 says the `ExternalWorkload` is where the workload's identity comes from
+
+L508-510, unchanged since the first pass flagged it as M3:
+
+> In the push-only RetailCloud the store isn't dialed by anyone, so this is
+> nominal — **but the resource still gives the workload its mesh identity, which is
+> what we need.**
+
+The clause after the dash is false, and it is the most damaging sentence in the
+document, because the manual's whole thesis is *identity travels in the
+certificate*. Part 3 spends three subsections establishing that SPIRE attests the
+proxy and issues it an SVID; Part 5 then tells the reader a Kubernetes resource is
+what "gives" it that identity. A reader who believes both cannot answer the
+question the demo exists to answer: **what would still work if the cluster forgot
+this workload existed?**
+
+Empirically: everything on the push path. With the `ExternalWorkload` deleted
+outright, the proxy came up clean, pushes stayed at `200`, `tls=true`, and
+`src_client_id` still resolved to the store's SPIFFE ID (first pass, M3).
+
+The same lean appears earlier, in **mental-model item 4** (L48-50): "tells Linkerd
+this off-cluster process exists **and what identity it carries**". Presenting the
+resource as one of "four things that have to line up" overstates it for the flow the
+manual actually builds.
+
+The true version is more interesting than the false one, and C2 supplies it: the
+`ExternalWorkload` is the cluster's **model** of the workload — how to route to it
+as a *server*, and what its *inbound* policy attaches to. The README already says
+this (L216-220); the manual never got the same edit.
+
+## C2 [ERROR] Part 4c inverts the direction of `IDENTITY_SERVER_NAME`
+
+L447-448:
+
+> **`IDENTITY_SERVER_ID` / `IDENTITY_SERVER_NAME`** — the SPIFFE ID this proxy
+> should obtain and **the SNI it presents**.
+
+SNI is a *client-side* extension, so "the SNI it presents" points the reader
+outbound — at the store→cloud connection the whole demo is about. Both variables
+are in fact **inbound**. From `linkerd2-proxy`, `linkerd/app/src/env.rs`:
+
+```rust
+/// Configures the TLS Id of the proxy inbound server. The value is expected to match the
+/// DNS or URI SAN of the leaf certificate that will be provisioned to this proxy.
+pub const ENV_IDENTITY_IDENTITY_SERVER_ID: &str = "LINKERD2_PROXY_IDENTITY_SERVER_ID";
+
+/// Configures the server name of this proxy. This value is expected to match the value
+/// that clients include in the SNI extension of the ClientHello, whenever they try to
+/// establish a TLS connection that shall be terminated by this proxy
+pub const ENV_IDENTITY_IDENTITY_SERVER_NAME: &str = "LINKERD2_PROXY_IDENTITY_SERVER_NAME";
+```
+
+`SERVER_NAME` is the name **clients use to address this proxy**, not one it emits.
+`SERVER_ID` is the identity its own leaf must carry.
+
+This is worth fixing for more than accuracy: it is the missing half of C1. These two
+variables are exactly the `ExternalWorkload`'s `meshTLS.identity` and
+`meshTLS.serverName` (Part 5, L497-498) — the same pair of values written on both
+sides of the boundary. *That* is why they must match, and it explains in one stroke
+what the resource is for: both halves describe how the mesh reaches the store **as a
+server**. Nothing on the push path consults either.
+
+## C3 [ERROR] "Trust domain" is conflated with the trust anchor's common name
+
+Two places:
+
+- L22-24 (Convention): "The trust domain throughout is `root.linkerd.cluster.local`
+  (**Linkerd's default**)."
+- L100-101 (Part 1): "`root.linkerd.cluster.local` is the trust anchor's common
+  name; **the trust domain in every SPIFFE ID derives from it**."
+
+Linkerd's default trust domain is `cluster.local`, not `root.linkerd.cluster.local`.
+From `charts/linkerd-control-plane/values.yaml`:
+
+```yaml
+identityTrustDomain: ""
+# @default -- clusterDomain
+```
+
+`root.linkerd.cluster.local` is the default *trust anchor common name*, which is a
+different thing. And nothing derives one from the other: SPIRE's trust domain is a
+config value, set by hand in `server.cfg` and `agent.cfg` (both L4 in the manual's
+own listings) to a string that happens to match the CN. Linkerd's own task page
+picks the same string, which is presumably where the demo got it — but it is a
+convention, not a derivation.
+
+The manual contradicts itself here, one Part later. Part 4c's control-plane
+identities (L435, L437) are:
+
+```
+linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local
+```
+
+— in-cluster naming, under trust domain `cluster.local`. So the trust domain is
+*not* `root.linkerd.cluster.local` "throughout": two different naming schemes are on
+screen at once, and both validate fine.
+
+Which is the lesson worth teaching, and it is currently invisible. What makes this
+one trust domain is the **shared root** — not a shared name. The demo demonstrates
+that and then tells the reader the opposite.
+
+## C4 [ERROR] Part 7 says mesh membership is what a default-open port admits
+
+L559: "By default a meshed port is open to **any meshed client**."
+
+Linkerd's default inbound policy is `all-unauthenticated` — "allow all requests",
+meshed or not. The sentence implies being in the mesh is itself an authorization
+gate, which is precisely the misconception this demo exists to dispel: *location and
+membership are not authorization; identity is.* Part 6 even relies on the truth two
+pages earlier — the unmeshed browser loads `:8080` because no `Server` protects it.
+
+Fix is one word: open to **any** client.
+
+## C5 [GAP] The payoff sentence is never written: how the cloud actually decides
+
+The manual assembles every piece of the authorization decision and never states the
+decision itself. Part 1 establishes chaining to a shared root. Part 3 establishes
+that SPIRE issues an SVID naming the workload. Part 7 establishes a policy listing
+an allowed SPIFFE ID string. The sentence that joins them —
+
+> the client's certificate chains to the trust anchor; the SPIFFE ID is the URI SAN
+> inside that certificate; `MeshTLSAuthentication` compares that string
+
+— appears nowhere. Neither does the term **URI SAN**, so a reader is never told
+*where in the certificate* the identity lives, or that policy matching is a string
+comparison against a cryptographically-verified field. It reads as though the
+SPIFFE ID and the certificate are two loosely-associated facts.
+
+For a document whose purpose is intuition, this is the paragraph readers came for.
+Part 8 is its natural home — `src_client_id` in the tap output *is* that field.
+
+> **Status: deferred, deliberately.** This is the one finding in the second pass that
+> is an *addition* rather than a correction, and it was held back when C1-C4 were
+> applied. Nothing in the manual is wrong for want of it; the pieces are all present
+> and only the joining sentence is missing. Whoever picks this up: the paragraph needs
+> to name the **URI SAN** explicitly, and say that `MeshTLSAuthentication` matching is
+> a string comparison against that field *after* chain validation — those two facts
+> are what the document never states anywhere.
+
+## C6 [GAP] The identity belongs to the proxy — so does anything that can reach the proxy
+
+Part 4b is careful and correct about *whose traffic is redirected*: uid 1000 only,
+so the SPIRE agent and the host are untouched. Part 3c is careful and correct about
+*who may obtain the identity*: uid 2102 running that exact binary. Both are good.
+
+What is never said is that these are different questions, and that the second one
+has a back door. The proxy's outbound listener is `127.0.0.1:4140`
+(`DEFAULT_OUTBOUND_LISTEN_ADDR` in `env.rs`), and any local process can connect to
+it directly — no uid check, the redirect is merely what makes it *automatic* for the
+app. So on the store host the practical boundary is "who can open a socket to the
+proxy", not "who runs as uid 1000".
+
+The reader's natural conclusion from Part 6 — *the store app was authenticated* — is
+wrong in a way that matters: the app is never attested, never holds a key, and is
+authorized only in the sense that it sits behind a process that is. The manual says
+the first half of this repeatedly ("not the app itself, which never talks to
+SPIRE"); it never draws the consequence.
+
+[Production notes](PRODUCTION-NOTES.md#security-boundaries-what-this-does-and-does-not-protect)
+covers host-root compromise but not this, so it is not caught downstream either.
+
+## C7 [NIT] `bundle.pem` and `ca.crt` are the same bytes here, and the manual doesn't say so
+
+Part 3b (L296-299) copies both to the store and distinguishes their roles precisely
+— the agent's pinned server bundle, and the anchor the proxy validates peers
+against. Pedagogically right, and worth keeping.
+
+But in this topology they are the same certificate: SPIRE chains directly to the
+Linkerd root, so `spire-server bundle show` emits that root. Confirmed at
+599 bytes each, one PEM block (runlog-linux.md F11). A reader who diffs them finds
+them identical and concludes one of the two explanations must be wrong.
+
+One clause fixes it and teaches the distinction better than silence does: *these
+happen to be the same certificate in this setup, because SPIRE chains straight to
+the Linkerd root — they are different roles that would diverge the moment SPIRE
+chained to an intermediate instead.*
+
+## C8 [NIT] The agent's socket path arrives from nowhere
+
+Part 3b (L344-346) tells the reader the agent exposes the Workload API at
+`/tmp/spire-agent/public/api.sock`, and Part 4c points the proxy at it. That path
+appears in neither `agent.cfg` listing — it is SPIRE's default `socket_path`. A
+reader tracing "where is this configured?" through the file finds nothing. Say it's
+the default.
+
+## C9 [GAP] Part 7's selectors reference names Part 6 never introduces
+
+This is the one piece of the first pass's M1 that survives the change of bar. Most
+of M1 does not: prose describing what `store-pos` and `retail-cloud` do is
+appropriate for a document explaining mechanics, and a reader is not stuck without a
+`docker run`.
+
+But Part 7's `Server` selects `port: ingest` **by name** and
+`podSelector: { app: retail-cloud }` **by label**, and neither name nor label
+appears anywhere in the manual. That is not a copy-paste gap; it is a comprehension
+gap — *how does a `Server` find what it protects?* is a question the manual poses
+and then declines to answer. Part 6 naming the two container ports and the label
+would close it in three lines.
+
+---
+
+## Re-scoring the first pass
+
+Under the intuition bar rather than the procedure bar:
+
+| First pass | Was | Now |
+|---|---|---|
+| M1 Part 6 has no commands | BLOCKER | mostly **not a finding** — but see C9 |
+| M2 missing `mkdir /opt/linkerd-proxy` | BLOCKER | **NIT** — a follower hits it and fixes it in one line |
+| M3 `ExternalWorkload` claim | ERROR | **still the top finding** — restated as C1/C2 |
+| M4 `spire-server.yaml` never shown | GAP | **stands** — the manual promises "every configuration file" |
+| M5 NodePort hardening is Tailscale-only | GAP | **NIT** at this bar |
+| M6 no install commands for tooling | GAP | **not a finding** |
+| M7 `$LINKERD_VERSION` / `$TOKEN` unassigned | NIT | **not a finding** |
+| M8 uid 1000 unsafe on a real host | GAP | **stands**, and C6 is the conceptual half of it |
+| M9 `sudo -E` / sudoers | NIT | **not a finding** |
+
+## Side finding, outside the manual
+
+The *Concepts* page — the reader's other half of this material — gives the store's
+SPIFFE ID as `spiffe://root.linkerd.cluster.local/store-pos`
+(`site/…/concepts.md` L32). The real ID, everywhere else in the demo, is
+`spiffe://root.linkerd.cluster.local/store/042/inventory-sync`. A reader moving
+between the two pages sees two different identities for one workload.
+
+## Second-pass verdict
+
+As an intuition-builder the manual is **good and close to very good**. Its structure
+is the right one — four things that must line up, then each one built and explained
+— and its best passages have no equivalent in the upstream docs: the two-signing-
+paths-under-one-root diagram (L115-119), the identity-vs-connectivity split in
+Part 2, "you can't redirect everything-except-the-proxy on a bare host" in Part 4b,
+and the insistence in Part 3 that the *proxy* is the attested workload, not the app
+and not the agent. Those are the parts a reader will remember, and they are correct.
+
+The problems are concentrated and local. **C1-C4 are four sentences**, each
+teaching something false, each fixable in a line — and C1/C2 are one idea (the
+`ExternalWorkload` and the two `SERVER_*` variables are the *inbound* story) that
+would strengthen the document rather than just correct it. **C5 is the missing
+payoff paragraph**, the largest addition proposed here and still only a paragraph.
+C6-C9 are polish.
+
+Nothing in the conceptual architecture needs rework. No claim checked against
+upstream sources this pass was wrong except the four named above, and the first
+pass's finding that every inlined config matches the working deployment still
+holds.
+
+---
+
 _Made with [Claude Code](https://claude.com/claude-code)._
