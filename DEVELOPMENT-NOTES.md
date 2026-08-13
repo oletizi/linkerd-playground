@@ -2,6 +2,74 @@
 
 ---
 
+## 2026-08-13: <!-- session title -->
+
+**Goal:** <!-- compose: what we set out to do -->
+
+**Accomplished:**
+- <!-- compose -->
+
+**Didn't Work:**
+- <!-- compose -->
+
+**Course Corrections:**
+- <!-- compose -->
+
+**Insights:**
+- <!-- compose -->
+
+**Quantitative (auto-derived from git; verify before publishing):**
+- Commits: 47
+  - docs(spiffe-demo): record the clean-host replay in the Linux runlog
+  - fix(spiffe-demo): repair the documented path; remove the CLI beats (#33)
+  - Merge pull request #32 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): retitle demo README around SPIFFE/external-workload onboarding
+  - Merge pull request #31 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): add a grounding paragraph to the top of the demo README
+  - Merge pull request #30 from oletizi/validate/linux-x86-spiffe-demo
+  - Merge pull request #29 from oletizi/docs/production-notes-cleanup
+  - docs: move "Made with Claude Code" to a top blockquote (drop footer)
+  - docs(spiffe-demo): soften the prerequisites wording
+  - fix(spiffe-demo): make the recommended Linux path work end to end
+  - fix(spiffe-demo): down.sh must not report "not defined" when libvirt is unreachable
+  - feat(spiffe-demo): real libvirt provisioning for the Linux single-host topology
+  - docs(spiffe-demo): add MANUAL.md review; correct the ExternalWorkload claim
+  - docs(spiffe-demo): lead with the verified Linux path; demote Lima to an appendix
+  - fix(spiffe-demo): create+annotate mixed-env in retail apply; complete Linux runlog
+  - fix(spiffe-demo): honour APP_UID in run-store-pos.sh; log F5b/F8
+  - docs(spiffe-demo): record Linux substrate findings (networking, certs, docs)
+  - fix(spiffe-demo): repair VM provisioning scripts; start Linux runlog
+  - Merge pull request #28 from oletizi/docs/production-notes-cleanup
+  - docs: add "Made with Claude Code" disclaimer to READMEs, manual, and site
+  - Merge pull request #27 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): disambiguate 3c registration (SPIRE server, not Linkerd)
+  - Merge pull request #26 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): gloss "pinned trust bundle" and "one-time join token" in 3b
+  - Merge pull request #25 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): say where the cert commands run (cluster host, one working dir)
+  - Merge pull request #24 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): clarify root vs issuer and what UpstreamAuthority does
+  - Merge pull request #23 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): introduce the proxy before the identity source references it
+  - Merge pull request #22 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): say WHICH process is attested (the proxy, not app/agent)
+  - Merge pull request #21 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): explain "attest" — gloss in manual, Concepts section
+  - Merge pull request #20 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): explain when to use one trust domain vs several
+  - Merge pull request #19 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): relabel README machine references cloud -> cluster
+  - Merge pull request #18 from oletizi/docs/production-notes-cleanup
+  - docs(spiffe-demo): relabel the Kubernetes host [cloud] -> [cluster]
+  - Merge pull request #17 from oletizi/docs/production-notes-cleanup
+  - Merge pull request #16 from oletizi/docs/production-notes-cleanup
+  - Merge pull request #15 from oletizi/docs/production-notes-cleanup
+  - Merge pull request #14 from oletizi/docs/production-notes-cleanup
+  - Merge pull request #13 from oletizi/docs/production-notes-cleanup
+  - Merge pull request #12 from oletizi/docs/production-notes-cleanup
+- Files changed: 33
+- Backlog touched: (none)
+
 ## 2026-08-09: Deviation callouts in the SPIFFE manual; fixed the docs-site deploy pipeline
 
 **Goal:** Add inline disclaimers to `demos/spiffe-cross-boundary/MANUAL.md` at each point
