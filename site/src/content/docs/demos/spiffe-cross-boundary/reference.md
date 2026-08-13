@@ -6,6 +6,10 @@ description: The key configuration artifacts for the SPIFFE external-workload se
 A summary of the configuration this demo depends on. Each section links to the part
 of the **[manual](/demos/spiffe-cross-boundary/manual/)** that covers it in full.
 
+:::note[Made with Claude Code]
+This demo and its documentation were built with [Claude Code](https://claude.com/claude-code), Anthropic's agentic coding tool.
+:::
+
 ## Trust domain
 
 `root.linkerd.cluster.local` — Linkerd's default. Every SPIFFE ID and every config's
