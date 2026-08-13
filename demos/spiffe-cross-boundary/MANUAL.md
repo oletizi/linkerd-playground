@@ -187,6 +187,7 @@ flat LAN it's a static route plus a resolver entry — nothing Linkerd-specific:
 ```bash
 [store] sudo ip route add 10.42.0.0/16 via <cluster-host-ip>
 [store] sudo ip route add 10.43.0.0/16 via <cluster-host-ip>
+[store] sudo mkdir -p /etc/systemd/resolved.conf.d
 [store] printf '[Resolve]\nDNS=10.43.0.10\nDomains=~cluster.local\n' \
           | sudo tee /etc/systemd/resolved.conf.d/cluster.conf
 [store] sudo systemctl restart systemd-resolved
@@ -305,6 +306,8 @@ key):
 # Copy BOTH public files to the store (only public material + a single-use token leave the cluster):
 #   bundle.pem -> /opt/spire/certs/bundle.pem   (the agent's pinned server bundle)
 #   ca.crt     -> /opt/spire/certs/ca.crt       (from Part 1; the trust anchor the proxy reads in Part 4c)
+[store] sudo mkdir -p /opt/spire/certs
+[store] sudo chmod 644 /opt/spire/certs/ca.crt   # public material; see below
 ```
 
 `agent.cfg` on the store:
@@ -348,6 +351,16 @@ plugins {
 - `trust_bundle_path` pins the server: the agent authenticates the server's certificate
   against this bundle. `insecure_bootstrap` (trust-on-first-use) is **not** used now that
   the agent talks to a *remote* server.
+- Both files are **public** certificate material — the secret half (`ca.key`) stayed in
+  the cluster in 3a — which is why `ca.crt` is made world-readable above: Part 4c reads it
+  as the ordinary user launching the proxy, not as root. (If it stays root-only, that read
+  silently yields an empty string and the proxy rejects it as `InvalidTrustAnchors`, which
+  looks like a bad certificate rather than a bad permission.)
+- In *this* topology the two files are byte-identical, and it is worth knowing why: SPIRE
+  chains straight to the Linkerd root, so the bundle it publishes **is** that root. The two
+  roles stay distinct — one authenticates the *server* to the agent, the other authenticates
+  *peers* to the proxy — and they would diverge the moment SPIRE chained to an intermediate
+  instead.
 - `discover_workload_path = true` is required for the `unix:path` selector in 3c — without
   it the attestor never emits a path selector and attestation fails.
 - The agent exposes the **SPIFFE Workload API** on a local Unix socket
@@ -399,6 +412,7 @@ The standalone proxy is the same binary shipped in Linkerd's sidecar image; extr
 it, matching the control-plane version exactly.
 
 ```bash
+[store] sudo mkdir -p /opt/linkerd-proxy
 [store] id=$(sudo docker create cr.l5d.io/linkerd/proxy:$LINKERD_VERSION)
 [store] sudo docker cp "$id:/usr/lib/linkerd/linkerd2-proxy" /opt/linkerd-proxy/linkerd-proxy
 [store] sudo docker rm -v "$id"
@@ -429,7 +443,18 @@ the box. So the redirect is **scoped to the app's uid**: only the store-pos app 
 The invariant is simply: **app uid 1000 → the proxy; all other host traffic → normal
 networking.** Because only uid 1000 is redirected, there is no blanket root exemption and
 no setup-ordering dependency — the SPIRE agent (running as root) is never captured, so it
-can enroll before or after these rules are in place.
+can enroll before or after these rules are in place. (Pick a uid the app actually owns. On
+a normal Linux box 1000 is the primary human user, and redirecting it sends *their* shell's
+traffic through the proxy too — fine on a throwaway VM, wrong on a real store host.)
+
+It is worth being precise about what this buys, because the natural reading is too
+generous. **The redirect is not authentication.** The party SPIRE attested is the *proxy*
+(uid 2102, that binary — Part 3c); the app is never attested, never talks to SPIRE, and
+never holds a key. What the redirect does is decide *whose traffic gets carried under the
+proxy's identity* — so anything the host will run as uid 1000 pushes as
+`store/042/inventory-sync`, indistinguishably from the real app. The boundary on the store
+host is **who can run as that uid**, not which program it is. That is a real boundary
+between ordinary processes, and it is not a boundary against host root.
 
 ### 4c. Launch the proxy — identity from SPIRE
 
@@ -475,6 +500,19 @@ What each group does:
 
 On startup, the log line to look for is `Certified identity id=spiffe://…/store/042/inventory-sync`,
 which confirms SPIRE issued the SVID and the proxy has joined the mesh.
+
+Next to it you will see a warning repeating on a backoff until Part 5 creates the
+`ExternalWorkload`:
+
+```
+WARN watch{port=4191}: Unexpected policy controller response; retrying with a backoff
+  grpc.status=Some requested entity was not found grpc.message="unknown server"
+```
+
+Expected, and it stops the moment that resource exists. It is the proxy failing to fetch
+**inbound** policy for itself — the direction the `ExternalWorkload` describes. Nothing on
+the outbound push path consults it, which is why the store can already reach the cloud
+while this warning is still looping.
 
 ---
 
@@ -552,8 +590,12 @@ displays it.
 **`store-pos` (store, non-root).** A small HTTP client that maintains an
 inventory/sales model and POSTs a snapshot to the cloud's ingest endpoint every few
 seconds.
-Because it runs as `--user 1000`, its outbound POST is redirected through the proxy
-and carries the `store/042/inventory-sync` SVID over mTLS. It resolves
+It runs as uid 1000 **in the host's network namespace** — as a container, that is
+`docker run --network host --user 1000` — and both halves are load-bearing. Part 4b's rule
+lives in the *host's* `nat` table, so a container with a network namespace of its own never
+meets it whatever uid it runs as: its POST would leave the box unproxied and with no
+identity. With both, the POST is redirected through the proxy and carries the
+`store/042/inventory-sync` SVID over mTLS. It resolves
 `retail-cloud.mixed-env.svc.cluster.local` via the cluster DNS from Part 2.
 
 **`retail-cloud` (cluster, a normal meshed pod).** Listens on two ports:
