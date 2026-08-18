@@ -9,8 +9,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$(cd "$HERE/../../.." && pwd)/lib/common.sh"; load_config "$(cd "$HERE/.." && pwd)"
 ARCH="$(detect_arch)"
 VER="${SPIRE_VERSION:-1.15.2}"
+# Token sources, in order: argument, environment, then the file the host relay
+# drops here (cluster/spire/apply.sh writes it; see the README's relay step). The
+# file exists so the token does not have to be moved by eye.
+TOKEN_FILE=/opt/spire/join-token
 TOKEN="${1:-${SPIRE_JOIN_TOKEN:-}}"
-[ -n "$TOKEN" ] || die "usage: install-spire-agent.sh <join-token>   (from cluster/spire/apply.sh)"
+if [ -z "$TOKEN" ] && [ -r "$TOKEN_FILE" ]; then
+  TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+  [ -n "$TOKEN" ] && log "using the join token relayed to $TOKEN_FILE"
+fi
+[ -n "$TOKEN" ] || die "no join token.
+  Pass one as an argument, set SPIRE_JOIN_TOKEN, or relay $TOKEN_FILE from the
+  cluster (cluster/spire/apply.sh writes it to ~/spire-join-token)."
 [ -f /opt/spire/certs/bundle.pem ] || die "copy the SPIRE bundle to /opt/spire/certs/bundle.pem first"
 [ ! -e /opt/spire/certs/ca.key ] || die "refuse to run: ca.key must not be on the edge (remove it)"
 
