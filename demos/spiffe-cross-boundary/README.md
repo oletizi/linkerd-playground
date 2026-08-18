@@ -252,25 +252,6 @@ S linkerd-edge "bash $D/edge/iptables.sh"
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
 
-> **Nothing here needs filling in** — step 3 relayed the join token, and
-> `install-spire-agent.sh` picks it up from `/opt/spire/join-token`. Pass a token
-> as an argument to override it. If step 3 was skipped, the script says so; it
-> does not start an agent without one.
->
-> If the agent never gets installed, the failure surfaces two steps later, in step
-> 5, as a Rust panic from the proxy:
->
-> ```
-> thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:
-> spire client must gracefully handle errors: ... ConnectError(Os { code: 2, kind: NotFound ...
-> ```
->
-> That is the proxy failing to open the SPIRE agent's socket at
-> `/tmp/spire-agent/public/api.sock`, because no agent is running to create it. It
-> means *this step did not happen*, not that the proxy is broken. Confirm with
-> `S linkerd-edge 'ls /opt/spire/'` — a `bin/` directory and `agent.cfg` should be
-> there alongside `certs/`.
-
 > `net/shim.sh` picks the resolver mechanism the box actually uses — a
 > `systemd-resolved` drop-in where that is running, or `/etc/resolv.conf` directly
 > where it is masked or absent (OrbStack, minimal images). Either way it then
@@ -340,6 +321,20 @@ run there and read it there.
 
 `install-spire-agent.sh` is the exception: each run needs a **new** join token, so
 take one from a fresh `spire/apply.sh`.
+
+**The proxy panics with a Rust stack trace.**
+
+```
+thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:
+spire client must gracefully handle errors: ... ConnectError(Os { code: 2, kind: NotFound ...
+```
+
+That is the proxy failing to open the SPIRE agent's socket at
+`/tmp/spire-agent/public/api.sock`, because no agent is running to create it — the
+proxy has no identity source and cannot start. It means step 4's
+`install-spire-agent.sh` did not take effect, not that the proxy is broken. Check
+with `S linkerd-edge 'ls /opt/spire/'`: a `bin/` directory and `agent.cfg` should
+be there alongside `certs/`.
 
 **Nothing is pushing.** The `store-pos` log says where it stopped. `ENOTFOUND`
 means cluster DNS is not configured yet — step 4's `net/shim.sh`. `ECONNREFUSED`
