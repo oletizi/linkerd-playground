@@ -180,6 +180,22 @@ S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + v
 `COREDNS_ADDR` (default `10.43.0.10`). `install-linkerd.sh` ends with
 `Status check results are √`.
 
+> **`install-linkerd.sh` goes quiet twice. Both are normal.** It runs
+> `linkerd check` after installing the control plane, and again after installing
+> viz. Each run polls while pods pull images and become ready, printing nothing
+> until they do — on a first run that is typically a minute or two per pause,
+> longer on a slow connection.
+>
+> The first pause is at `√ control plane pods are ready`, right after the
+> `linkerd-existence` block. The second is at `√ viz extension pods are running`,
+> and is usually the longer of the two — viz pulls five more images
+> (`prometheus`, `tap`, `tap-injector`, `web`, `metrics-api`).
+>
+> When it finishes you will also see several `‼ proxies are up-to-date` warnings
+> listing pods at the pinned `edge-26.7.2`. Those note that a newer Linkerd edge
+> exists than this demo pins; they are expected and not failures. The run is good
+> if the last line is `Status check results are √`.
+
 ### Box A → deploy the SPIRE server (root stays in the cluster)
 
 ```bash
