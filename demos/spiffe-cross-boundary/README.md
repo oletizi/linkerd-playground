@@ -262,8 +262,9 @@ S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 running the proxy binary once, which exits with `Invalid configuration: no
 destination service configured` — that is expected; it is just a version check.
 
-`store-pos` will log `push error: ENOTFOUND` until the next step creates the
-`retail-cloud` Service. That is expected.
+`store-pos` will log `push error: ECONNREFUSED` until step 5 starts the proxy. That
+is expected: `iptables.sh` has already redirected this app's outbound TCP to port
+4140, and nothing is listening there until `run-proxy.sh` runs.
 
 ### Step 5 — Box A: deploy RetailCloud, THEN Box B: start the proxy
 
@@ -336,10 +337,13 @@ proxy has no identity source and cannot start. It means step 4's
 with `S linkerd-edge 'ls /opt/spire/'`: a `bin/` directory and `agent.cfg` should
 be there alongside `certs/`.
 
-**Nothing is pushing.** The `store-pos` log says where it stopped. `ENOTFOUND`
-means cluster DNS is not configured yet — step 4's `net/shim.sh`. `ECONNREFUSED`
-means DNS works but nothing is listening yet — step 5's `retail/apply.sh` and
-`run-proxy.sh` have not run.
+**Nothing is pushing.** The `store-pos` log says where it stopped.
+`ENOTFOUND` means cluster DNS is not configured — `net/shim.sh` has not run, or did
+not take effect. `ECONNREFUSED` means DNS resolves but the connection is refused
+locally: `iptables.sh` redirects this app's outbound TCP to port 4140 and the proxy
+is not listening there, so run step 5's `run-proxy.sh`. Note that the redirect
+makes `ECONNREFUSED` the expected symptom whether or not `retail-cloud` exists yet
+— the app never reaches the cluster to find out.
 
 ## Inspect the traffic
 
