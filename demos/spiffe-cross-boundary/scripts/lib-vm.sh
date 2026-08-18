@@ -19,3 +19,14 @@ vm_start() { # name yaml cpus mem
 }
 
 vm_shell() { local name="$1"; shift; limactl shell "$name" -- "$@"; }
+
+# vm_addr <name>: the guest's address on the shared network -- the one the OTHER
+# box reaches it on. Skips docker0 and Lima's default user-mode NAT range
+# (192.168.5.0/24), which is per-guest and identical in every VM, so it is never
+# the address to hand the other box.
+vm_addr() {
+  limactl shell "$1" -- bash -lc \
+    'ip -4 -o addr show scope global \
+       | awk "\$2 !~ /^docker/ {print \$4}" | cut -d/ -f1 \
+       | grep -v "^192\.168\.5\." | head -1'
+}
