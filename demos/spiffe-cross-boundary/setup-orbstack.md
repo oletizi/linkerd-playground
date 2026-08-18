@@ -77,12 +77,18 @@ not just the demo directory:
 
 ```bash
 for m in linkerd-cluster linkerd-edge; do
-  tar --exclude=.git --exclude=site/node_modules --exclude=site/dist -C . -czf - . \
+  tar --no-xattrs --exclude=.git --exclude=site/node_modules --exclude=site/dist -C . -czf - . \
     | orb -m "$m" bash -lc 'rm -rf ~/linkerd-playground && mkdir -p ~/linkerd-playground && tar -C ~/linkerd-playground -xzf -'
 done
 ```
 
 Run that from the **repo root**, not the demo directory.
+
+> `--no-xattrs` keeps macOS from packing its extended attributes into the archive.
+> Without it, GNU tar in the guest prints
+> `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'`
+> once per file — harmless (it is a macOS Gatekeeper tag, meaningless on Linux, and
+> file contents and permissions are unaffected), but alarming in bulk.
 
 ## 4. Wire up the `S` shorthand
 

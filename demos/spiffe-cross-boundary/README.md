@@ -312,13 +312,20 @@ up "ready" and unable to see each other.)
 Then copy the **repo root** into each guest:
 
 ```bash
-tar --exclude=.git -C <repo> -czf - . \
+tar --no-xattrs --exclude=.git -C <repo> -czf - . \
   | limactl shell <vm> -- bash -c 'mkdir -p ~/linkerd-playground && tar -C ~/linkerd-playground -xzf -'
 limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-boundary/<script>'
 ```
 
 > Quote the path as shown. Written unquoted, `~` expands on the **host**, and the
 > guest home is never the host's — the guest then gets a path that doesn't exist.
+
+> `--no-xattrs` stops macOS packing its extended attributes into the archive.
+> Without it the guest's GNU tar prints
+> `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'`
+> once per file. That warning is harmless — it is a macOS Gatekeeper tag with no
+> meaning on Linux, and nothing about the file contents is lost — but there is no
+> reason to ship it.
 
 **macOS — OrbStack.** Two native arm64 machines, each a box, reachable from each
 other with no network setup. Full recipe in
