@@ -320,8 +320,19 @@ run there and read it there.
 | `extract-proxy.sh`, `iptables.sh` | report `already configured` and do nothing |
 | `retail/apply.sh` | re-applies the manifests |
 
-`install-spire-agent.sh` is the exception: each run needs a **new** join token, so
-take one from a fresh `spire/apply.sh`.
+`install-spire-agent.sh` is the exception: each run needs a **new** join token.
+Getting one takes **two** steps, not one — re-run step 2 to issue it, then **step 3
+to relay it**. Step 2 writes the new token to `~/spire-join-token` on the cluster;
+until step 3 copies it across, the edge still holds the previous one and the agent
+fails with:
+
+```
+failed to attest: join token does not exist or has already been used
+```
+
+That message means the token the edge has was already consumed, not that anything
+is misconfigured. The agent keeps retrying in the background after the script
+exits; the next successful run replaces it.
 
 **The proxy panics with a Rust stack trace.**
 
