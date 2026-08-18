@@ -259,8 +259,8 @@ S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 > diagnosis if it cannot. Stopping there usually means Box A has not run yet.
 
 `install-spire-agent.sh` ends with `Agent is healthy.` `extract-proxy.sh` ends by
-running the proxy binary once, which exits with `Invalid configuration: no
-destination service configured` — that is expected; it is just a version check.
+reporting the proxy release it extracted, and fails if it cannot confirm one —
+that version has to match the control plane.
 
 `store-pos` will log `push error: ECONNREFUSED` until step 5 starts the proxy. That
 is expected: `iptables.sh` has already redirected this app's outbound TCP to port
