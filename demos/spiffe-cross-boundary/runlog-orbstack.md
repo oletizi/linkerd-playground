@@ -211,13 +211,68 @@ push -> 200
 Nothing about the network changed between those two states — only the allowed
 identity.
 
+## F10 [BLOCKER, macOS — not OrbStack-specific] Build it failed under `zsh`
+
+Found while wiring the OrbStack shorthand, but it affects **every macOS reader**,
+including the Lima path. [`README.md`](README.md) defined its ssh shorthand as a
+string and called it with the variable unquoted:
+
+```bash
+S="ssh -F $HOME/.ssh/linkerd-playground.conf"
+$S linkerd-cluster "bash $D/cluster/gen-certs.sh"
+```
+
+That relies on the shell splitting an unquoted variable into separate words.
+`bash` does; `zsh` does not, and `zsh` has been the macOS default since Catalina.
+The same script, two shells:
+
+```
+zsh:  currentform.sh:2: no such file or directory: ssh -F /tmp/orb-test.conf
+bash: aarch64
+```
+
+So a macOS reader pasting Build it into their default shell fails on the **first
+command**, with an error that points at the config file rather than the shell.
+
+**Fix:** make `S` a function, which needs no word splitting and behaves the same in
+both shells. `D` is unaffected — it is only ever used inside double quotes.
+
+```bash
+S() { ssh -F "$HOME/.ssh/linkerd-playground.conf" "$@"; }
+```
+
+## Clean-room re-run
+
+After writing [`setup-orbstack.md`](setup-orbstack.md), both machines were deleted
+and the page followed from scratch **in `zsh`**, driving the whole of Build it
+through the new `S` function. The two machines came up on different addresses than
+the first pass (`192.168.139.155` / `192.168.139.121`), confirming nothing was
+hardcoded.
+
+Every step behaved as the page describes, including the one documented deviation —
+`net/shim.sh` exits `1` on the masked `systemd-resolved`, and the hand-written
+`resolv.conf` resolves both cluster and external names. End state on the fresh
+build:
+
+```
+push -> 200
+src=192.168.139.121  src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+src_tls=true  dst_authz_name=ingest-allow-store
+```
+
+One caveat about this run's own harness: `shim.sh` was first invoked through a pipe
+to `tail`, so the recorded exit status was `tail`'s, not the script's. Re-run
+without the pipe, it exits `1` as stated above.
+
 ---
 
 ## Summary
 
-**The demo runs on OrbStack, natively on arm64, with one fix.** Every script ran
+**The demo runs on OrbStack, natively on arm64, with one fix**, verified twice —
+once exploratively, once clean-room from an empty machine list. Every script ran
 unmodified except `net/shim.sh` (F3), whose DNS step needs an OrbStack-specific
-replacement. No arch-related failure appeared anywhere: k3s, step-cli, SPIRE, the
+replacement. The one defect that stopped a reader cold was not OrbStack's at all:
+Build it did not work in `zsh` (F10). No arch-related failure appeared anywhere: k3s, step-cli, SPIRE, the
 Linkerd proxy image and `node:20-alpine` all resolved arm64 builds on their own,
 which is what the arch-aware helpers in `lib/common.sh` are for.
 
