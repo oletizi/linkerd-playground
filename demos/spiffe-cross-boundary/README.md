@@ -212,9 +212,11 @@ S linkerd-edge "bash $D/edge/iptables.sh"
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
 ```
 
-> **On OrbStack**, `net/shim.sh` fails on its last line — `systemd-resolved` is
-> masked there. Its routes are fine; only the resolver needs replacing by hand.
-> [`setup-orbstack.md`](setup-orbstack.md) step 5 has the two commands.
+> `net/shim.sh` picks the resolver mechanism the box actually uses — a
+> `systemd-resolved` drop-in where that is running, or `/etc/resolv.conf` directly
+> where it is masked or absent (OrbStack, minimal images). Either way it then
+> resolves a real cluster name before reporting success, and stops with a
+> diagnosis if it cannot. Stopping there usually means Box A has not run yet.
 
 `install-spire-agent.sh` ends with `Agent is healthy.` `extract-proxy.sh` ends by
 running the proxy binary once, which exits with `Invalid configuration: no

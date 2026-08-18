@@ -127,37 +127,34 @@ That should print `aarch64` and the script's path inside the machine. `S` is a
 function rather than a string so it behaves the same in `zsh` (the macOS default)
 and `bash` — see the note in Build it for why the string form breaks under `zsh`.
 
-## 5. Follow Build it — with one deviation
+## 5. Follow Build it
 
 Go to [`README.md`](README.md) → **Build it** and work through it from the top.
-Everything applies as written, including the bundle-relay pipes.
+Every command applies as written, including the bundle-relay pipes. There is no
+OrbStack-specific step.
 
-**The one deviation** is `net/shim.sh`, the first command in *Box B*. It ends by
-writing a `systemd-resolved` drop-in, and OrbStack machines have `systemd-resolved`
-masked — OrbStack owns guest DNS, with `/etc/resolv.conf` symlinked to a read-only
-file. The script fails on its last line:
+One thing is worth knowing about, because OrbStack is the reason the script does
+it. `net/shim.sh` (the first command in *Box B*) needs `*.cluster.local` to resolve
+via CoreDNS. On stock Ubuntu that means a `systemd-resolved` drop-in — but OrbStack
+owns guest DNS: the unit is masked and `/etc/resolv.conf` is a symlink to a
+read-only file. The script detects that and writes `/etc/resolv.conf` itself,
+keeping OrbStack's own resolver for names CoreDNS does not own. You should see:
 
 ```
-Failed to restart systemd-resolved.service: Unit systemd-resolved.service is masked.
+[shim.sh] systemd-resolved is masked or absent here; writing /etc/resolv.conf directly
+[shim.sh] route + cluster DNS shim applied (...); kubernetes.default.svc.cluster.local resolves
 ```
 
-Everything before that line succeeded — the pod and service routes are installed
-and CoreDNS is reachable. Only the resolver wiring is missing. Replace it by hand:
+That second line is the script proving DNS works rather than assuming it — it
+resolves a real cluster name before reporting success, and stops with a diagnosis
+if it cannot. If it stops there, the usual cause is that the Box A steps have not
+run yet, so there is no CoreDNS to answer.
+
+To see what it configured:
 
 ```bash
-S linkerd-edge 'sudo rm -f /etc/resolv.conf'
-S linkerd-edge 'printf "search cluster.local\nnameserver 10.43.0.10\nnameserver 0.250.250.200\n" | sudo tee /etc/resolv.conf'
+S linkerd-edge 'cat /etc/resolv.conf'
 ```
-
-`10.43.0.10` is CoreDNS (the `COREDNS_ADDR` default, confirmed by
-`install-k3s.sh`); `0.250.250.200` is OrbStack's own resolver, kept as a fallback
-for names CoreDNS does not own. Check both kinds of name resolve:
-
-```bash
-S linkerd-edge 'getent hosts kubernetes.default.svc.cluster.local; getent hosts github.com'
-```
-
-Then carry on with the next Build it command.
 
 ## Teardown
 

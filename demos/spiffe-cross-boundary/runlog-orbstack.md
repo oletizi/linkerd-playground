@@ -66,7 +66,12 @@ deliberately. That wording is the actual defect behind the original report.
 Diagnostic, inside the machine: `uname -m` → `x86_64` means the machine itself is
 emulated; recreate it without `-a`.
 
-## F3 [BLOCKER, OrbStack-specific] `net/shim.sh` fails — `systemd-resolved` is masked
+## F3 [BLOCKER, OrbStack-specific — since fixed] `net/shim.sh` fails — `systemd-resolved` is masked
+
+> **Fixed after this run.** `net/shim.sh` now detects which resolver mechanism the
+> box uses and configures that one, then resolves a real cluster name to prove it
+> worked. The manual replacement below is no longer needed; it is kept because it
+> is what this run actually did, and it explains why the script has two paths.
 
 `net/shim.sh` ends by writing a `systemd-resolved` drop-in and restarting the
 service. In an OrbStack machine that fails:
