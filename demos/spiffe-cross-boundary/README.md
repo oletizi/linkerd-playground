@@ -265,9 +265,11 @@ allowed identity.
 
 ## Other topologies
 
-Everything below works but is **not** the verified path. Only the Linux
-single-host setup above is tested end to end; if one of these breaks, please file
-an issue.
+The Linux single-host setup above is the path the scripts drive by default. Two of
+the alternatives below have their own end-to-end runlogs — macOS/OrbStack
+([`runlog-orbstack.md`](runlog-orbstack.md)) and macOS/Lima
+([`runlog.md`](runlog.md)); the rest are config-driven but not independently
+verified. If one of them breaks, please file an issue.
 
 **Two physical Linux hosts.** Skip `host-setup`/`cluster-up`/`edge-up` entirely.
 Put the repo and a matching `config.local.env` on both, set `CLUSTER_NODE_ADDR`
@@ -287,6 +289,36 @@ limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-bounda
 
 > Quote the path as shown. Written unquoted, `~` expands on the **host**, and the
 > guest home is never the host's — the guest then gets a path that doesn't exist.
+
+**macOS — OrbStack.** Two machines, each a box. `cluster-up`/`edge-up` do **not**
+drive OrbStack; create the machines yourself and then follow **Two physical Linux
+hosts** above.
+
+```bash
+orb create --cpus 4 --memory 6G --disk 40G ubuntu:24.04 linkerd-cluster
+orb create --cpus 2 --memory 3G --disk 20G ubuntu:24.04 linkerd-edge
+orb list   # note the two addresses; put them in config.local.env
+```
+
+> **Do not pass `-a amd64`.** OrbStack will build an emulated x86_64 machine on
+> Apple Silicon and the demo will crawl. The default is your host's architecture,
+> which is what you want; `uname -m` inside the machine should report `aarch64`.
+
+Each machine gets its own address on a shared subnet, so VM-to-VM works with no
+network setup — unlike Lima, which needs `user-v2`. One step needs an
+OrbStack-specific fix: `net/shim.sh` fails at its last line because OrbStack masks
+`systemd-resolved` and owns `/etc/resolv.conf`. The routes it installs are fine;
+replace the resolver by hand on the edge machine:
+
+```bash
+sudo rm -f /etc/resolv.conf
+printf 'search cluster.local\nnameserver 10.43.0.10\nnameserver 0.250.250.200\n' \
+  | sudo tee /etc/resolv.conf
+```
+
+Note that OrbStack machines share one kernel, so `--cpus`/`--memory` act as limits
+rather than guest sizing and the two boxes are not resource-isolated from each
+other. Full findings in [`runlog-orbstack.md`](runlog-orbstack.md).
 
 **Lima on Linux is not recommended.** Its only VM-to-VM network (`user-v2`) rides
 a QEMU socket netdev that aborts the VM under sustained download load
@@ -315,13 +347,21 @@ without supervision, and more.
 [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) catalogues each shortcut and the production
 practice that should replace it.
 
-- **Verified end-to-end on Linux/x86_64**: an Ubuntu 26.04 host running both boxes
-  as libvirt VMs (Ubuntu 24.04 guests) on the static-route path — the setup this
-  README describes, built from scratch with these scripts. See
-  [`runlog-linux.md`](runlog-linux.md). Also verified on **Lima/Apple-Silicon
-  (arm64)** over the optional Tailscale overlay, following `MANUAL.md` by hand —
-  see [`runlog.md`](runlog.md). Other topologies are config-driven and arch-aware
-  but not independently verified.
+- **Verified end-to-end on both x86_64 and arm64.** Nothing here needs a particular
+  architecture: every artifact the demo installs resolves its own build. Three
+  independent runs:
+  - **Linux/x86_64, libvirt** — an Ubuntu 26.04 host running both boxes as libvirt
+    VMs (Ubuntu 24.04 guests) on the static-route path, the setup this README
+    describes, built from scratch with these scripts:
+    [`runlog-linux.md`](runlog-linux.md).
+  - **macOS/Apple Silicon (arm64), OrbStack** — both boxes as native arm64
+    machines, using the two-hosts topology: [`runlog-orbstack.md`](runlog-orbstack.md).
+  - **macOS/Apple Silicon (arm64), Lima** — over the optional Tailscale overlay,
+    following `MANUAL.md` by hand: [`runlog.md`](runlog.md).
+
+  On an Apple Silicon Mac, run the guests as **arm64**. Deliberately choosing an
+  x86_64 guest (`orb create -a amd64`, an Intel Lima VM, a cross-arch
+  `VM_IMAGE_URL`) means emulation, and the demo becomes unusably slow.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).
