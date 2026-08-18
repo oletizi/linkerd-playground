@@ -180,7 +180,7 @@ D='~/linkerd-playground/demos/spiffe-cross-boundary'
 > [`setup-orbstack.md`](setup-orbstack.md) creates the machines, writes that
 > config, and returns you here — nothing else in this section changes.
 
-### Box A — Kubernetes cluster
+### Step 1 — Box A: Kubernetes cluster
 
 ```bash
 S linkerd-cluster "bash $D/cluster/gen-certs.sh"
@@ -209,7 +209,7 @@ S linkerd-cluster "bash $D/cluster/install-linkerd.sh"
 > exists than this demo pins; they are expected and not failures. The run is good
 > if the last line is `Status check results are √`.
 
-### Box A → deploy the SPIRE server (root stays in the cluster)
+### Step 2 — Box A: deploy the SPIRE server (root stays in the cluster)
 
 ```bash
 S linkerd-cluster "bash $D/cluster/spire/apply.sh"
@@ -221,6 +221,12 @@ path), restricts the SPIRE NodePort to the interface the edge reaches this host 
 (derived from `EDGE_ADDR`; override with `SPIRE_NODEPORT_IFACE`), and prints a
 one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`).
 
+**Copy the join token somewhere before it scrolls away** — step 4 takes it as an
+argument, and it is one-time. If you lose it, generate another with
+`S linkerd-cluster "kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server token generate -spiffeID $SPIRE_AGENT_SPIFFE_ID"`.
+
+### Step 3 — relay the trust bundle to Box B
+
 Copy only the bundle and the public root cert to the store — the root **key** never
 leaves the cluster. The two boxes have no SSH access to each other, so relay
 through your host:
@@ -231,7 +237,7 @@ S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/
 S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
 ```
 
-### Box B — on-prem store (SPIRE agent + proxy + store-pos)
+### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
 S linkerd-edge "bash $D/net/shim.sh"
@@ -240,6 +246,22 @@ S linkerd-edge "bash $D/edge/extract-proxy.sh"
 S linkerd-edge "bash $D/edge/iptables.sh"
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
+
+> **The second line is the only one with something to substitute.** Replace
+> `<join-token>` with the token step 2 printed; it is not optional and not
+> auto-filled. Skipping it is easy — five near-identical lines — and the failure
+> surfaces much later, in step 5, as a Rust panic from the proxy:
+>
+> ```
+> thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:
+> spire client must gracefully handle errors: ... ConnectError(Os { code: 2, kind: NotFound ...
+> ```
+>
+> That is the proxy failing to open the SPIRE agent's socket at
+> `/tmp/spire-agent/public/api.sock`, because no agent is running to create it. It
+> means *this step did not happen*, not that the proxy is broken. Confirm with
+> `S linkerd-edge 'ls /opt/spire/'` — a `bin/` directory and `agent.cfg` should be
+> there alongside `certs/`.
 
 > `net/shim.sh` picks the resolver mechanism the box actually uses — a
 > `systemd-resolved` drop-in where that is running, or `/etc/resolv.conf` directly
@@ -254,7 +276,7 @@ destination service configured` — that is expected; it is just a version check
 `store-pos` will log `push error: ENOTFOUND` until the next step creates the
 `retail-cloud` Service. That is expected.
 
-### Box A → deploy RetailCloud, THEN Box B → start the proxy
+### Step 5 — Box A: deploy RetailCloud, THEN Box B: start the proxy
 
 `cluster/retail/apply.sh` creates the `mixed-env` namespace (annotated for
 injection), registers `store-pos` as an `ExternalWorkload` (and marks it Ready),
