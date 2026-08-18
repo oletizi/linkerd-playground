@@ -20,7 +20,15 @@ for c in virsh virt-install qemu-img cloud-localds curl ssh; do
 done
 
 LIBVIRT_NET="${LIBVIRT_NET:-default}"
-VM_IMAGE_URL="${VM_IMAGE_URL:-https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img}"
+
+# Guest architecture follows the host's. A guest whose arch differs from the host
+# has no KVM to run on, so libvirt falls back to full emulation -- which is not an
+# error, just unusably slow, and the slowness is easy to blame on the demo rather
+# than the substrate. So: derive the image from the host arch, and refuse an
+# explicit override that names a different one.
+VM_ARCH="$(detect_arch)"
+VM_IMAGE_URL="${VM_IMAGE_URL:-$(ubuntu_cloud_image_url "$VM_ARCH")}"
+require_matching_image_arch "$VM_IMAGE_URL" "$VM_ARCH" || exit 1
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/linkerd-playground"
 SSH_KEY="${DEMO_SSH_KEY:-$HOME/.ssh/linkerd-playground}"
 SSH_CONFIG="${DEMO_SSH_CONFIG:-$HOME/.ssh/linkerd-playground.conf}"
@@ -149,12 +157,18 @@ vm_create() { # name ip cpus mem_mib disk_gb packages...
   make_volumes "$name" "$disk" "$ud"
   rm -f "$ud"
 
+  # aarch64 has no BIOS, so an arm64 guest needs UEFI firmware (the
+  # qemu-efi-aarch64 package host-setup.sh installs on that arch).
+  local firmware=()
+  [ "$VM_ARCH" = arm64 ] && firmware=(--boot uefi)
+
   virt-install --connect qemu:///system --name "$name" \
     --memory "$mem" --vcpus "$cpus" \
     --disk "vol=${POOL}/${name}.qcow2,bus=virtio" \
     --disk "vol=${POOL}/${name}-seed.iso,device=cdrom" \
     --os-variant ubuntu24.04 \
     --network "network=${LIBVIRT_NET},model=virtio,mac=${mac}" \
+    ${firmware[@]+"${firmware[@]}"} \
     --graphics none --import --noautoconsole >/dev/null
 }
 
