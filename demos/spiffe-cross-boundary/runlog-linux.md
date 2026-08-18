@@ -631,3 +631,131 @@ from a clean host by someone reading it literally.**
 With F12 and F13 fixed, the README now runs start to finish as written: `push ->
 200` with the SPIFFE identity in `viz tap -o wide`, Void producing a real 403 and
 restoring cleanly, and teardown returning the host to a rebuildable state.
+
+# Third pass — regression replay on bare metal (2026-08-18)
+
+A regression run, not a discovery run. The arm64/OrbStack work
+([`runlog-orbstack.md`](runlog-orbstack.md)) rewrote surfaces this path shares:
+"Build it"'s `S` shorthand became a shell function, and `lib/common.sh` /
+`lib-libvirt.sh` gained the host-architecture guard. The question here was
+narrow — **does the Linux/x86_64 libvirt path still run start to finish as the
+README describes it?** — so the README was again followed literally, from a host
+with no VMs defined.
+
+## Environment
+
+- Host: the same box as the first two passes. Ubuntu 26.04 LTS, kernel
+  7.0.0-29-generic, x86_64, AMD Ryzen 3 3100 (4c/8t), 15.4 GiB RAM (12 GiB free),
+  330 GiB free disk. KVM present, user in `libvirt` and `kvm`.
+- Starting state: no libvirt domains, `default` network active, the ~600 MB
+  Ubuntu 24.04 cloud image already in `~/.cache/linkerd-playground` from the
+  earlier passes, so no re-download. `host-setup` was a verified no-op again (no
+  passwordless sudo here; every effect it produces was already present).
+- `config.local.env` carries the example's values verbatim.
+
+## F14 [BLOCKER, Linux-specific] `virt-install` is present but does not run under a shadowing `python3`
+
+The very first provisioning command died before creating anything:
+
+```
+$ just demo spiffe-cross-boundary cluster-up
+[cluster-up.sh] creating linkerd-cluster (4 vcpu, 6144MiB, 40GiB) at 192.168.122.10
+Traceback (most recent call last):
+  File "/usr/bin/virt-install", line 5, in <module>
+    from virtinst import virtinstall
+  File "/usr/share/virt-manager/virtinst/__init__.py", line 8, in <module>
+    import gi
+ModuleNotFoundError: No module named 'gi'
+```
+
+`python3-gi` *is* installed, and `virt-install` *is* installed. The failure is
+that `/usr/bin/virt-install` is a Python script with a `#!/usr/bin/env python3`
+shebang, so it runs under whichever `python3` comes first on `PATH`. This host
+has Homebrew on Linux, whose `python3` shadows the system one:
+
+```
+$ which -a python3
+/home/linuxbrew/.linuxbrew/bin/python3
+/usr/bin/python3
+$ /usr/bin/python3 /usr/bin/virt-install --version
+5.1.0
+```
+
+Brew's interpreter cannot see the distro's `gi` in
+`/usr/lib/python3/dist-packages`, so the import fails. Homebrew is one instance
+of a broad class — pyenv, conda, and an activated virtualenv all shadow the
+system `python3` the same way, and none of them is exotic on a developer's Linux
+box.
+
+The demo's preflight did not catch it because it tests **existence**, not
+**execution**:
+
+```bash
+for c in virsh virt-install qemu-img cloud-localds curl ssh; do
+  command -v "$c" >/dev/null 2>&1 || die "missing '$c'. ..."
+done
+```
+
+`command -v virt-install` succeeds on a binary that cannot run, so the follower
+gets a Python traceback in virt-install's own voice, mid-provision, with nothing
+naming the actual cause. It reads as a broken demo.
+
+Fix applied: `lib-libvirt.sh` now asks `virt-install --version` after the
+existence loop and, on failure, reports the captured error alongside the
+shadowing diagnosis and the one-line workaround. Verified both directions on this
+host — with the shadowing `python3` first it exits 1 with the new message and
+provisions nothing; with `PATH=/usr/bin:$PATH` it passes and `cluster-up` reaches
+`cluster-vm-ready`. Workaround for a follower who hits it:
+
+```bash
+PATH=/usr/bin:$PATH just demo spiffe-cross-boundary cluster-up
+```
+
+## The README, replayed
+
+With `PATH` corrected, every documented checkpoint produced its documented
+output. Nothing else needed a fix.
+
+| Step | README claims | Observed |
+|---|---|---|
+| `cluster-up` / `edge-up` | two VMs at `.10` / `.11`, ssh config written | both `*-vm-ready`, `uname -m` = `x86_64` |
+| `gen-certs.sh` | trust anchor + issuer | root CA `root.linkerd.cluster.local`, valid 2026-08-18 → 2036-08-15 |
+| `install-k3s.sh` | prints kube-dns ClusterIP, must match `COREDNS_ADDR` | `10.43.0.10` — matches the default |
+| `install-linkerd.sh` | ends `Status check results are √` | verbatim, k3s v1.36.3+k3s1, Linkerd edge-26.7.2 |
+| `spire/apply.sh` | StatefulSet + NodePort + registration + join token | entry registered on `unix:uid:2102` + the proxy path; NodePort 30081 restricted to `enp1s0`; token printed |
+| bundle relay | root key never leaves the cluster | only `bundle.pem` + `ca.crt` (603 B each) reach Box B |
+| `net/shim.sh` | routes + `*.cluster.local` resolver | `pod=10.42.0.0/16 svc=10.43.0.0/16 dns=10.43.0.10`, exit 0 (the OrbStack `systemd-resolved` caveat is not a Linux/libvirt problem) |
+| `install-spire-agent.sh` | ends `Agent is healthy.` | verbatim |
+| `extract-proxy.sh` | exits `Invalid configuration: no destination service configured` | verbatim |
+| `iptables.sh` | redirect for `APP_UID` | `PROXY_APP_OUTPUT`, uid 1000 → `:4140` |
+| `run-store-pos.sh` before Box A | `push error: ENOTFOUND` | verbatim |
+| `retail/apply.sh` | namespace, ExternalWorkload, app, policy, dashboard URL | rollout complete, `http://192.168.122.10:30080/` |
+| `run-proxy.sh` | `proxy has identity (uid 2102)` | verbatim |
+| store-pos after | `push -> 200` | verbatim (`ECONNREFUSED` for a few seconds first, while the proxy binds) |
+| `viz tap … -o wide` | `src_client_id=spiffe://…/store/042/inventory-sync`, `dst_authz_name=ingest-allow-store` | verbatim, plus `tls=true` and `dst_srv_name=retail-ingest` |
+| Void | `push -> 403 (authorization voided by cloud)` | verbatim; `/api/data` flips to `voided:true` |
+| restore | pushes resume | `push -> 200` within one poll |
+
+The dashboard served HTTP 200 on `/` and `/tutorial`, and `/api/data` carried both
+identities — `retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local`
+and `spiffe://root.linkerd.cluster.local/store/042/inventory-sync`.
+
+Two notes on what the run does **not** prove:
+
+- `linkerd check` emits three `‼` version-drift warnings (CLI and control plane
+  at edge-26.7.2, latest edge 26.8.2). They are advisory and do not change the
+  `√` verdict, but the demo is pinned behind the current edge.
+- The end-to-end build ran against the branch tip before the architecture guard
+  landed. The guard was pulled in afterward and `cluster-up` re-run green on this
+  host; since it derives the amd64 URL that was previously hardcoded, the x86_64
+  provisioning path is byte-identical either way. The arm64 libvirt branch stays
+  unexercised here, as its own commit says.
+
+## Third-pass verdict
+
+The Linux/x86_64 path has **not** regressed: the arm64 work left it intact, and
+the `S`-as-a-function rewrite copy-pastes and runs correctly under bash. One new
+blocker, and it is the same lesson as F12 and F13 in a different costume — the
+demo assumed a property of the follower's machine (here, that `python3` is the
+system one) that the preflight never checked. **Every host assumption the scripts
+rely on should be tested by executing it, not by looking for it.**
