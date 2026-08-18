@@ -71,8 +71,11 @@ provisions for you.
 ```bash
 cd <repo>
 cp demos/spiffe-cross-boundary/config.example.env demos/spiffe-cross-boundary/config.local.env
-just demo spiffe-cross-boundary host-setup     # one time; installs libvirt, needs sudo
+just demo spiffe-cross-boundary host-setup
 ```
+
+`host-setup` is a one-time step and needs `sudo`: it installs libvirt/KVM and the
+emulator for your host's architecture, and adds you to the `libvirt` group.
 
 > **Log out and log back in before continuing.** `host-setup` adds you to the
 > `libvirt` group, and group membership only applies to a **new login session** —
@@ -83,10 +86,11 @@ just demo spiffe-cross-boundary host-setup     # one time; installs libvirt, nee
 Then bring up both boxes:
 
 ```bash
-just demo spiffe-cross-boundary cluster-up     # Box A at 192.168.122.10
-just demo spiffe-cross-boundary edge-up        # Box B at 192.168.122.11
+just demo spiffe-cross-boundary cluster-up
+just demo spiffe-cross-boundary edge-up
 ```
 
+That gives you Box A at `192.168.122.10` and Box B at `192.168.122.11`.
 Each creates a libvirt VM on `virbr0` pinned to a fixed address by DHCP
 reservation, waits for cloud-init, copies this repo into the guest, and writes
 `~/.ssh/linkerd-playground.conf`. The first run downloads an Ubuntu cloud image
@@ -136,6 +140,14 @@ optional overlay recipe is in
 [`connectivity-tailscale.md`](connectivity-tailscale.md) (strictly optional; the
 demo doesn't depend on it).
 
+<!--
+Keep the pasteable code blocks free of trailing "# ..." comments.
+Interactive zsh (the macOS default shell) does not treat # as a comment, so a
+pasted line runs the comment text as arguments or, where the comment contains
+";", as a second command -- and backticks inside it execute on the reader's host.
+Put the explanation in prose under the block instead.
+-->
+
 ## Build it
 
 The steps below use the repo's scripts and are the **verified path**. To understand
@@ -171,11 +183,12 @@ D='~/linkerd-playground/demos/spiffe-cross-boundary'
 ### Box A — Kubernetes cluster
 
 ```bash
-S linkerd-cluster "bash $D/cluster/gen-certs.sh"        # trust anchor + issuer
-S linkerd-cluster "bash $D/cluster/install-k3s.sh"      # prints the kube-dns ClusterIP
-S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + viz; ends with `linkerd check`
+S linkerd-cluster "bash $D/cluster/gen-certs.sh"
+S linkerd-cluster "bash $D/cluster/install-k3s.sh"
+S linkerd-cluster "bash $D/cluster/install-linkerd.sh"
 ```
 
+`gen-certs.sh` writes the trust anchor and issuer certificates.
 `install-k3s.sh` ends by printing the `kube-dns` ClusterIP — confirm it matches
 `COREDNS_ADDR` (default `10.43.0.10`). `install-linkerd.sh` ends with
 `Status check results are √`.
@@ -199,7 +212,7 @@ S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + v
 ### Box A → deploy the SPIRE server (root stays in the cluster)
 
 ```bash
-S linkerd-cluster "bash $D/cluster/spire/apply.sh"   # StatefulSet + NodePort + register; prints a join token
+S linkerd-cluster "bash $D/cluster/spire/apply.sh"
 ```
 
 It mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
@@ -222,10 +235,10 @@ S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/
 
 ```bash
 S linkerd-edge "bash $D/net/shim.sh"
-S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"   # agent-only; pinned bundle
+S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"
 S linkerd-edge "bash $D/edge/extract-proxy.sh"
 S linkerd-edge "bash $D/edge/iptables.sh"
-S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
+S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
 
 > `net/shim.sh` picks the resolver mechanism the box actually uses — a
@@ -254,7 +267,7 @@ deploys the `retail-cloud` app, and applies the authorization policy.
 > what lets the mesh reach the store *as a server*.
 
 ```bash
-S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
+S linkerd-cluster "bash $D/cluster/retail/apply.sh"
 S linkerd-edge    "bash $D/edge/run-proxy.sh"
 ```
 
@@ -361,8 +374,10 @@ Linux path uses libvirt.
 ## Teardown
 
 ```bash
-just demo spiffe-cross-boundary down     # destroys both VMs and their disks
+just demo spiffe-cross-boundary down
 ```
+
+That destroys both VMs and their disks.
 
 If you ran the boxes on hardware instead: Box A `k3s-uninstall.sh`; Box B remove
 the `PROXY_APP_OUTPUT` iptables chain, `/opt/spire`, `/opt/linkerd-proxy`, the
