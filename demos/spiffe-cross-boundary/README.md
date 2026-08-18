@@ -292,10 +292,22 @@ Put the repo and a matching `config.local.env` on both, set `CLUSTER_NODE_ADDR`
 and `EDGE_ADDR` to their real addresses, and run the **Build it** steps on each
 box directly (`bash <demo>/cluster/gen-certs.sh`, etc.). Mind `APP_UID` on Box B.
 
-**macOS — Lima.** `cluster-up`/`edge-up` fall back to Lima off Linux. The stock
-Lima network gives every VM the same address, so attach one that allows VM-to-VM —
-`limactl edit <vm> --network lima:user-v2`, while stopped — then copy the **repo
-root** into each guest:
+**macOS — Lima.** `cluster-up`/`edge-up` fall back to Lima off Linux, and on Apple
+Silicon they create native arm64 guests (Lima picks the image by host
+architecture). Each script prints the address its VM came up on, for
+`config.local.env`:
+
+```
+[cluster-up.sh] linkerd-cluster is at 192.168.104.1 -- set CLUSTER_NODE_ADDR=192.168.104.1 in config.local.env
+[edge-up.sh]    linkerd-edge is at 192.168.104.3 -- set EDGE_ADDR=192.168.104.3 in config.local.env
+```
+
+The VM-to-VM network is declared in `provisioners/lima/*.yaml` and applied at
+creation, so no `limactl edit` step is needed. (Stock Lima gives every guest the
+same `192.168.5.15` on an isolated NAT; without that declaration the two boxes come
+up "ready" and unable to see each other.)
+
+Then copy the **repo root** into each guest:
 
 ```bash
 tar --exclude=.git -C <repo> -czf - . \
@@ -348,8 +360,10 @@ practice that should replace it.
     [`runlog-linux.md`](runlog-linux.md).
   - **macOS/Apple Silicon (arm64), OrbStack** — both boxes as native arm64
     machines, using the two-hosts topology: [`runlog-orbstack.md`](runlog-orbstack.md).
-  - **macOS/Apple Silicon (arm64), Lima** — over the optional Tailscale overlay,
-    following `MANUAL.md` by hand: [`runlog.md`](runlog.md).
+  - **macOS/Apple Silicon (arm64), Lima** — twice: once following `MANUAL.md` by
+    hand over the optional Tailscale overlay ([`runlog.md`](runlog.md)), and once
+    through the scripted path above (`cluster-up`/`edge-up` then **Build it**),
+    ending at `push -> 200` with the store's SPIFFE identity on the wire.
 
   On an Apple Silicon Mac, run the guests as **arm64**. Deliberately choosing an
   x86_64 guest (`orb create -a amd64`, an Intel Lima VM, a cross-arch

@@ -45,10 +45,11 @@ rtt min/avg/max/mdev = 0.075/0.077/0.080/0.002 ms
 ```
 
 This is the demo's "bring-your-own IP reachability" precondition satisfied for
-free. It is the one place OrbStack is clearly better than the alternatives: the
-Lima pass ([`runlog.md`](runlog.md)) had to attach a `user-v2` network by hand
-because stock Lima gives every VM the same address, and the libvirt path needs
-DHCP reservations on `virbr0`.
+free, with no configuration at all. The other substrates each arrange it
+deliberately: the libvirt path pins addresses with DHCP reservations on `virbr0`,
+and the Lima path declares a `user-v2` network in `provisioners/lima/*.yaml`.
+(When this runlog was first written the Lima network was a manual `limactl edit`
+step; that gap was found and closed while validating the local macOS path.)
 
 ## F2 [GAP] `orb create -a amd64` silently gives you an emulated x86 machine
 
@@ -285,7 +286,7 @@ Where OrbStack sits against the other macOS option:
 
 | | OrbStack | Lima |
 |---|---|---|
-| VM-to-VM reachability | works as created | needs `user-v2` attached by hand |
+| VM-to-VM reachability | works as created | declared in the provisioner YAML |
 | DNS shim | needs the F3 fix | works as written |
 | Resource isolation between boxes | none (shared kernel, F6) | real, per-VM |
 | Verified end to end | this runlog | [`runlog.md`](runlog.md) |
