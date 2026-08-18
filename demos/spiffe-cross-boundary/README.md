@@ -225,44 +225,40 @@ one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`).
 argument, and it is one-time. Lost it? Re-running this step is safe: it keeps the
 existing registration entry and prints a fresh token.
 
-### Step 3 — relay the trust bundle to Box B
+### Step 3 — relay the bootstrap material to Box B
 
-Copy only the bundle and the public root cert to the store — the root **key** never
-leaves the cluster. The two boxes have no SSH access to each other, so relay
-through your host:
+Copy the trust bundle, the public root cert, and the join token to the store — the
+root **key** never leaves the cluster. The two boxes have no SSH access to each
+other, so relay through your host:
 
 ```bash
 S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
 S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
 S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
+S linkerd-cluster 'cat ~/spire-join-token'      | S linkerd-edge 'sudo tee /opt/spire/join-token >/dev/null'
 ```
+
+That last line is why step 4 needs nothing typed in by hand: the join token is
+bootstrap material like the bundle, so it travels the same way.
+`install-spire-agent.sh` reads `/opt/spire/join-token` when given no argument.
 
 ### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
-Set the join token from step 2 first, then the rest of the block pastes as-is:
-
-```bash
-TOKEN=paste_the_join_token_here
-```
-
 ```bash
 S linkerd-edge "bash $D/net/shim.sh"
-S linkerd-edge "bash $D/edge/install-spire-agent.sh $TOKEN"
+S linkerd-edge "bash $D/edge/install-spire-agent.sh"
 S linkerd-edge "bash $D/edge/extract-proxy.sh"
 S linkerd-edge "bash $D/edge/iptables.sh"
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
 
-> **`TOKEN` is the only thing on this page you must fill in.** It is deliberately
-> on its own line: written inline as a `<join-token>` placeholder, the guest's
-> bash reads `<` as a redirection and the line dies with
-> `syntax error near unexpected token 'newline'` — while the four lines around it
-> succeed, so the block looks like it worked. If `TOKEN` is unset or still the
-> placeholder text, `install-spire-agent.sh` fails at the SPIRE server instead,
-> which is at least a message about tokens.
+> **Nothing here needs filling in** — step 3 relayed the join token, and
+> `install-spire-agent.sh` picks it up from `/opt/spire/join-token`. Pass a token
+> as an argument to override it. If step 3 was skipped, the script says so; it
+> does not start an agent without one.
 >
-> Skipping this step is easy, and the failure surfaces much later, in step 5, as a
-> Rust panic from the proxy:
+> If the agent never gets installed, the failure surfaces two steps later, in step
+> 5, as a Rust panic from the proxy:
 >
 > ```
 > thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:

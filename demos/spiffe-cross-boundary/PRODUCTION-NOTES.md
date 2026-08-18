@@ -91,6 +91,13 @@ Not directly exploitable, but not how a real system is built.
 - **`join_token` node enrollment** — a legitimate one-time mechanism. Real deployments
   commonly bind enrollment to a **device identity** (TPM/DevID, enterprise PKI, or a cloud
   instance identity: `aws_iid`, `gcp_iit`, `k8s_psat`, `x509pop`) rather than a token.
+- **The join token is written to disk on both boxes** — `cluster/spire/apply.sh` puts it
+  in `~/spire-join-token` and the relay step copies it to `/opt/spire/join-token`, so the
+  demo can enrol the agent without a reader retyping it. That trades secret hygiene for
+  a runbook nobody has to transcribe by eye. A bootstrap credential should be delivered
+  out-of-band, used once, and destroyed — not left in two home directories. Nothing here
+  removes either copy after enrolment; the tokens are short-lived and these are throwaway
+  VMs, which is the only reason it is acceptable at all.
 - **Workload attestation is `unix:uid:2102` + `unix:path`** — enough to isolate ordinary
   processes on the host. `unix:sha256` (binary hash) is an optional tightening; note the
   host-root boundary below.
