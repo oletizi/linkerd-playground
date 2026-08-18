@@ -222,8 +222,8 @@ path), restricts the SPIRE NodePort to the interface the edge reaches this host 
 one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`).
 
 **Copy the join token somewhere before it scrolls away** — step 4 takes it as an
-argument, and it is one-time. If you lose it, generate another with
-`S linkerd-cluster "kubectl -n spire exec spire-server-0 -- /opt/spire/bin/spire-server token generate -spiffeID $SPIRE_AGENT_SPIFFE_ID"`.
+argument, and it is one-time. Lost it? Re-running this step is safe: it keeps the
+existing registration entry and prints a fresh token.
 
 ### Step 3 — relay the trust bundle to Box B
 
@@ -320,6 +320,35 @@ S linkerd-edge 'sudo docker logs -f store-pos'
 
 shows `push -> 200`. Click **Void authorization** to watch identity-based authz
 refuse the store's pushes for real (`push -> 403 (authorization voided by cloud)`).
+
+## If a step goes wrong
+
+**`[error] cluster node <address> not reachable — fix your base network first`** —
+`net/shim.sh` is refusing to route to an address nothing answers on. Your
+`config.local.env` is missing or holds the wrong addresses: without that file the
+scripts fall back to `config.example.env`, whose defaults are the **libvirt**
+addresses (`192.168.122.10`/`.11`). Put the addresses your boxes actually have in
+`config.local.env` — `cluster-up`/`edge-up` print them on the Lima path, `orb list`
+shows them on OrbStack — and copy that file into **both** guests, since the scripts
+run there and read it there.
+
+**Re-running steps.** These are safe to run again:
+
+| Step | On a re-run |
+|---|---|
+| `gen-certs.sh` | keeps existing certs (guarded by `if [ ! -f ca.crt ]`) |
+| `spire/apply.sh` | keeps the existing registration entry, prints a **fresh join token** |
+| `net/shim.sh` | idempotent; skips routes already present |
+| `extract-proxy.sh`, `iptables.sh` | report `already configured` and do nothing |
+| `retail/apply.sh` | re-applies the manifests |
+
+`install-spire-agent.sh` is the exception: each run needs a **new** join token, so
+take one from a fresh `spire/apply.sh`.
+
+**Nothing is pushing.** The `store-pos` log says where it stopped. `ENOTFOUND`
+means cluster DNS is not configured yet — step 4's `net/shim.sh`. `ECONNREFUSED`
+means DNS works but nothing is listening yet — step 5's `retail/apply.sh` and
+`run-proxy.sh` have not run.
 
 ## Inspect the traffic
 
