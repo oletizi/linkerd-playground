@@ -58,12 +58,30 @@ SETTLE="${SPIRE_AGENT_SETTLE:-25}"
 log "waiting up to ${SETTLE}s for the agent to attest (it must outlive its first attestation retry)"
 deadline=$((SECONDS + SETTLE))
 while [ "$SECONDS" -lt "$deadline" ]; do
-  if grep -qE 'Agent crashed|join token does not exist or has already been used' /tmp/spire-agent.log 2>/dev/null; then
-    die "the SPIRE agent failed to attest and exited:
+  if grep -q 'join token does not exist or has already been used' /tmp/spire-agent.log 2>/dev/null; then
+    # Leave no agent behind: it would keep retrying forever, and a live
+    # spire-agent process with no socket reads as progress when it is not.
+    sudo pkill -f 'spire-agent run' 2>/dev/null || true
+    die "the join token has already been used, so the agent could not attest.
+
+  A join token is SINGLE-USE, and the copy this box holds ($TOKEN_FILE) is spent.
+  Getting a fresh one takes TWO steps, because the token is relayed rather than
+  typed -- doing only the first leaves this box on the old token:
+
+    1. On the cluster:  cluster/spire/apply.sh        (Build it step 2)
+       issues a new token and writes it to ~/spire-join-token THERE.
+    2. From your host:  relay it to this box          (Build it step 3)
+       cat ~/spire-join-token on the cluster -> $TOKEN_FILE here.
+    3. Then run this script again.
+
+  Full log: /tmp/spire-agent.log"
+  fi
+  if grep -q 'Agent crashed' /tmp/spire-agent.log 2>/dev/null; then
+    sudo pkill -f 'spire-agent run' 2>/dev/null || true
+    die "the SPIRE agent crashed before it finished attesting:
 $(grep -E 'level=(error|warning)' /tmp/spire-agent.log | tail -3)
 
-  A join token is single-use. Get a fresh one by re-running cluster/spire/apply.sh
-  on the cluster, relay it again, then re-run this script."
+  Full log: /tmp/spire-agent.log"
   fi
   pgrep -f 'spire-agent run' >/dev/null 2>&1 \
     || die "the SPIRE agent exited. Last lines of /tmp/spire-agent.log:
