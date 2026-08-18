@@ -146,22 +146,34 @@ Each block runs **on the box named in its heading**. Shown here driven over ssh
 from your host, with `S` as a shorthand:
 
 ```bash
-S="ssh -F $HOME/.ssh/linkerd-playground.conf"
+S() { ssh -F "$HOME/.ssh/linkerd-playground.conf" "$@"; }
 D='~/linkerd-playground/demos/spiffe-cross-boundary'
 ```
 
-> Copy those two lines exactly, tildes and quotes included. `$HOME` in `S`
-> because a `~` inside double quotes is never expanded — `ssh` would take it
-> literally and fail with `Can't open user config file`. `D` is single-quoted for
-> the opposite reason: it must reach the **guest** shell unexpanded, since your
-> home on the host is not `demo`'s home in the VM.
+> Copy those two lines exactly, tildes and quotes included.
+>
+> `S` is a **function**, not a string, so that this works in `zsh` as well as
+> `bash`. Written as `S="ssh -F …"` and called as `$S linkerd-cluster …`, it would
+> rely on the shell splitting an unquoted variable into separate words — `bash`
+> does that, `zsh` does not. Since `zsh` is the default macOS shell, the string
+> form fails there on the very first command:
+> `no such file or directory: ssh -F …`.
+>
+> `$HOME` inside `S` because a `~` in double quotes is never expanded — `ssh`
+> would take it literally and fail with `Can't open user config file`. `D` is
+> single-quoted for the opposite reason: it must reach the **guest** shell
+> unexpanded, since your home on the host is not the VM user's home.
+
+> **On OrbStack**, `S` points at OrbStack's ssh proxy rather than a VM address.
+> [`setup-orbstack.md`](setup-orbstack.md) creates the machines, writes that
+> config, and returns you here — nothing else in this section changes.
 
 ### Box A — Kubernetes cluster
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/gen-certs.sh"        # trust anchor + issuer
-$S linkerd-cluster "bash $D/cluster/install-k3s.sh"      # prints the kube-dns ClusterIP
-$S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + viz; ends with `linkerd check`
+S linkerd-cluster "bash $D/cluster/gen-certs.sh"        # trust anchor + issuer
+S linkerd-cluster "bash $D/cluster/install-k3s.sh"      # prints the kube-dns ClusterIP
+S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + viz; ends with `linkerd check`
 ```
 
 `install-k3s.sh` ends by printing the `kube-dns` ClusterIP — confirm it matches
@@ -171,7 +183,7 @@ $S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + 
 ### Box A → deploy the SPIRE server (root stays in the cluster)
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/spire/apply.sh"   # StatefulSet + NodePort + register; prints a join token
+S linkerd-cluster "bash $D/cluster/spire/apply.sh"   # StatefulSet + NodePort + register; prints a join token
 ```
 
 It mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
@@ -185,20 +197,24 @@ leaves the cluster. The two boxes have no SSH access to each other, so relay
 through your host:
 
 ```bash
-$S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
-$S linkerd-cluster 'cat ~/spire-bundle.pem'      | $S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
-$S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | $S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
+S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
+S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
+S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
 ```
 
 ### Box B — on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
-$S linkerd-edge "bash $D/net/shim.sh"
-$S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"   # agent-only; pinned bundle
-$S linkerd-edge "bash $D/edge/extract-proxy.sh"
-$S linkerd-edge "bash $D/edge/iptables.sh"
-$S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
+S linkerd-edge "bash $D/net/shim.sh"
+S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"   # agent-only; pinned bundle
+S linkerd-edge "bash $D/edge/extract-proxy.sh"
+S linkerd-edge "bash $D/edge/iptables.sh"
+S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
 ```
+
+> **On OrbStack**, `net/shim.sh` fails on its last line — `systemd-resolved` is
+> masked there. Its routes are fine; only the resolver needs replacing by hand.
+> [`setup-orbstack.md`](setup-orbstack.md) step 5 has the two commands.
 
 `install-spire-agent.sh` ends with `Agent is healthy.` `extract-proxy.sh` ends by
 running the proxy binary once, which exits with `Invalid configuration: no
@@ -220,8 +236,8 @@ deploys the `retail-cloud` app, and applies the authorization policy.
 > what lets the mesh reach the store *as a server*.
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
-$S linkerd-edge    "bash $D/edge/run-proxy.sh"
+S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
+S linkerd-edge    "bash $D/edge/run-proxy.sh"
 ```
 
 `run-proxy.sh` confirms the identity it received:
@@ -234,7 +250,7 @@ Open **`http://192.168.122.10:30080/`** — the store is now pushing its invento
 and sales to the cloud over the mesh, and
 
 ```bash
-$S linkerd-edge 'sudo docker logs -f store-pos'
+S linkerd-edge 'sudo docker logs -f store-pos'
 ```
 
 shows `push -> 200`. Click **Void authorization** to watch identity-based authz
@@ -290,35 +306,11 @@ limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-bounda
 > Quote the path as shown. Written unquoted, `~` expands on the **host**, and the
 > guest home is never the host's — the guest then gets a path that doesn't exist.
 
-**macOS — OrbStack.** Two machines, each a box. `cluster-up`/`edge-up` do **not**
-drive OrbStack; create the machines yourself and then follow **Two physical Linux
-hosts** above.
-
-```bash
-orb create --cpus 4 --memory 6G --disk 40G ubuntu:24.04 linkerd-cluster
-orb create --cpus 2 --memory 3G --disk 20G ubuntu:24.04 linkerd-edge
-orb list   # note the two addresses; put them in config.local.env
-```
-
-> **Do not pass `-a amd64`.** OrbStack will build an emulated x86_64 machine on
-> Apple Silicon and the demo will crawl. The default is your host's architecture,
-> which is what you want; `uname -m` inside the machine should report `aarch64`.
-
-Each machine gets its own address on a shared subnet, so VM-to-VM works with no
-network setup — unlike Lima, which needs `user-v2`. One step needs an
-OrbStack-specific fix: `net/shim.sh` fails at its last line because OrbStack masks
-`systemd-resolved` and owns `/etc/resolv.conf`. The routes it installs are fine;
-replace the resolver by hand on the edge machine:
-
-```bash
-sudo rm -f /etc/resolv.conf
-printf 'search cluster.local\nnameserver 10.43.0.10\nnameserver 0.250.250.200\n' \
-  | sudo tee /etc/resolv.conf
-```
-
-Note that OrbStack machines share one kernel, so `--cpus`/`--memory` act as limits
-rather than guest sizing and the two boxes are not resource-isolated from each
-other. Full findings in [`runlog-orbstack.md`](runlog-orbstack.md).
+**macOS — OrbStack.** Two native arm64 machines, each a box, reachable from each
+other with no network setup. Full recipe in
+[`setup-orbstack.md`](setup-orbstack.md): it creates the machines, wires `S` to
+them, and hands you back to **Build it**. Verified end to end —
+[`runlog-orbstack.md`](runlog-orbstack.md).
 
 **Lima on Linux is not recommended.** Its only VM-to-VM network (`user-v2`) rides
 a QEMU socket netdev that aborts the VM under sustained download load
