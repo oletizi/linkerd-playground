@@ -239,18 +239,30 @@ S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/
 
 ### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
+Set the join token from step 2 first, then the rest of the block pastes as-is:
+
+```bash
+TOKEN=paste_the_join_token_here
+```
+
 ```bash
 S linkerd-edge "bash $D/net/shim.sh"
-S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"
+S linkerd-edge "bash $D/edge/install-spire-agent.sh $TOKEN"
 S linkerd-edge "bash $D/edge/extract-proxy.sh"
 S linkerd-edge "bash $D/edge/iptables.sh"
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
 
-> **The second line is the only one with something to substitute.** Replace
-> `<join-token>` with the token step 2 printed; it is not optional and not
-> auto-filled. Skipping it is easy — five near-identical lines — and the failure
-> surfaces much later, in step 5, as a Rust panic from the proxy:
+> **`TOKEN` is the only thing on this page you must fill in.** It is deliberately
+> on its own line: written inline as a `<join-token>` placeholder, the guest's
+> bash reads `<` as a redirection and the line dies with
+> `syntax error near unexpected token 'newline'` — while the four lines around it
+> succeed, so the block looks like it worked. If `TOKEN` is unset or still the
+> placeholder text, `install-spire-agent.sh` fails at the SPIRE server instead,
+> which is at least a message about tokens.
+>
+> Skipping this step is easy, and the failure surfaces much later, in step 5, as a
+> Rust panic from the proxy:
 >
 > ```
 > thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:
