@@ -10,6 +10,9 @@
 # To undo: sudo apt-get purge libvirt-daemon-system libvirt-clients virtinst \
 #            cloud-image-utils && sudo gpasswd -d "$USER" libvirt
 set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=/dev/null
+. "$(cd "$HERE/../.." && pwd)/lib/common.sh"
 [ "$(id -u)" -eq 0 ] || { echo "run me as root: sudo bash $0" >&2; exit 1; }
 
 TARGET_USER="${SUDO_USER:-${1:-}}"
@@ -18,7 +21,16 @@ TARGET_USER="${SUDO_USER:-${1:-}}"
 echo "== installing libvirt/KVM =="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y libvirt-daemon-system libvirt-clients virtinst cloud-image-utils qemu-system-x86
+# The emulator package follows the host arch: the VMs this demo creates are always
+# the host's architecture (see lib-libvirt.sh), so installing the x86 emulator on
+# an arm64 host would install the wrong one. arm64 guests also need UEFI firmware,
+# since aarch64 has no BIOS.
+case "$(detect_arch)" in
+  amd64) QEMU_PKGS=(qemu-system-x86) ;;
+  arm64) QEMU_PKGS=(qemu-system-arm qemu-efi-aarch64) ;;
+esac
+echo "host arch $(detect_arch); installing ${QEMU_PKGS[*]}"
+apt-get install -y libvirt-daemon-system libvirt-clients virtinst cloud-image-utils "${QEMU_PKGS[@]}"
 
 echo "== enabling libvirtd and the default network =="
 systemctl enable --now libvirtd

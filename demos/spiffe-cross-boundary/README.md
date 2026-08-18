@@ -353,7 +353,20 @@ practice that should replace it.
 
   On an Apple Silicon Mac, run the guests as **arm64**. Deliberately choosing an
   x86_64 guest (`orb create -a amd64`, an Intel Lima VM, a cross-arch
-  `VM_IMAGE_URL`) means emulation, and the demo becomes unusably slow.
+  `VM_IMAGE_URL`) means emulation, and the demo becomes unusably slow. The scripts
+  now make that the default rather than something you have to know: `host-setup.sh`
+  installs the emulator for the host's architecture, `cluster-up`/`edge-up` derive
+  the guest image from it, and a cross-architecture `VM_IMAGE_URL` is refused
+  instead of quietly emulated.
+
+  **What that last part has and has not been run against:** the arch selection and
+  the refusal are verified on a real arm64 Linux host, and the x86_64 libvirt path
+  is unchanged in behaviour and covered by [`runlog-linux.md`](runlog-linux.md).
+  Nobody has yet *booted* an arm64 libvirt guest with these scripts — that needs an
+  arm64 Linux host with KVM, which none of the three runs above provide. The UEFI
+  firmware flag arm64 guests require (`--boot uefi`, since aarch64 has no BIOS) is
+  therefore written but unexercised. If you run the libvirt path on arm64 Linux,
+  that is the step most likely to need adjusting — please file an issue.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).
