@@ -19,6 +19,29 @@ for c in virsh virt-install qemu-img cloud-localds curl ssh; do
   (or: sudo bash scripts/host-setup.sh), then log out and back in."
 done
 
+# Present is not the same as working. virt-install is a Python script whose
+# shebang is '#!/usr/bin/env python3', so it runs under whichever python3 comes
+# first on PATH -- and a Homebrew, pyenv, conda or virtualenv python shadows the
+# system one while being unable to see the distro's python3-gi in
+# /usr/lib/python3/dist-packages. It then dies on 'import gi' with a bare
+# ModuleNotFoundError traceback, mid-provision and in virt-install's own voice,
+# which reads as a broken demo rather than a shadowed interpreter. Ask it for its
+# version here, while we can still say what happened.
+VIRT_INSTALL_ERR="$(virt-install --version 2>&1 >/dev/null)" || die \
+"'virt-install' is installed but does not run:
+
+    $(printf '%s\n' "$VIRT_INSTALL_ERR" | tail -1)
+
+  Most often this is a python3 on PATH that shadows the system one: virt-install
+  runs under '#!/usr/bin/env python3' and needs the distro's 'gi' module, which
+  only the system interpreter can see. This host resolves python3 to
+    $(command -v python3 2>/dev/null || echo '(none)')
+  and the system one is /usr/bin/python3.
+
+  Put the system interpreter first for the command:
+    PATH=/usr/bin:\$PATH just demo spiffe-cross-boundary cluster-up
+  or deactivate the shadowing environment (venv, conda, pyenv, brew) in this shell."
+
 LIBVIRT_NET="${LIBVIRT_NET:-default}"
 
 # Guest architecture follows the host's. A guest whose arch differs from the host
