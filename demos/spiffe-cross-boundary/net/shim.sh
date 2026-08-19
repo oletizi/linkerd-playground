@@ -7,7 +7,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$(cd "$HERE/../.." && pwd)/lib/common.sh"; load_config "$HERE"
 [ "$CLUSTER_NODE_ADDR" != "CHANGE_ME" ] || die "set CLUSTER_NODE_ADDR in config.local.env"
 
-ping -c1 -W2 "$CLUSTER_NODE_ADDR" >/dev/null || die "cluster node $CLUSTER_NODE_ADDR not reachable — fix your base network first"
+# "Not reachable" is far more often a stale address than a broken network.
+# config.local.env is gitignored, so it outlives the boxes it describes: recreate
+# the VMs and the file still names the old ones, which then get copied into the
+# fresh guests. Say that first, since it is the likelier cause and the cheaper
+# thing to check.
+ping -c1 -W2 "$CLUSTER_NODE_ADDR" >/dev/null || die "cannot reach the cluster node at $CLUSTER_NODE_ADDR.
+
+  That address comes from CLUSTER_NODE_ADDR in config.local.env. Check it against
+  the address the cluster box actually has -- if you have recreated the VMs since
+  that file was written, it is naming boxes that no longer exist. The file is
+  gitignored, so it survives a teardown.
+
+  This box is $(hostname) at $(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | paste -sd, -).
+
+  If the address is right, then it is the network: the two boxes must reach each
+  other at L3 before the demo can do anything."
 
 # Route the cluster pod + service CIDRs to the cluster node.
 # An overlay subnet router (Tailscale/WireGuard) may already provide these routes
