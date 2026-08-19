@@ -466,14 +466,19 @@ without supervision, and more.
 practice that should replace it.
 
 - **Verified end-to-end on both x86_64 and arm64.** Nothing here needs a particular
-  architecture: every artifact the demo installs resolves its own build. Three
-  independent runs:
+  architecture: every artifact the demo installs resolves its own build. Six runs
+  across three topologies:
   - **Linux/x86_64, libvirt** — an Ubuntu 26.04 host running both boxes as libvirt
     VMs (Ubuntu 24.04 guests) on the static-route path, the setup this README
     describes, built from scratch with these scripts:
     [`runlog-linux.md`](runlog-linux.md).
   - **macOS/Apple Silicon (arm64), OrbStack** — both boxes as native arm64
-    machines, using the two-hosts topology: [`runlog-orbstack.md`](runlog-orbstack.md).
+    machines ([`README-ORBSTACK.md`](README-ORBSTACK.md)), twice by script and once
+    **by hand** following Build it as a reader would:
+    [`runlog-orbstack.md`](runlog-orbstack.md). The by-hand pass found what the
+    scripted ones could not — a step that was easy to skip, a wait that looked like
+    a hang, errors that looked like failures — and its findings are the third-pass
+    section of that runlog.
   - **macOS/Apple Silicon (arm64), Lima** — twice: once following `MANUAL.md` by
     hand over the optional Tailscale overlay ([`runlog.md`](runlog.md)), and once
     through the scripted path above (`cluster-up`/`edge-up` then **Build it**),

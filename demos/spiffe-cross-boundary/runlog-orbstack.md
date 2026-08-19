@@ -292,9 +292,101 @@ Where OrbStack sits against the other macOS option:
 | | OrbStack | Lima |
 |---|---|---|
 | VM-to-VM reachability | works as created | declared in the provisioner YAML |
-| DNS shim | needs the F3 fix | works as written |
+| DNS shim | handled by `net/shim.sh` (since F3) | works as written |
 | Resource isolation between boxes | none (shared kernel, F6) | real, per-VM |
 | Verified end to end | this runlog | [`runlog.md`](runlog.md) |
 
 Both work. OrbStack trades away the resource isolation and the working DNS step
 for networking that needs no setup at all.
+
+
+---
+
+## Third pass — by hand, against the fixed scripts
+
+The first two passes were driven by scripts I wrote, which is a weak test of a
+runbook: a script cannot skip a step, lose a token to scrollback, or mistake a
+silent wait for a hang. The operator followed **Build it** by hand on macOS via
+OrbStack, and everything below is something automation could not have found.
+
+Each was fixed and the fix re-run before moving on. The operator reports the
+demo validated end to end afterwards; the intermediate state observed directly
+here was `proxy has identity (uid 2102)` followed by `push -> 200`, with
+`src_client_id=spiffe://…/store/042/inventory-sync` and `src_tls=true` on the wire.
+
+## F11 [BLOCKER] A skipped step surfaced two steps later as a Rust panic
+
+`install-spire-agent.sh` did not run, and nothing said so. The failure appeared at
+`run-proxy.sh` as `spire client must gracefully handle errors: … NotFound` — a
+panic naming a socket path, not a missing prerequisite.
+
+Two causes. The Build it sections were named by box rather than numbered, so there
+was no sense of position; and the token was written inline as
+`install-spire-agent.sh <join-token>`, which the **guest's** bash parses as an
+input redirection:
+
+```
+-bash: -c: line 1: syntax error near unexpected token `newline'
+```
+
+So that one line failed while the four around it succeeded, and the block looked
+like it had worked. Testing the placeholder in the local shell was not enough —
+it passes through zsh untouched and dies at the far end.
+
+Fixed by numbering the steps 1–5, promoting the bundle relay to its own step, and
+relaying the join token like the bundle so nothing is substituted at all.
+`run-proxy.sh` now checks for the agent socket before launching and refuses with a
+diagnosis instead of letting the proxy panic.
+
+## F12 [BLOCKER] The agent reported healthy, then died 20s later
+
+`install-spire-agent.sh` started the agent, slept 4s, ran a healthcheck and exited
+0. But the agent opens its workload API socket *before* node attestation finishes,
+so with a spent join token it answers "healthy", keeps retrying, and crashes:
+
+```
+level=warning msg="Failed to retrieve attestation result" error="… join token does not exist or has already been used"
+level=error msg="Agent crashed"
+```
+
+By then the script had exited successfully. It now waits out the attestation retry
+and fails with SPIRE's own error plus the recovery, and kills the doomed agent so a
+retrying process cannot be mistaken for progress.
+
+## F13 [GAP] Expected errors were indistinguishable from failures
+
+Three places printed something alarming that was in fact normal: `store-pos`
+logging bare `push error: ECONNREFUSED` between steps 4 and 5, `extract-proxy.sh`
+ending on `Invalid configuration: no destination service configured`, and
+`install-linkerd.sh` going silent for minutes while `linkerd check` polled.
+
+All three were explained in the README, which is the wrong place — nobody reads
+the fine print while watching errors scroll. The messages now explain themselves:
+`store-pos` annotates connection errors until its first successful push (and stops
+once one has worked, so a real failure is never called expected), `extract-proxy`
+reports the release it extracted and fails if it cannot confirm one, and
+`install-linkerd` prints rollout progress instead of waiting silently.
+
+## F14 [GAP] A stale `config.local.env` was diagnosed as a broken network
+
+`config.local.env` is gitignored, so it outlives the machines it names. Recreating
+the boxes left it pointing at addresses that no longer existed; step 3 copied it
+into the fresh guests, and `net/shim.sh` reported:
+
+```
+cluster node 192.168.139.28 not reachable — fix your base network first
+```
+
+The network was fine. The message now names `config.local.env` as the source of
+the address, says why it may be stale, and prints the box's own addresses so the
+mismatch is visible. `just demo spiffe-cross-boundary orb-config` writes the file
+from `orb list`, so the addresses are never transcribed.
+
+## What this pass says about the other two
+
+Every finding here is invisible to a scripted run by construction. The runlogs
+above are still worth having — they establish that the substrate works — but they
+systematically cannot catch the class of defect that stops a human: a step that is
+easy to skip, a wait that looks like a hang, an error that looks like a failure, a
+success message that outlives the thing it describes. A by-hand pass should be
+part of validating any change to Build it.
