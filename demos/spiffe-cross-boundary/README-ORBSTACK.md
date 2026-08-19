@@ -58,10 +58,6 @@ just demo spiffe-cross-boundary orb-config
   EDGE_ADDR=192.168.139.88
 ```
 
-You never copy an address: it takes both from `orb list`, and refuses to write
-anything if either machine is missing. Run it from anywhere in the repo — it
-resolves the file's location itself.
-
 > **Do this every time you recreate the machines.** `config.local.env` is
 > gitignored, so it outlives the boxes it describes — a file left from a previous
 > run names machines that no longer exist, step 3 copies it into the fresh guests,
