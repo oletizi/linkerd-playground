@@ -49,6 +49,34 @@ done
 
 if grep -Eqi 'certified identity|obtained.*identity|SVID' /tmp/linkerd-proxy.log; then
   echo "proxy has identity (uid $(id -u linkerd-proxy))"
+
+  # The proxy having an identity is not the demo working: store-pos pushes on its
+  # own interval and its first attempts can still fail while the proxy finishes
+  # wiring up. Ending here leaves the reader to guess whether a quiet terminal
+  # means success or a stall, so watch until the store actually pushes -- printing
+  # a timestamped line each poll, so slow is visibly different from hung.
+  if sudo docker inspect store-pos >/dev/null 2>&1; then
+    WAIT="${PUSH_WAIT:-90}"
+    log "watching store-pos for its first successful push (it retries every ~2s, give it up to ${WAIT}s)"
+    deadline=$((SECONDS + WAIT))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      line="$(sudo docker logs --tail 1 store-pos 2>/dev/null | tr -d '\r' | tail -1)"
+      printf '  [%s] %s\n' "$(date +%H:%M:%S)" "${line:-(no output yet)}"
+      case "$line" in
+        *'push -> 2'*)
+          log "the store is pushing over the mesh — the demo is live."
+          log "dashboard: http://${CLUSTER_NODE_ADDR}:30080/"
+          exit 0 ;;
+      esac
+      sleep 3
+    done
+    die "the store never completed a push in ${WAIT}s (last line above).
+  The proxy has its identity, so the remaining suspects are on the cluster side:
+  check that step 5's cluster/retail/apply.sh ran, and 'sudo docker logs store-pos'
+  for what it is getting back."
+  else
+    log "store-pos is not running here — start it with store-pos/run-store-pos.sh (step 4)"
+  fi
 elif grep -q 'spire client must gracefully handle errors' /tmp/linkerd-proxy.log; then
   # The panic names a socket, not a cause. Translate it.
   die "the proxy could not reach the SPIRE agent at $SPIRE_SOCK and panicked.
