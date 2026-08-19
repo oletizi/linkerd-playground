@@ -45,18 +45,8 @@ orb -m linkerd-edge    bash -lc 'sudo apt-get update -qq && sudo apt-get install
 
 ## 2. Point the config at the machines
 
-`orb list` prints the address OrbStack assigned each machine:
-
-```bash
-orb list
-```
-
-```
-linkerd-cluster  running  ubuntu  noble  arm64  ...  192.168.139.205
-linkerd-edge     running  ubuntu  noble  arm64  ...  192.168.139.206
-```
-
-Write it from those addresses — one command, from anywhere in the repo:
+The demo's scripts need the two addresses OrbStack assigned. They read them from
+`config.local.env`. This writes that file:
 
 ```bash
 just demo spiffe-cross-boundary orb-config
@@ -68,8 +58,9 @@ just demo spiffe-cross-boundary orb-config
   EDGE_ADDR=192.168.139.88
 ```
 
-It reads the addresses from `orb list` rather than asking you to copy them, and
-refuses to write anything if either machine is missing.
+You never copy an address: it takes both from `orb list`, and refuses to write
+anything if either machine is missing. Run it from anywhere in the repo — it
+resolves the file's location itself.
 
 > **Do this every time you recreate the machines.** `config.local.env` is
 > gitignored, so it outlives the boxes it describes — a file left from a previous
