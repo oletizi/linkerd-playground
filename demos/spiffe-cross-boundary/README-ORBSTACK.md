@@ -68,6 +68,12 @@ printf 'CLUSTER_NODE_ADDR=%s\nEDGE_ADDR=%s\n' \
 cat config.local.env
 ```
 
+> **Do this every time you recreate the machines.** `config.local.env` is
+> gitignored, so it outlives the boxes it describes — a file left from a previous
+> run names machines that no longer exist, step 3 copies it into the fresh guests,
+> and `net/shim.sh` then fails with "cannot reach the cluster node". The command
+> above is safe to re-run at any point.
+
 Nothing else in the config needs changing. `APP_UID=1000` is safe here: the
 OrbStack machine user inherits your macOS uid (usually 501), so uid 1000 belongs
 to nothing else.
