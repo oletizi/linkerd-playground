@@ -86,7 +86,7 @@ emulator for your host's architecture, and adds you to the `libvirt` group.
 Then bring up both boxes:
 
 ```bash
-just demo spiffe-cross-boundary cluster-up
+just demo spiffe-cross-boundary cluster-up &&
 just demo spiffe-cross-boundary edge-up
 ```
 
@@ -183,8 +183,8 @@ D='~/linkerd-playground/demos/spiffe-cross-boundary'
 ### Step 1 — Box A: Kubernetes cluster
 
 ```bash
-S linkerd-cluster "bash $D/cluster/gen-certs.sh"
-S linkerd-cluster "bash $D/cluster/install-k3s.sh"
+S linkerd-cluster "bash $D/cluster/gen-certs.sh" &&
+S linkerd-cluster "bash $D/cluster/install-k3s.sh" &&
 S linkerd-cluster "bash $D/cluster/install-linkerd.sh"
 ```
 
@@ -232,9 +232,9 @@ root **key** never leaves the cluster. The two boxes have no SSH access to each
 other, so relay through your host:
 
 ```bash
-S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
-S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
-S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
+S linkerd-edge 'sudo mkdir -p /opt/spire/certs' &&
+S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null' &&
+S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null' &&
 S linkerd-cluster 'cat ~/spire-join-token'      | S linkerd-edge 'sudo tee /opt/spire/join-token >/dev/null'
 ```
 
@@ -242,13 +242,24 @@ That last line is why step 4 needs nothing typed in by hand: the join token is
 bootstrap material like the bundle, so it travels the same way.
 `install-spire-agent.sh` reads `/opt/spire/join-token` when given no argument.
 
+> **Check what landed before moving on.** The `&&` between these lines stops the
+> chain if a command fails, but each line here is a *pipeline*, and a pipeline's
+> exit status is its last command's. If a `cat` finds nothing, the `tee` still
+> succeeds and writes an **empty** file — reported as success. The failure then
+> surfaces much later, as an agent that cannot attest. So confirm all three
+> arrived non-empty:
+>
+> ```bash
+> S linkerd-edge 'sudo ls -l /opt/spire/certs/bundle.pem /opt/spire/certs/ca.crt /opt/spire/join-token'
+> ```
+
 ### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
-S linkerd-edge "bash $D/net/shim.sh"
-S linkerd-edge "bash $D/edge/install-spire-agent.sh"
-S linkerd-edge "bash $D/edge/extract-proxy.sh"
-S linkerd-edge "bash $D/edge/iptables.sh"
+S linkerd-edge "bash $D/net/shim.sh" &&
+S linkerd-edge "bash $D/edge/install-spire-agent.sh" &&
+S linkerd-edge "bash $D/edge/extract-proxy.sh" &&
+S linkerd-edge "bash $D/edge/iptables.sh" &&
 S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
 
@@ -279,7 +290,7 @@ deploys the `retail-cloud` app, and applies the authorization policy.
 > what lets the mesh reach the store *as a server*.
 
 ```bash
-S linkerd-cluster "bash $D/cluster/retail/apply.sh"
+S linkerd-cluster "bash $D/cluster/retail/apply.sh" &&
 S linkerd-edge    "bash $D/edge/run-proxy.sh"
 ```
 
