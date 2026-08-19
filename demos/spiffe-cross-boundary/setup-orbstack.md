@@ -56,14 +56,16 @@ linkerd-cluster  running  ubuntu  noble  arm64  ...  192.168.139.205
 linkerd-edge     running  ubuntu  noble  arm64  ...  192.168.139.206
 ```
 
-Put **your** two addresses in `config.local.env` at the demo root, next to
-`config.example.env`:
+Those go in `config.local.env` at the demo root, next to `config.example.env`.
+Don't transcribe them — read them straight from `orb list`, so this works whatever
+addresses OrbStack assigned you:
 
 ```bash
-cat > config.local.env <<'EOF'
-CLUSTER_NODE_ADDR=192.168.139.205
-EDGE_ADDR=192.168.139.206
-EOF
+printf 'CLUSTER_NODE_ADDR=%s\nEDGE_ADDR=%s\n' \
+  "$(orb list | awk '$1=="linkerd-cluster"{print $NF}')" \
+  "$(orb list | awk '$1=="linkerd-edge"{print $NF}')" \
+  > config.local.env
+cat config.local.env
 ```
 
 Nothing else in the config needs changing. `APP_UID=1000` is safe here: the
