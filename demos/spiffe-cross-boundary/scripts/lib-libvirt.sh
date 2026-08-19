@@ -25,22 +25,35 @@ done
 # system one while being unable to see the distro's python3-gi in
 # /usr/lib/python3/dist-packages. It then dies on 'import gi' with a bare
 # ModuleNotFoundError traceback, mid-provision and in virt-install's own voice,
-# which reads as a broken demo rather than a shadowed interpreter. Ask it for its
-# version here, while we can still say what happened.
-VIRT_INSTALL_ERR="$(virt-install --version 2>&1 >/dev/null)" || die \
-"'virt-install' is installed but does not run:
+# which reads as a broken demo rather than a shadowed interpreter.
+#
+# Telling the operator to prefix every command with PATH=/usr/bin is a poor trade:
+# it is one more thing to remember on every invocation, and it silently changes
+# which of *everything* else they get. The interpreter this script needs is not a
+# preference, so run it under the system python ourselves when the inherited one
+# cannot. Only if neither works is there something to report.
+VIRT_INSTALL=(virt-install)
+if ! virt-install --version >/dev/null 2>&1; then
+  VIRT_INSTALL_ERR="$(virt-install --version 2>&1 >/dev/null)" || true
+  VIRT_INSTALL_BIN="$(command -v virt-install)"
+  if [ -x /usr/bin/python3 ] && /usr/bin/python3 "$VIRT_INSTALL_BIN" --version >/dev/null 2>&1; then
+    VIRT_INSTALL=(/usr/bin/python3 "$VIRT_INSTALL_BIN")
+    log "virt-install cannot run under $(command -v python3 || echo 'the python3 on PATH'); using /usr/bin/python3 for it"
+  else
+    die "'virt-install' is installed but does not run:
 
-    $(printf '%s\n' "$VIRT_INSTALL_ERR" | tail -1)
+$(printf '%s\n' "$VIRT_INSTALL_ERR" | sed 's/^/    /')
 
-  Most often this is a python3 on PATH that shadows the system one: virt-install
-  runs under '#!/usr/bin/env python3' and needs the distro's 'gi' module, which
-  only the system interpreter can see. This host resolves python3 to
+  Usually this is a python3 on PATH that shadows the system one: virt-install runs
+  under '#!/usr/bin/env python3' and needs the distro's 'gi' module, which only the
+  system interpreter can see. This host resolves python3 to
     $(command -v python3 2>/dev/null || echo '(none)')
-  and the system one is /usr/bin/python3.
-
-  Put the system interpreter first for the command:
-    PATH=/usr/bin:\$PATH just demo spiffe-cross-boundary cluster-up
-  or deactivate the shadowing environment (venv, conda, pyenv, brew) in this shell."
+  and /usr/bin/python3 could not run virt-install either, so the fallback this
+  script would normally take is unavailable. Check that python3-gi is installed
+  (on Debian/Ubuntu: sudo apt-get install python3-gi), or deactivate the shadowing
+  environment (venv, conda, pyenv, brew) in this shell."
+  fi
+fi
 
 LIBVIRT_NET="${LIBVIRT_NET:-default}"
 
@@ -185,7 +198,7 @@ vm_create() { # name ip cpus mem_mib disk_gb packages...
   local firmware=()
   [ "$VM_ARCH" = arm64 ] && firmware=(--boot uefi)
 
-  virt-install --connect qemu:///system --name "$name" \
+  "${VIRT_INSTALL[@]}" --connect qemu:///system --name "$name" \
     --memory "$mem" --vcpus "$cpus" \
     --disk "vol=${POOL}/${name}.qcow2,bus=virtio" \
     --disk "vol=${POOL}/${name}-seed.iso,device=cdrom" \
