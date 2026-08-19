@@ -232,26 +232,26 @@ root **key** never leaves the cluster. The two boxes have no SSH access to each
 other, so relay through your host:
 
 ```bash
+relay() { S linkerd-cluster "cat $1" | S linkerd-edge "sudo tee $2 >/dev/null && sudo test -s $2"; }
+
 S linkerd-edge 'sudo mkdir -p /opt/spire/certs' &&
-S linkerd-cluster 'cat ~/spire-bundle.pem'      | S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null' &&
-S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null' &&
-S linkerd-cluster 'cat ~/spire-join-token'      | S linkerd-edge 'sudo tee /opt/spire/join-token >/dev/null'
+relay '~/spire-bundle.pem'     /opt/spire/certs/bundle.pem &&
+relay '~/linkerd-certs/ca.crt' /opt/spire/certs/ca.crt &&
+relay '~/spire-join-token'     /opt/spire/join-token
 ```
 
 That last line is why step 4 needs nothing typed in by hand: the join token is
 bootstrap material like the bundle, so it travels the same way.
 `install-spire-agent.sh` reads `/opt/spire/join-token` when given no argument.
 
-> **Check what landed before moving on.** The `&&` between these lines stops the
-> chain if a command fails, but each line here is a *pipeline*, and a pipeline's
-> exit status is its last command's. If a `cat` finds nothing, the `tee` still
-> succeeds and writes an **empty** file — reported as success. The failure then
-> surfaces much later, as an agent that cannot attest. So confirm all three
-> arrived non-empty:
->
-> ```bash
-> S linkerd-edge 'sudo ls -l /opt/spire/certs/bundle.pem /opt/spire/certs/ca.crt /opt/spire/join-token'
-> ```
+> **Why `relay` ends with `test -s`.** Each copy is a *pipeline*, and a pipeline's
+> exit status is its last command's — not the failing one's. Written as a bare
+> `cat … | sudo tee …`, a `cat` that finds nothing still leaves `tee` succeeding,
+> so an **empty** file lands and the command reports success. Nothing goes wrong
+> until much later, when the agent cannot attest and the reason is three steps
+> behind you. Ending the remote side with `test -s` puts the question "did a
+> non-empty file actually land?" last in the pipeline, which is what the `&&`
+> chain then reads.
 
 ### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
