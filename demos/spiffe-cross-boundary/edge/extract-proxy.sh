@@ -11,4 +11,22 @@ if [ ! -x /opt/linkerd-proxy/linkerd-proxy ]; then
   sudo docker cp "$id:/usr/lib/linkerd/linkerd2-proxy" /opt/linkerd-proxy/linkerd-proxy
   sudo docker rm -v "$id"
 fi
-/opt/linkerd-proxy/linkerd-proxy --version || true
+# Confirm the binary runs and report its release -- this script exists to keep the
+# proxy in step with the control plane, so an unconfirmed version is a failure.
+#
+# The standalone proxy has no --version flag. It logs its release banner, then
+# exits non-zero with "Invalid configuration: no destination service configured",
+# because a real launch needs the environment edge/run-proxy.sh supplies. That is
+# the expected outcome here, so read the release out of the banner and say so,
+# rather than letting an error scroll past as though the extraction had failed.
+out="$(timeout 30 /opt/linkerd-proxy/linkerd-proxy --version 2>&1 || true)"
+release="$(printf '%s\n' "$out" \
+  | awk '/linkerd2_proxy: release/ {for (i = 1; i <= NF; i++) if ($i == "release") { print $(i+1); exit }}')"
+
+[ -n "$release" ] || die "the extracted proxy did not report a release, so its version cannot be
+  matched against the control plane (${LINKERD_EDGE_VERSION}). Output was:
+$out"
+
+log "proxy ready: /opt/linkerd-proxy/linkerd-proxy (release $release, image ${LINKERD_EDGE_VERSION})"
+log "it exits on its own here — that is expected, this was only a version check.
+  edge/run-proxy.sh starts it with the identity and destination config it needs."

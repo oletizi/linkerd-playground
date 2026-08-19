@@ -9,8 +9,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$(cd "$HERE/../../.." && pwd)/lib/common.sh"; load_config "$(cd "$HERE/.." && pwd)"
 ARCH="$(detect_arch)"
 VER="${SPIRE_VERSION:-1.15.2}"
+# Token sources, in order: argument, environment, then the file the host relay
+# drops here (cluster/spire/apply.sh writes it; see the README's relay step). The
+# file exists so the token does not have to be moved by eye.
+TOKEN_FILE=/opt/spire/join-token
 TOKEN="${1:-${SPIRE_JOIN_TOKEN:-}}"
-[ -n "$TOKEN" ] || die "usage: install-spire-agent.sh <join-token>   (from cluster/spire/apply.sh)"
+if [ -z "$TOKEN" ] && [ -r "$TOKEN_FILE" ]; then
+  TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+  [ -n "$TOKEN" ] && log "using the join token relayed to $TOKEN_FILE"
+fi
+[ -n "$TOKEN" ] || die "no join token.
+  Pass one as an argument, set SPIRE_JOIN_TOKEN, or relay $TOKEN_FILE from the
+  cluster (cluster/spire/apply.sh writes it to ~/spire-join-token)."
 [ -f /opt/spire/certs/bundle.pem ] || die "copy the SPIRE bundle to /opt/spire/certs/bundle.pem first"
 [ ! -e /opt/spire/certs/ca.key ] || die "refuse to run: ca.key must not be on the edge (remove it)"
 
@@ -35,5 +45,49 @@ sudo rm -rf /opt/spire/data/agent && sudo mkdir -p /opt/spire/data/agent
 # shellcheck disable=SC2024
 sudo setsid /opt/spire/bin/spire-agent run -config /opt/spire/agent.cfg -joinToken "$TOKEN" \
   >/tmp/spire-agent.log 2>&1 </dev/null &
-sleep 4
+# The agent opens its workload API socket BEFORE node attestation finishes, so a
+# healthcheck on its own is not evidence of a working agent: with a spent join
+# token it answers "healthy", keeps retrying attestation, and dies about 20s later
+# -- by which time this script has already exited 0 and the reader has moved on.
+# The next symptom is the proxy panicking with a missing socket, two steps away
+# from the actual cause.
+#
+# So wait for a definite outcome: a failure signature in the log, the process
+# going away, or the agent still alive and healthy past the retry interval.
+SETTLE="${SPIRE_AGENT_SETTLE:-25}"
+log "waiting up to ${SETTLE}s for the agent to attest (it must outlive its first attestation retry)"
+deadline=$((SECONDS + SETTLE))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if grep -q 'join token does not exist or has already been used' /tmp/spire-agent.log 2>/dev/null; then
+    # Leave no agent behind: it would keep retrying forever, and a live
+    # spire-agent process with no socket reads as progress when it is not.
+    sudo pkill -f 'spire-agent run' 2>/dev/null || true
+    die "the join token has already been used, so the agent could not attest.
+
+  A join token is SINGLE-USE, and the copy this box holds ($TOKEN_FILE) is spent.
+  Getting a fresh one takes TWO steps, because the token is relayed rather than
+  typed -- doing only the first leaves this box on the old token:
+
+    1. On the cluster:  cluster/spire/apply.sh        (Build it step 2)
+       issues a new token and writes it to ~/spire-join-token THERE.
+    2. From your host:  relay it to this box          (Build it step 3)
+       cat ~/spire-join-token on the cluster -> $TOKEN_FILE here.
+    3. Then run this script again.
+
+  Full log: /tmp/spire-agent.log"
+  fi
+  if grep -q 'Agent crashed' /tmp/spire-agent.log 2>/dev/null; then
+    sudo pkill -f 'spire-agent run' 2>/dev/null || true
+    die "the SPIRE agent crashed before it finished attesting:
+$(grep -E 'level=(error|warning)' /tmp/spire-agent.log | tail -3)
+
+  Full log: /tmp/spire-agent.log"
+  fi
+  pgrep -f 'spire-agent run' >/dev/null 2>&1 \
+    || die "the SPIRE agent exited. Last lines of /tmp/spire-agent.log:
+$(tail -5 /tmp/spire-agent.log 2>/dev/null)"
+  sleep 1
+done
+
 sudo /opt/spire/bin/spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
+log "agent attested and still running after ${SETTLE}s"

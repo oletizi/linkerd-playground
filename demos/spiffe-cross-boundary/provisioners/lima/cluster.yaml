@@ -4,6 +4,12 @@ images:
     arch: "x86_64"
   - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
     arch: "aarch64"
+networks:
+  # The two boxes must reach each other by IP (README "Connectivity").
+  # Lima's default user-mode NAT isolates guests -- every VM comes up as
+  # 192.168.5.15 and cannot see the others -- so declare the shared network
+  # here, at creation, rather than leaving it as a manual limactl edit.
+  - lima: user-v2
 cpus: 4
 memory: "8GiB"
 disk: "40GiB"

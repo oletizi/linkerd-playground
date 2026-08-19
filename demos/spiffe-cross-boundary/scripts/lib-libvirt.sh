@@ -19,8 +19,52 @@ for c in virsh virt-install qemu-img cloud-localds curl ssh; do
   (or: sudo bash scripts/host-setup.sh), then log out and back in."
 done
 
+# Present is not the same as working. virt-install is a Python script whose
+# shebang is '#!/usr/bin/env python3', so it runs under whichever python3 comes
+# first on PATH -- and a Homebrew, pyenv, conda or virtualenv python shadows the
+# system one while being unable to see the distro's python3-gi in
+# /usr/lib/python3/dist-packages. It then dies on 'import gi' with a bare
+# ModuleNotFoundError traceback, mid-provision and in virt-install's own voice,
+# which reads as a broken demo rather than a shadowed interpreter.
+#
+# Telling the operator to prefix every command with PATH=/usr/bin is a poor trade:
+# it is one more thing to remember on every invocation, and it silently changes
+# which of *everything* else they get. The interpreter this script needs is not a
+# preference, so run it under the system python ourselves when the inherited one
+# cannot. Only if neither works is there something to report.
+VIRT_INSTALL=(virt-install)
+if ! virt-install --version >/dev/null 2>&1; then
+  VIRT_INSTALL_ERR="$(virt-install --version 2>&1 >/dev/null)" || true
+  VIRT_INSTALL_BIN="$(command -v virt-install)"
+  if [ -x /usr/bin/python3 ] && /usr/bin/python3 "$VIRT_INSTALL_BIN" --version >/dev/null 2>&1; then
+    VIRT_INSTALL=(/usr/bin/python3 "$VIRT_INSTALL_BIN")
+    log "virt-install cannot run under $(command -v python3 || echo 'the python3 on PATH'); using /usr/bin/python3 for it"
+  else
+    die "'virt-install' is installed but does not run:
+
+$(printf '%s\n' "$VIRT_INSTALL_ERR" | sed 's/^/    /')
+
+  Usually this is a python3 on PATH that shadows the system one: virt-install runs
+  under '#!/usr/bin/env python3' and needs the distro's 'gi' module, which only the
+  system interpreter can see. This host resolves python3 to
+    $(command -v python3 2>/dev/null || echo '(none)')
+  and /usr/bin/python3 could not run virt-install either, so the fallback this
+  script would normally take is unavailable. Check that python3-gi is installed
+  (on Debian/Ubuntu: sudo apt-get install python3-gi), or deactivate the shadowing
+  environment (venv, conda, pyenv, brew) in this shell."
+  fi
+fi
+
 LIBVIRT_NET="${LIBVIRT_NET:-default}"
-VM_IMAGE_URL="${VM_IMAGE_URL:-https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img}"
+
+# Guest architecture follows the host's. A guest whose arch differs from the host
+# has no KVM to run on, so libvirt falls back to full emulation -- which is not an
+# error, just unusably slow, and the slowness is easy to blame on the demo rather
+# than the substrate. So: derive the image from the host arch, and refuse an
+# explicit override that names a different one.
+VM_ARCH="$(detect_arch)"
+VM_IMAGE_URL="${VM_IMAGE_URL:-$(ubuntu_cloud_image_url "$VM_ARCH")}"
+require_matching_image_arch "$VM_IMAGE_URL" "$VM_ARCH" || exit 1
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/linkerd-playground"
 SSH_KEY="${DEMO_SSH_KEY:-$HOME/.ssh/linkerd-playground}"
 SSH_CONFIG="${DEMO_SSH_CONFIG:-$HOME/.ssh/linkerd-playground.conf}"
@@ -149,12 +193,18 @@ vm_create() { # name ip cpus mem_mib disk_gb packages...
   make_volumes "$name" "$disk" "$ud"
   rm -f "$ud"
 
-  virt-install --connect qemu:///system --name "$name" \
+  # aarch64 has no BIOS, so an arm64 guest needs UEFI firmware (the
+  # qemu-efi-aarch64 package host-setup.sh installs on that arch).
+  local firmware=()
+  [ "$VM_ARCH" = arm64 ] && firmware=(--boot uefi)
+
+  "${VIRT_INSTALL[@]}" --connect qemu:///system --name "$name" \
     --memory "$mem" --vcpus "$cpus" \
     --disk "vol=${POOL}/${name}.qcow2,bus=virtio" \
     --disk "vol=${POOL}/${name}-seed.iso,device=cdrom" \
     --os-variant ubuntu24.04 \
     --network "network=${LIBVIRT_NET},model=virtio,mac=${mac}" \
+    ${firmware[@]+"${firmware[@]}"} \
     --graphics none --import --noautoconsole >/dev/null
 }
 

@@ -25,3 +25,17 @@ else
   log "edge VM:    ${EDGE_VM} (${EDGE_CPUS}cpu/${EDGE_MEM}) @ ${EDGE_ADDR}"
   if command -v limactl >/dev/null 2>&1; then limactl list; else log "limactl not installed here"; fi
 fi
+
+# The dashboard URL cannot be derived from config: the port is a NodePort that
+# Kubernetes allocates. So ask the cluster, with the same script Build it uses.
+# Silent whenever the answer is not available yet -- no ssh config, cluster not
+# reachable, app not deployed. This is a status line, not a check, and a demo
+# half-built is the normal state for someone running status.
+SSH_CONFIG="${DEMO_SSH_CONFIG:-$HOME/.ssh/linkerd-playground.conf}"
+if [ -f "$SSH_CONFIG" ]; then
+  dashboard="$(ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes linkerd-cluster \
+    'bash ~/linkerd-playground/demos/spiffe-cross-boundary/cluster/retail/url.sh' 2>/dev/null || true)"
+  # An `if`, not `[ -n … ] && log …`: as the last statement under `set -e`, the
+  # && form would make an absent URL the script's exit status.
+  if [ -n "$dashboard" ]; then log "dashboard:  $dashboard"; fi
+fi
