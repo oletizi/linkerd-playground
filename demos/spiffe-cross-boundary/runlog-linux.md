@@ -759,3 +759,143 @@ blocker, and it is the same lesson as F12 and F13 in a different costume — the
 demo assumed a property of the follower's machine (here, that `python3` is the
 system one) that the preflight never checked. **Every host assumption the scripts
 rely on should be tested by executing it, not by looking for it.**
+
+# Fourth pass — operator hand replay of the combined branch (2026-08-18)
+
+The passes above each validated one line of work. This one validated the
+**merge candidate**: the arm64/OrbStack support, the ergonomics pass on top of it,
+and the Linux preflight fix from the third pass, assembled on a single branch and
+run as one tree. Splitting the validation would have meant shipping a "verified"
+claim against a combination that had never been assembled, so nothing merged until
+this replay passed.
+
+Driven **by hand by the operator**, reading the README, on the same Ubuntu 26.04 /
+x86_64 host, from a torn-down slate — no domains, no volumes. Unlike the third
+pass, the agent did not run the demo; it watched, diagnosed what the operator hit,
+and fixed it live on the branch under validation, so every fix below was itself
+exercised by the remainder of the run.
+
+## F15 [BLOCKER, Linux-specific] the preflight told the operator to fix `PATH` by hand
+
+F14's guard correctly diagnosed the shadowed-`python3` failure and then handed
+back a chore: prefix `PATH=/usr/bin:$PATH` on every provisioning command. That is
+the same defect class it was meant to cure. It is one more thing to remember on
+every invocation, it silently changes which of *everything else* the command gets,
+and the interpreter `virt-install` needs is not a preference anyone should be
+expressing.
+
+Fix: when `virt-install` cannot run under the inherited interpreter, retry it
+under `/usr/bin/python3` and use that for the provisioning call, reporting the
+substitution in one line. The error is now raised only when neither interpreter
+can run it, and it says the fallback was tried and points at `python3-gi` rather
+than at `PATH`. Verified in all three states, and the fallback's invocation was
+checked with `virt-install --dry-run` over the exact argument set `vm_create`
+passes.
+
+The captured error also stopped being truncated to its last line. That truncation
+had only ever been exercised against one failure shape, and a traceback's last
+line is not reliably the informative one.
+
+## F16 [BLOCKER, platform-independent] a pasted command block ran on past its own failure
+
+Every multi-command block in "Build it" was a bare list of newline-separated
+commands, and they are meant to be pasted as a unit. The operator pasted
+`cluster-up` and `edge-up` together. `cluster-up` died in preflight; `edge-up` ran
+anyway and ended with `edge-vm-ready`. The failure had scrolled off, and the last
+thing on screen read like success. The next command failed with
+
+```
+ssh: connect to host 192.168.122.10 port 22: No route to host
+```
+
+against a Box A that had never been created — a symptom that points at the
+network, three steps from a cause that was a preflight error.
+
+`set -e` does not help here: these are separate top-level invocations in an
+interactive shell, not a script. All five blocks now chain with a trailing `&&`,
+so the first failure ends the run where it happened.
+
+## F17 [BUG, platform-independent] `&&` cannot see a failed copy in the relay step
+
+Chaining step 3 with `&&` looked like it closed the same hole there, and did not.
+Each copy is a **pipeline**, and a pipeline's exit status is its last command's:
+
+```
+$ cat /nonexistent | tee dest ; echo $?
+0
+```
+
+So a `cat` that finds nothing still leaves `tee` succeeding, an **empty** file
+lands, and the step reports success. The consequence surfaces steps later as an
+agent that cannot attest, with nothing pointing back at a zero-byte `bundle.pem`.
+
+Documenting it was tried first and rejected: a reader told to go check three files
+by hand is a reader who skips it on the run where it matters. The block now
+defines a `relay` helper whose remote side ends in `sudo test -s`, putting "did a
+non-empty file actually land?" last in the pipeline, where the `&&` chain reads
+it. Verified against a live guest — missing source exits 1, empty source exits 1,
+real content exits 0 and arrives intact, and a failed relay stops the relays after
+it. It does not prevent the zero-byte file from being created, since `tee` has run
+by then; it prevents that file from being mistaken for a good one.
+
+## F18 [GAP] `status` stopped short of the address you want from it
+
+`status` reported both boxes and not the one fact an operator runs it for — where
+to point a browser. That address is not derivable from config: the host half
+depends on the topology, the port half is a NodePort Kubernetes allocates. It now
+asks the cluster through the same `cluster/retail/url.sh` that "Build it" uses,
+and stays silent whenever there is no answer yet (no ssh config, cluster
+unreachable, app not deployed), because a half-built demo is the normal state for
+someone running `status`.
+
+Worth recording as its own hazard: written as `[ -n "$url" ] && log …`, the final
+test would have made an absent URL the **script's exit status** under `set -e`, so
+`status` would have exited 1 on every run before step 5 while looking fine. It is
+an `if`.
+
+## ✓ End state, observed
+
+With the demo built by hand and left running:
+
+```
+push -> 200
+```
+
+```
+req id=0:0 proxy=in src=192.168.122.11:35286 dst=10.42.0.15:8090 tls=true
+  :method=POST :path=/ingest
+  src_client_id=spiffe://root.linkerd.cluster.local/store/042/inventory-sync
+  src_tls=true dst_authz_kind=authorizationpolicy dst_authz_name=ingest-allow-store
+```
+
+The dashboard served HTTP 200 and reported both identities —
+`retail-cloud.mixed-env.serviceaccount.identity.linkerd.cluster.local` and
+`spiffe://root.linkerd.cluster.local/store/042/inventory-sync` — with
+`voided:false, reporting:true`. k3s v1.36.3+k3s1, Linkerd edge-26.7.2.
+
+## Fourth-pass verdict
+
+Four defects, and not one of them was in the demo's mechanism — SPIFFE identity,
+mTLS and the authorization policy behaved correctly throughout, as they have since
+the first pass. All four were in the **seam between the documentation and the
+operator's machine**: an interpreter the scripts assumed, a paste that outran its
+own failure, a pipeline that reported success for a file that never arrived, and a
+status line that withheld the address.
+
+The through-line from F12 and F13 holds, and sharpens. Those found that a doc is
+only verified when it is replayed literally from a clean host. This pass adds:
+when the failure mode is the operator's environment or the operator's shell, the
+fix belongs in the code, not in a sentence telling them what to do about it. Three
+of these four were first "fixed" with prose — a note about `PATH`, a note about
+checking three files — and each of those notes was replaced by something that
+simply works.
+
+Also this pass:
+
+- The `S`-as-a-function shorthand from the arm64 work pastes and runs correctly
+  under bash.
+- `linkerd check` still emits three advisory version-drift warnings (edge-26.7.2
+  against a latest edge of 26.8.2). They do not change the `√` verdict, but the
+  demo is pinned behind current edge and it is worth a look as maintenance.
+- The arm64 libvirt branch remains **unexercised**: it needs an arm64 Linux host
+  with KVM, which this is not. `--boot uefi` is still written but unrun.
