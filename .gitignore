@@ -11,3 +11,6 @@ site/.astro/
 
 # Local Netlify folder
 .netlify
+
+# JetBrains IDE settings
+.idea/
