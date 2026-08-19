@@ -289,8 +289,17 @@ S linkerd-edge    "bash $D/edge/run-proxy.sh"
 proxy has identity (uid 2102)
 ```
 
-Open **`http://192.168.122.10:30080/`** — the store is now pushing its inventory
-and sales to the cloud over the mesh, and
+Open the dashboard. Both `retail/apply.sh` and `run-proxy.sh` print its URL, and
+you can ask for it again at any time:
+
+```bash
+S linkerd-cluster "bash $D/cluster/retail/url.sh"
+```
+
+Neither half of that URL is written down here on purpose: the address depends on
+your topology, and the port is a NodePort Kubernetes assigns. The script asks the
+cluster for both. The store is now pushing its inventory and sales to the cloud
+over the mesh, and
 
 ```bash
 S linkerd-edge 'sudo docker logs -f store-pos'
