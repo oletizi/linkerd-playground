@@ -49,6 +49,20 @@ function snapshot() {
   });
 }
 
+// Until the first successful push, connection errors are the normal state of a
+// half-built demo: the proxy or the cloud service simply is not up yet. Say so on
+// the line itself -- a bare "push error: ECONNREFUSED" reads as a fault, and
+// nobody should have to find a README to learn it was expected.
+//
+// The hint stops after the first success on purpose. Once a push has worked, the
+// same error means something broke, and calling that "expected" would be a lie.
+let everPushed = false;
+const SETUP_HINT = {
+  ECONNREFUSED: 'expected until the proxy is running — see Build it step 5 (edge/run-proxy.sh)',
+  ENOTFOUND: 'expected until cluster DNS is configured — see Build it step 4 (net/shim.sh)',
+  EHOSTUNREACH: 'expected until the edge can route to the cluster — see Build it step 4 (net/shim.sh)',
+};
+
 // Push the current snapshot to the cloud. The proxy adds mTLS + identity;
 // if the cloud has revoked our identity, this comes back 403.
 function push() {
@@ -58,9 +72,20 @@ function push() {
     hostname: u.hostname, port: u.port || 80, path: u.pathname, method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
     timeout: 4000,
-  }, (r) => { r.resume(); console.log(`push -> ${r.statusCode}${r.statusCode === 403 ? ' (authorization voided by cloud)' : ''}`); });
-  req.on('error', (e) => console.log('push error:', e.code || String(e)));
-  req.on('timeout', () => { req.destroy(); console.log('push timeout'); });
+  }, (r) => {
+    r.resume();
+    if (r.statusCode < 400) everPushed = true;
+    console.log(`push -> ${r.statusCode}${r.statusCode === 403 ? ' (authorization voided by cloud)' : ''}`);
+  });
+  req.on('error', (e) => {
+    const code = e.code || String(e);
+    const hint = everPushed ? '' : SETUP_HINT[code];
+    console.log(`push error: ${code}${hint ? ` (${hint})` : ''}`);
+  });
+  req.on('timeout', () => {
+    req.destroy();
+    console.log(`push timeout${everPushed ? '' : ' (expected until the cloud is reachable — see Build it step 5)'}`);
+  });
   req.end(body);
 }
 console.log(`store-pos #${STORE} reporting to ${INGEST} every ${PUSH_MS}ms`);

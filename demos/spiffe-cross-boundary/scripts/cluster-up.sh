@@ -18,4 +18,11 @@ else
   . "$SCRIPTS/lib-vm.sh"          # NB: resets HERE to the demo root
   vm_start "$CLUSTER_VM" "$HERE/provisioners/lima/cluster.yaml" "$CLUSTER_CPUS" "$CLUSTER_MEM"
   vm_shell "$CLUSTER_VM" bash -lc 'uname -m && echo cluster-vm-ready'
+  # Lima assigns the address; unlike the libvirt path there is no reservation to
+  # pin it, so report it rather than leaving the reader to go looking.
+  addr="$(vm_addr "$CLUSTER_VM")"
+  [ -n "$addr" ] || die "$CLUSTER_VM has no address on a shared network.
+  The two boxes cannot reach each other, so the demo cannot run. The VM should
+  have been created with the 'user-v2' network declared in provisioners/lima/."
+  log "$CLUSTER_VM is at $addr -- set CLUSTER_NODE_ADDR=$addr in config.local.env"
 fi

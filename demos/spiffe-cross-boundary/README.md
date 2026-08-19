@@ -28,21 +28,6 @@ to the network.
 > **Made with [Claude Code](https://claude.com/claude-code).** This demo and its
 > documentation were built with Anthropic's agentic coding tool.
 
-Design spec: [`docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md`](../../docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md).
-
-## See it
-
-Once built, open (at your cluster's address, port `30080`):
-
-- **`/`** — the RetailCloud dashboard: the cloud↔store link with both identities, a
-  live **network topology** (Cytoscape.js) that renders `store-pos` on the edge
-  machine, inventory as price tags, sales as receipt tape, and the **Void** button.
-- **`/tutorial`** — a self-teaching page: **Learn** (the SPIFFE concepts), **Try it**
-  (five guided steps with the live dashboard embedded), **Build it** (the runbook).
-
-Click **Void** to see the store data marked VOID and the topology link turn red, while
-both identities remain on screen.
-
 ## What runs where
 
 | | Box A — Kubernetes cluster | Box B — on-prem store |
@@ -71,8 +56,11 @@ provisions for you.
 ```bash
 cd <repo>
 cp demos/spiffe-cross-boundary/config.example.env demos/spiffe-cross-boundary/config.local.env
-just demo spiffe-cross-boundary host-setup     # one time; installs libvirt, needs sudo
+just demo spiffe-cross-boundary host-setup
 ```
+
+`host-setup` is a one-time step and needs `sudo`: it installs libvirt/KVM and the
+emulator for your host's architecture, and adds you to the `libvirt` group.
 
 > **Log out and log back in before continuing.** `host-setup` adds you to the
 > `libvirt` group, and group membership only applies to a **new login session** —
@@ -83,10 +71,11 @@ just demo spiffe-cross-boundary host-setup     # one time; installs libvirt, nee
 Then bring up both boxes:
 
 ```bash
-just demo spiffe-cross-boundary cluster-up     # Box A at 192.168.122.10
-just demo spiffe-cross-boundary edge-up        # Box B at 192.168.122.11
+just demo spiffe-cross-boundary cluster-up &&
+just demo spiffe-cross-boundary edge-up
 ```
 
+That gives you Box A at `192.168.122.10` and Box B at `192.168.122.11`.
 Each creates a libvirt VM on `virbr0` pinned to a fixed address by DHCP
 reservation, waits for cloud-init, copies this repo into the guest, and writes
 `~/.ssh/linkerd-playground.conf`. The first run downloads an Ubuntu cloud image
@@ -136,6 +125,14 @@ optional overlay recipe is in
 [`connectivity-tailscale.md`](connectivity-tailscale.md) (strictly optional; the
 demo doesn't depend on it).
 
+<!--
+Keep the pasteable code blocks free of trailing "# ..." comments.
+Interactive zsh (the macOS default shell) does not treat # as a comment, so a
+pasted line runs the comment text as arguments or, where the comment contains
+";", as a second command -- and backticks inside it execute on the reader's host.
+Put the explanation in prose under the block instead.
+-->
+
 ## Build it
 
 The steps below use the repo's scripts and are the **verified path**. To understand
@@ -146,32 +143,61 @@ Each block runs **on the box named in its heading**. Shown here driven over ssh
 from your host, with `S` as a shorthand:
 
 ```bash
-S="ssh -F $HOME/.ssh/linkerd-playground.conf"
+S() { ssh -F "$HOME/.ssh/linkerd-playground.conf" "$@"; }
 D='~/linkerd-playground/demos/spiffe-cross-boundary'
 ```
 
-> Copy those two lines exactly, tildes and quotes included. `$HOME` in `S`
-> because a `~` inside double quotes is never expanded — `ssh` would take it
-> literally and fail with `Can't open user config file`. `D` is single-quoted for
-> the opposite reason: it must reach the **guest** shell unexpanded, since your
-> home on the host is not `demo`'s home in the VM.
+> Copy those two lines exactly, tildes and quotes included.
+>
+> `S` is a **function**, not a string, so that this works in `zsh` as well as
+> `bash`. Written as `S="ssh -F …"` and called as `$S linkerd-cluster …`, it would
+> rely on the shell splitting an unquoted variable into separate words — `bash`
+> does that, `zsh` does not. Since `zsh` is the default macOS shell, the string
+> form fails there on the very first command:
+> `no such file or directory: ssh -F …`.
+>
+> `$HOME` inside `S` because a `~` in double quotes is never expanded — `ssh`
+> would take it literally and fail with `Can't open user config file`. `D` is
+> single-quoted for the opposite reason: it must reach the **guest** shell
+> unexpanded, since your home on the host is not the VM user's home.
 
-### Box A — Kubernetes cluster
+> **On OrbStack**, `S` points at OrbStack's ssh proxy rather than a VM address.
+> [`README-ORBSTACK.md`](README-ORBSTACK.md) creates the machines, writes that
+> config, and returns you here — nothing else in this section changes.
+
+### Step 1 — Box A: Kubernetes cluster
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/gen-certs.sh"        # trust anchor + issuer
-$S linkerd-cluster "bash $D/cluster/install-k3s.sh"      # prints the kube-dns ClusterIP
-$S linkerd-cluster "bash $D/cluster/install-linkerd.sh"  # + Gateway API CRDs + viz; ends with `linkerd check`
+S linkerd-cluster "bash $D/cluster/gen-certs.sh" &&
+S linkerd-cluster "bash $D/cluster/install-k3s.sh" &&
+S linkerd-cluster "bash $D/cluster/install-linkerd.sh"
 ```
 
+`gen-certs.sh` writes the trust anchor and issuer certificates.
 `install-k3s.sh` ends by printing the `kube-dns` ClusterIP — confirm it matches
 `COREDNS_ADDR` (default `10.43.0.10`). `install-linkerd.sh` ends with
 `Status check results are √`.
 
-### Box A → deploy the SPIRE server (root stays in the cluster)
+> **`install-linkerd.sh` goes quiet twice. Both are normal.** It runs
+> `linkerd check` after installing the control plane, and again after installing
+> viz. Each run polls while pods pull images and become ready, printing nothing
+> until they do — on a first run that is typically a minute or two per pause,
+> longer on a slow connection.
+>
+> The first pause is at `√ control plane pods are ready`, right after the
+> `linkerd-existence` block. The second is at `√ viz extension pods are running`,
+> and is usually the longer of the two — viz pulls five more images
+> (`prometheus`, `tap`, `tap-injector`, `web`, `metrics-api`).
+>
+> When it finishes you will also see several `‼ proxies are up-to-date` warnings
+> listing pods at the pinned `edge-26.7.2`. Those note that a newer Linkerd edge
+> exists than this demo pins; they are expected and not failures. The run is good
+> if the last line is `Status check results are √`.
+
+### Step 2 — Box A: deploy the SPIRE server (root stays in the cluster)
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/spire/apply.sh"   # StatefulSet + NodePort + register; prints a join token
+S linkerd-cluster "bash $D/cluster/spire/apply.sh"
 ```
 
 It mounts the root (`ca.crt`+`ca.key`) into the server as a read-only Secret,
@@ -180,34 +206,63 @@ path), restricts the SPIRE NodePort to the interface the edge reaches this host 
 (derived from `EDGE_ADDR`; override with `SPIRE_NODEPORT_IFACE`), and prints a
 one-time **join token** plus a trust **bundle** (`~/spire-bundle.pem`).
 
-Copy only the bundle and the public root cert to the store — the root **key** never
-leaves the cluster. The two boxes have no SSH access to each other, so relay
-through your host:
+**Copy the join token somewhere before it scrolls away** — step 4 takes it as an
+argument, and it is one-time. Lost it? Re-running this step is safe: it keeps the
+existing registration entry and prints a fresh token.
+
+### Step 3 — relay the bootstrap material to Box B
+
+Copy the trust bundle, the public root cert, and the join token to the store — the
+root **key** never leaves the cluster. The two boxes have no SSH access to each
+other, so relay through your host:
 
 ```bash
-$S linkerd-edge 'sudo mkdir -p /opt/spire/certs'
-$S linkerd-cluster 'cat ~/spire-bundle.pem'      | $S linkerd-edge 'sudo tee /opt/spire/certs/bundle.pem >/dev/null'
-$S linkerd-cluster 'cat ~/linkerd-certs/ca.crt'  | $S linkerd-edge 'sudo tee /opt/spire/certs/ca.crt >/dev/null'
+relay() { S linkerd-cluster "cat $1" | S linkerd-edge "sudo tee $2 >/dev/null && sudo test -s $2"; }
+
+S linkerd-edge 'sudo mkdir -p /opt/spire/certs' &&
+relay '~/spire-bundle.pem'     /opt/spire/certs/bundle.pem &&
+relay '~/linkerd-certs/ca.crt' /opt/spire/certs/ca.crt &&
+relay '~/spire-join-token'     /opt/spire/join-token
 ```
 
-### Box B — on-prem store (SPIRE agent + proxy + store-pos)
+That last line is why step 4 needs nothing typed in by hand: the join token is
+bootstrap material like the bundle, so it travels the same way.
+`install-spire-agent.sh` reads `/opt/spire/join-token` when given no argument.
+
+> **Why `relay` ends with `test -s`.** Each copy is a *pipeline*, and a pipeline's
+> exit status is its last command's — not the failing one's. Written as a bare
+> `cat … | sudo tee …`, a `cat` that finds nothing still leaves `tee` succeeding,
+> so an **empty** file lands and the command reports success. Nothing goes wrong
+> until much later, when the agent cannot attest and the reason is three steps
+> behind you. Ending the remote side with `test -s` puts the question "did a
+> non-empty file actually land?" last in the pipeline, which is what the `&&`
+> chain then reads.
+
+### Step 4 — Box B: on-prem store (SPIRE agent + proxy + store-pos)
 
 ```bash
-$S linkerd-edge "bash $D/net/shim.sh"
-$S linkerd-edge "bash $D/edge/install-spire-agent.sh <join-token>"   # agent-only; pinned bundle
-$S linkerd-edge "bash $D/edge/extract-proxy.sh"
-$S linkerd-edge "bash $D/edge/iptables.sh"
-$S linkerd-edge "bash $D/store-pos/run-store-pos.sh"     # the POS — pushes to the cloud
+S linkerd-edge "bash $D/net/shim.sh" &&
+S linkerd-edge "bash $D/edge/install-spire-agent.sh" &&
+S linkerd-edge "bash $D/edge/extract-proxy.sh" &&
+S linkerd-edge "bash $D/edge/iptables.sh" &&
+S linkerd-edge "bash $D/store-pos/run-store-pos.sh"
 ```
+
+> `net/shim.sh` picks the resolver mechanism the box actually uses — a
+> `systemd-resolved` drop-in where that is running, or `/etc/resolv.conf` directly
+> where it is masked or absent (OrbStack, minimal images). Either way it then
+> resolves a real cluster name before reporting success, and stops with a
+> diagnosis if it cannot. Stopping there usually means Box A has not run yet.
 
 `install-spire-agent.sh` ends with `Agent is healthy.` `extract-proxy.sh` ends by
-running the proxy binary once, which exits with `Invalid configuration: no
-destination service configured` — that is expected; it is just a version check.
+reporting the proxy release it extracted, and fails if it cannot confirm one —
+that version has to match the control plane.
 
-`store-pos` will log `push error: ENOTFOUND` until the next step creates the
-`retail-cloud` Service. That is expected.
+`store-pos` will log `push error: ECONNREFUSED` until step 5 starts the proxy. That
+is expected: `iptables.sh` has already redirected this app's outbound TCP to port
+4140, and nothing is listening there until `run-proxy.sh` runs.
 
-### Box A → deploy RetailCloud, THEN Box B → start the proxy
+### Step 5 — Box A: deploy RetailCloud, THEN Box B: start the proxy
 
 `cluster/retail/apply.sh` creates the `mixed-env` namespace (annotated for
 injection), registers `store-pos` as an `ExternalWorkload` (and marks it Ready),
@@ -220,8 +275,8 @@ deploys the `retail-cloud` app, and applies the authorization policy.
 > what lets the mesh reach the store *as a server*.
 
 ```bash
-$S linkerd-cluster "bash $D/cluster/retail/apply.sh"   # prints the dashboard URL
-$S linkerd-edge    "bash $D/edge/run-proxy.sh"
+S linkerd-cluster "bash $D/cluster/retail/apply.sh" &&
+S linkerd-edge    "bash $D/edge/run-proxy.sh"
 ```
 
 `run-proxy.sh` confirms the identity it received:
@@ -230,15 +285,81 @@ $S linkerd-edge    "bash $D/edge/run-proxy.sh"
 proxy has identity (uid 2102)
 ```
 
-Open **`http://192.168.122.10:30080/`** — the store is now pushing its inventory
-and sales to the cloud over the mesh, and
+Open the dashboard. Both `retail/apply.sh` and `run-proxy.sh` print its URL, and
+you can ask for it again at any time:
 
 ```bash
-$S linkerd-edge 'sudo docker logs -f store-pos'
+S linkerd-cluster "bash $D/cluster/retail/url.sh"
+```
+
+Neither half of that URL is written down here on purpose: the address depends on
+your topology, and the port is a NodePort Kubernetes assigns. The script asks the
+cluster for both. The store is now pushing its inventory and sales to the cloud
+over the mesh, and
+
+```bash
+S linkerd-edge 'sudo docker logs -f store-pos'
 ```
 
 shows `push -> 200`. Click **Void authorization** to watch identity-based authz
 refuse the store's pushes for real (`push -> 403 (authorization voided by cloud)`).
+
+## If a step goes wrong
+
+**`[error] cluster node <address> not reachable — fix your base network first`** —
+`net/shim.sh` is refusing to route to an address nothing answers on. Your
+`config.local.env` is missing or holds the wrong addresses: without that file the
+scripts fall back to `config.example.env`, whose defaults are the **libvirt**
+addresses (`192.168.122.10`/`.11`). Put the addresses your boxes actually have in
+`config.local.env` — `cluster-up`/`edge-up` print them on the Lima path, `orb list`
+shows them on OrbStack — and copy that file into **both** guests, since the scripts
+run there and read it there.
+
+**Re-running steps.** These are safe to run again:
+
+| Step | On a re-run |
+|---|---|
+| `gen-certs.sh` | keeps existing certs (guarded by `if [ ! -f ca.crt ]`) |
+| `spire/apply.sh` | keeps the existing registration entry, prints a **fresh join token** |
+| `net/shim.sh` | idempotent; skips routes already present |
+| `extract-proxy.sh`, `iptables.sh` | report `already configured` and do nothing |
+| `retail/apply.sh` | re-applies the manifests |
+
+`install-spire-agent.sh` is the exception: each run needs a **new** join token.
+Getting one takes **two** steps, not one — re-run step 2 to issue it, then **step 3
+to relay it**. Step 2 writes the new token to `~/spire-join-token` on the cluster;
+until step 3 copies it across, the edge still holds the previous one and the agent
+fails with:
+
+```
+failed to attest: join token does not exist or has already been used
+```
+
+That message means the token the edge has was already consumed, not that anything
+is misconfigured. The agent keeps retrying in the background after the script
+exits; the next successful run replaces it.
+
+**The proxy panics with a Rust stack trace.**
+
+```
+thread 'admin' panicked at .../spire-client/src/lib.rs:35:14:
+spire client must gracefully handle errors: ... ConnectError(Os { code: 2, kind: NotFound ...
+```
+
+That is the proxy failing to open the SPIRE agent's socket at
+`/tmp/spire-agent/public/api.sock`, because no agent is running to create it — the
+proxy has no identity source and cannot start. It means step 4's
+`install-spire-agent.sh` did not take effect, not that the proxy is broken. Check
+with `S linkerd-edge 'ls /opt/spire/'`: a `bin/` directory and `agent.cfg` should
+be there alongside `certs/`.
+
+**Nothing is pushing.** The `store-pos` log says where it stopped.
+`ENOTFOUND` means cluster DNS is not configured — `net/shim.sh` has not run, or did
+not take effect. `ECONNREFUSED` means DNS resolves but the connection is refused
+locally: `iptables.sh` redirects this app's outbound TCP to port 4140 and the proxy
+is not listening there, so run step 5's `run-proxy.sh`. Note that the redirect
+makes `ECONNREFUSED` the expected symptom whether or not `retail-cloud` exists yet
+— the app never reaches the cluster to find out.
 
 ## Inspect the traffic
 
@@ -265,28 +386,55 @@ allowed identity.
 
 ## Other topologies
 
-Everything below works but is **not** the verified path. Only the Linux
-single-host setup above is tested end to end; if one of these breaks, please file
-an issue.
+The Linux single-host setup above is the path the scripts drive by default. Two of
+the alternatives below have their own end-to-end runlogs — macOS/OrbStack
+([`runlog-orbstack.md`](runlog-orbstack.md)) and macOS/Lima
+([`runlog.md`](runlog.md)); the rest are config-driven but not independently
+verified. If one of them breaks, please file an issue.
 
 **Two physical Linux hosts.** Skip `host-setup`/`cluster-up`/`edge-up` entirely.
 Put the repo and a matching `config.local.env` on both, set `CLUSTER_NODE_ADDR`
 and `EDGE_ADDR` to their real addresses, and run the **Build it** steps on each
 box directly (`bash <demo>/cluster/gen-certs.sh`, etc.). Mind `APP_UID` on Box B.
 
-**macOS — Lima.** `cluster-up`/`edge-up` fall back to Lima off Linux. The stock
-Lima network gives every VM the same address, so attach one that allows VM-to-VM —
-`limactl edit <vm> --network lima:user-v2`, while stopped — then copy the **repo
-root** into each guest:
+**macOS — Lima.** `cluster-up`/`edge-up` fall back to Lima off Linux, and on Apple
+Silicon they create native arm64 guests (Lima picks the image by host
+architecture). Each script prints the address its VM came up on, for
+`config.local.env`:
+
+```
+[cluster-up.sh] linkerd-cluster is at 192.168.104.1 -- set CLUSTER_NODE_ADDR=192.168.104.1 in config.local.env
+[edge-up.sh]    linkerd-edge is at 192.168.104.3 -- set EDGE_ADDR=192.168.104.3 in config.local.env
+```
+
+The VM-to-VM network is declared in `provisioners/lima/*.yaml` and applied at
+creation, so no `limactl edit` step is needed. (Stock Lima gives every guest the
+same `192.168.5.15` on an isolated NAT; without that declaration the two boxes come
+up "ready" and unable to see each other.)
+
+Then copy the **repo root** into each guest:
 
 ```bash
-tar --exclude=.git -C <repo> -czf - . \
+tar --no-xattrs --exclude=.git -C <repo> -czf - . \
   | limactl shell <vm> -- bash -c 'mkdir -p ~/linkerd-playground && tar -C ~/linkerd-playground -xzf -'
 limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-boundary/<script>'
 ```
 
 > Quote the path as shown. Written unquoted, `~` expands on the **host**, and the
 > guest home is never the host's — the guest then gets a path that doesn't exist.
+
+> `--no-xattrs` stops macOS packing its extended attributes into the archive.
+> Without it the guest's GNU tar prints
+> `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'`
+> once per file. That warning is harmless — it is a macOS Gatekeeper tag with no
+> meaning on Linux, and nothing about the file contents is lost — but there is no
+> reason to ship it.
+
+**macOS — OrbStack.** Two native arm64 machines, each a box, reachable from each
+other with no network setup. Full recipe in
+[`README-ORBSTACK.md`](README-ORBSTACK.md): it creates the machines, wires `S` to
+them, and hands you back to **Build it**. Verified end to end —
+[`runlog-orbstack.md`](runlog-orbstack.md).
 
 **Lima on Linux is not recommended.** Its only VM-to-VM network (`user-v2`) rides
 a QEMU socket netdev that aborts the VM under sustained download load
@@ -300,8 +448,10 @@ Linux path uses libvirt.
 ## Teardown
 
 ```bash
-just demo spiffe-cross-boundary down     # destroys both VMs and their disks
+just demo spiffe-cross-boundary down
 ```
+
+That destroys both VMs and their disks.
 
 If you ran the boxes on hardware instead: Box A `k3s-uninstall.sh`; Box B remove
 the `PROXY_APP_OUTPUT` iptables chain, `/opt/spire`, `/opt/linkerd-proxy`, the
@@ -315,13 +465,36 @@ without supervision, and more.
 [`PRODUCTION-NOTES.md`](PRODUCTION-NOTES.md) catalogues each shortcut and the production
 practice that should replace it.
 
-- **Verified end-to-end on Linux/x86_64**: an Ubuntu 26.04 host running both boxes
-  as libvirt VMs (Ubuntu 24.04 guests) on the static-route path — the setup this
-  README describes, built from scratch with these scripts. See
-  [`runlog-linux.md`](runlog-linux.md). Also verified on **Lima/Apple-Silicon
-  (arm64)** over the optional Tailscale overlay, following `MANUAL.md` by hand —
-  see [`runlog.md`](runlog.md). Other topologies are config-driven and arch-aware
-  but not independently verified.
+- **Verified end-to-end on both x86_64 and arm64.** Nothing here needs a particular
+  architecture: every artifact the demo installs resolves its own build. Three
+  independent runs:
+  - **Linux/x86_64, libvirt** — an Ubuntu 26.04 host running both boxes as libvirt
+    VMs (Ubuntu 24.04 guests) on the static-route path, the setup this README
+    describes, built from scratch with these scripts:
+    [`runlog-linux.md`](runlog-linux.md).
+  - **macOS/Apple Silicon (arm64), OrbStack** — both boxes as native arm64
+    machines, using the two-hosts topology: [`runlog-orbstack.md`](runlog-orbstack.md).
+  - **macOS/Apple Silicon (arm64), Lima** — twice: once following `MANUAL.md` by
+    hand over the optional Tailscale overlay ([`runlog.md`](runlog.md)), and once
+    through the scripted path above (`cluster-up`/`edge-up` then **Build it**),
+    ending at `push -> 200` with the store's SPIFFE identity on the wire.
+
+  On an Apple Silicon Mac, run the guests as **arm64**. Deliberately choosing an
+  x86_64 guest (`orb create -a amd64`, an Intel Lima VM, a cross-arch
+  `VM_IMAGE_URL`) means emulation, and the demo becomes unusably slow. The scripts
+  now make that the default rather than something you have to know: `host-setup.sh`
+  installs the emulator for the host's architecture, `cluster-up`/`edge-up` derive
+  the guest image from it, and a cross-architecture `VM_IMAGE_URL` is refused
+  instead of quietly emulated.
+
+  **What that last part has and has not been run against:** the arch selection and
+  the refusal are verified on a real arm64 Linux host, and the x86_64 libvirt path
+  is unchanged in behaviour and covered by [`runlog-linux.md`](runlog-linux.md).
+  Nobody has yet *booted* an arm64 libvirt guest with these scripts — that needs an
+  arm64 Linux host with KVM, which none of the three runs above provide. The UEFI
+  firmware flag arm64 guests require (`--boot uefi`, since aarch64 has no BIOS) is
+  therefore written but unexercised. If you run the libvirt path on arm64 Linux,
+  that is the step most likely to need adjusting — please file an issue.
 - **Implementation note:** the `Server` uses `policy.linkerd.io/v1beta3` and targets the
   store-pos workload via `externalWorkloadSelector`; the `retail-cloud` app is granted a
   small RBAC Role to patch the `MeshTLSAuthentication` (that is what the Void button uses).

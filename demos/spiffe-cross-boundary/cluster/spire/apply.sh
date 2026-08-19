@@ -48,5 +48,12 @@ fi
 
 $SP bundle show > "$HOME/spire-bundle.pem"
 echo "bundle -> $HOME/spire-bundle.pem ($(grep -c 'BEGIN CERTIFICATE' "$HOME/spire-bundle.pem") cert(s))"
-echo "join token:"
-$SP token generate -spiffeID "$AGENT"
+
+# The join token is bootstrap material exactly like the bundle, so give it a file
+# too and let the same host-relay step carry it to the store. Printing it only to
+# stdout made it the one thing a reader had to move by eye, which is easy to skip
+# and easy to lose to scrollback.
+$SP token generate -spiffeID "$AGENT" | awk '/Token:/ {print $2}' > "$HOME/spire-join-token"
+chmod 600 "$HOME/spire-join-token"
+[ -s "$HOME/spire-join-token" ] || die "spire-server issued no join token"
+echo "join token -> $HOME/spire-join-token ($(cat "$HOME/spire-join-token"))"
