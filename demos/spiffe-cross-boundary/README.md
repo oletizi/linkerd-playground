@@ -28,21 +28,6 @@ to the network.
 > **Made with [Claude Code](https://claude.com/claude-code).** This demo and its
 > documentation were built with Anthropic's agentic coding tool.
 
-Design spec: [`docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md`](../../docs/superpowers/specs/2026-07-29-linkerd-spiffe-playground-design.md).
-
-## See it
-
-Once built, open (at your cluster's address, port `30080`):
-
-- **`/`** — the RetailCloud dashboard: the cloud↔store link with both identities, a
-  live **network topology** (Cytoscape.js) that renders `store-pos` on the edge
-  machine, inventory as price tags, sales as receipt tape, and the **Void** button.
-- **`/tutorial`** — a self-teaching page: **Learn** (the SPIFFE concepts), **Try it**
-  (five guided steps with the live dashboard embedded), **Build it** (the runbook).
-
-Click **Void** to see the store data marked VOID and the topology link turn red, while
-both identities remain on screen.
-
 ## What runs where
 
 | | Box A — Kubernetes cluster | Box B — on-prem store |
