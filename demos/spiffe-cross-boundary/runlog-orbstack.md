@@ -249,7 +249,7 @@ S() { ssh -F "$HOME/.ssh/linkerd-playground.conf" "$@"; }
 
 ## Clean-room re-run
 
-After writing [`setup-orbstack.md`](setup-orbstack.md), both machines were deleted
+After writing [`README-ORBSTACK.md`](README-ORBSTACK.md), both machines were deleted
 and the page followed from scratch **in `zsh`**, driving the whole of Build it
 through the new `S` function. The two machines came up on different addresses than
 the first pass (`192.168.139.155` / `192.168.139.121`), confirming nothing was

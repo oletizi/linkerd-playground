@@ -177,7 +177,7 @@ D='~/linkerd-playground/demos/spiffe-cross-boundary'
 > unexpanded, since your home on the host is not the VM user's home.
 
 > **On OrbStack**, `S` points at OrbStack's ssh proxy rather than a VM address.
-> [`setup-orbstack.md`](setup-orbstack.md) creates the machines, writes that
+> [`README-ORBSTACK.md`](README-ORBSTACK.md) creates the machines, writes that
 > config, and returns you here — nothing else in this section changes.
 
 ### Step 1 — Box A: Kubernetes cluster
@@ -436,7 +436,7 @@ limactl shell <vm> bash -lc 'bash ~/linkerd-playground/demos/spiffe-cross-bounda
 
 **macOS — OrbStack.** Two native arm64 machines, each a box, reachable from each
 other with no network setup. Full recipe in
-[`setup-orbstack.md`](setup-orbstack.md): it creates the machines, wires `S` to
+[`README-ORBSTACK.md`](README-ORBSTACK.md): it creates the machines, wires `S` to
 them, and hands you back to **Build it**. Verified end to end —
 [`runlog-orbstack.md`](runlog-orbstack.md).
 
