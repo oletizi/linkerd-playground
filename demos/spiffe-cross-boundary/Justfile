@@ -8,6 +8,9 @@ status:
 # One-time, needs root; then log out and back in (Linux/libvirt only)
 host-setup:
     sudo bash scripts/host-setup.sh
+# Write config.local.env from the addresses OrbStack assigned (macOS/OrbStack topology)
+orb-config:
+    bash scripts/orb-config.sh
 cluster-up:
     bash scripts/cluster-up.sh
 edge-up:

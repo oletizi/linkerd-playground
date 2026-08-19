@@ -56,17 +56,20 @@ linkerd-cluster  running  ubuntu  noble  arm64  ...  192.168.139.205
 linkerd-edge     running  ubuntu  noble  arm64  ...  192.168.139.206
 ```
 
-Those go in `config.local.env` at the demo root, next to `config.example.env`.
-Don't transcribe them — read them straight from `orb list`, so this works whatever
-addresses OrbStack assigned you:
+Write it from those addresses — one command, from anywhere in the repo:
 
 ```bash
-printf 'CLUSTER_NODE_ADDR=%s\nEDGE_ADDR=%s\n' \
-  "$(orb list | awk '$1=="linkerd-cluster"{print $NF}')" \
-  "$(orb list | awk '$1=="linkerd-edge"{print $NF}')" \
-  > config.local.env
-cat config.local.env
+just demo spiffe-cross-boundary orb-config
 ```
+
+```
+[orb-config.sh] wrote .../demos/spiffe-cross-boundary/config.local.env
+  CLUSTER_NODE_ADDR=192.168.139.94
+  EDGE_ADDR=192.168.139.88
+```
+
+It reads the addresses from `orb list` rather than asking you to copy them, and
+refuses to write anything if either machine is missing.
 
 > **Do this every time you recreate the machines.** `config.local.env` is
 > gitignored, so it outlives the boxes it describes — a file left from a previous
