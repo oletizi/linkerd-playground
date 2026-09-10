@@ -117,7 +117,7 @@ Expected: ends with `[refactor-cleanup.sh] lab VM is clean`.
 
 - [ ] **Step 9: Update the article README and commit**
 
-In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: SPIFFE pre-refactor snapshot recorded (plan Task 2 of 9)`.
+In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: SPIFFE pre-refactor snapshot recorded (plan Task 2 of 10)`.
 
 ```bash
 git add demos/cert-hygiene/lab/refactor-check.sh demos/cert-hygiene/lab/refactor-cleanup.sh demos/cert-hygiene/runs/_refactor-check/before docs/articles/cert-hygiene/README.md

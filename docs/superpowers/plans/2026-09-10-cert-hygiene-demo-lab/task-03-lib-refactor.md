@@ -314,7 +314,7 @@ Expected: `lab VM is clean`.
 
 - [ ] **Step 13: Update the article README and commit**
 
-In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: shared lib/ refactor verified against SPIFFE (plan Task 3 of 9)`.
+In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: shared lib/ refactor verified against SPIFFE (plan Task 3 of 10)`.
 
 ```bash
 git add lib/certs.sh lib/k3s.sh lib/linkerd.sh demos/spiffe-cross-boundary/cluster demos/cert-hygiene/scripts/refactor-compare.sh demos/cert-hygiene/runs/_refactor-check docs/articles/cert-hygiene/README.md
