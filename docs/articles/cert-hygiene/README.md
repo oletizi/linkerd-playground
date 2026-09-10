@@ -14,7 +14,7 @@ Working research materials for the Linkerd certificate-hygiene article.
 
 | Scenario | State |
 | --- | --- |
-| Lab design | Draft, in review |
+| Lab design | Revised after [third-party review](../../superpowers/reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); awaiting approval |
 | Baseline control (`00-baseline-control`) | Not started |
 | #5 Issuer expiry | Not started |
 | All other scenarios in [demo-feasibility.md](demo-feasibility.md) | Not started |
