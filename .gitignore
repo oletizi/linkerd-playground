@@ -14,3 +14,4 @@ site/.astro/
 
 # JetBrains IDE settings
 .idea/
+demos/cert-hygiene/.lab-logs/
