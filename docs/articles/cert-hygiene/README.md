@@ -6,6 +6,7 @@ Working research materials for the Linkerd certificate-hygiene article.
 
 - [research.md](research.md) — a quick, source-prioritized link index for active research.
 - [bibliography.md](bibliography.md) — the canonical source and claim map, including authority level, outline mapping, research notes, and claims that need evidence or clear editorial labeling.
+- [demo-feasibility.md](demo-feasibility.md) — a safe, version-aware plan for turning article failure modes into disposable-cluster demonstrations.
 
 ## Research conventions
 
