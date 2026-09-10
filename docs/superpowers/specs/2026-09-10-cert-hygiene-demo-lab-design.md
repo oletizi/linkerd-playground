@@ -1,6 +1,6 @@
 # Cert-Hygiene Demo Lab — Design
 
-**Status:** Revised after a third-party review ([review](../reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); dispositions in § 9). Awaiting approval.
+**Status:** Approved after a third-party review ([review](../reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); dispositions in § 9). Implementation plan: [`docs/superpowers/plans/2026-09-10-cert-hygiene-demo-lab/`](../plans/2026-09-10-cert-hygiene-demo-lab/README.md).
 
 Linkerd behavior described here comes from reading source at tag `edge-26.9.1`; the details and permalinks are in [linkerd-source-notes.md](../../articles/cert-hygiene/linkerd-source-notes.md). Behavior read from source is labelled **Source** and is treated as a *hypothesis the lab run tests*, not as article evidence. Items only the lab can settle are labelled **Unverified**.
 
@@ -119,7 +119,7 @@ Every scenario run writes `demos/cert-hygiene/runs/<scenario>/<UTC-start>/`:
 | `secrets/<tick>-identity-issuer.txt` | Metadata of the `linkerd-identity-issuer` Secret: `uid`, `resourceVersion`, and the serial, fingerprint, and `notAfter` of its **certificate field only**. The collector extracts fields with jsonpath and never reads the key field. |
 | `trust/<tick>.txt` | SHA-256 of `linkerd-identity-trust-roots/ca-bundle.crt`, plus each meshed pod's `linkerd.io/trust-root-sha256` annotation |
 | `logs/` | `linkerd-identity` logs; proxy logs of each lab pod; the k3s server journal slice for the run window (API-server side) |
-| `events.txt` | `kubectl get events -A`, sorted by time. This includes the identity controller's `IssuerValidationFailed`, `IssuerUpdated`, and `IssuerUpdateSkipped` events. |
+| `events/<label>.txt` | `kubectl get events -A`, sorted by time, snapshotted at several labelled points because Kubernetes drops events after an hour. This includes the identity controller's `IssuerValidationFailed`, `IssuerUpdated`, and `IssuerUpdateSkipped` events. |
 | `pods/<tick>.txt` | `kubectl get pods -A -o wide`: readiness and restart counts |
 | `pods/<tick>-<pod>.yaml`, `pods/<tick>-<pod>-describe.txt` | For `probe-new` and every `restart-target` pod: full status, container states, readiness conditions, and events. This is what links "not Ready" to "proxy has no identity". |
 
@@ -150,7 +150,7 @@ All of these come from source reading (see the notes). Each one names the eviden
 | --- | --- | --- |
 | H1 | As `T_iss` approaches, proxies refresh ever more often (70% of remaining lifetime, never sooner than 10s), because each new leaf is clamped to `T_iss`. | Refresh timestamps in `metrics/` |
 | H2 | Every workload leaf is clamped to the same `T_iss`, so all workload identities expire at the same instant rather than aging out independently. **This is a statement about credentials, not traffic.** Observed traffic failure may not be simultaneous; H5 and H6 test that separately. | Leaf `notAfter` values in `metrics/` |
-| H3 | After `T_iss` the identity controller stays running and ready but refuses every CSR, emitting an `IssuerValidationFailed` event each time. | `pods/`, `events.txt`, identity logs |
+| H3 | After `T_iss` the identity controller stays running and ready but refuses every CSR, emitting an `IssuerValidationFailed` event each time. **Competing prediction (source):** the identity pod's own proxy requires TLS on the identity port 8080 (`requireTLSOnInboundPorts "8080"` in the identity chart), and its own leaf also expired at `T_iss`. Other proxies' CSRs may then fail at the TLS handshake and never reach the controller, leaving `IssuerValidationFailed` to come only from the identity pod's own proxy. | `pods/`, `events/`, identity and identity-proxy logs, workload proxy logs (handshake error versus validation error) |
 | H4 | Proxies log `Failed to obtain identity` and retry every 10s. | Proxy logs |
 | H5 | Newly negotiated mTLS connections (`probe-tcp-new`) begin failing at `T_iss`. | `probe-tcp-new` log |
 | — | **No prediction for `probe-http`.** Pooled proxy-to-proxy connections opened before `T_iss` are established sessions, so whether HTTP fails at `T_iss` or later depends on pool reuse and idle timeouts. The result is recorded as observed. | — |
@@ -204,13 +204,14 @@ Trust-anchor expiry (#6) reuses this harness with a short `ANCHOR_LIFETIME`. It 
 
 Two separate questions apply to every run:
 
-1. **Is this run valid evidence?** The harness answers this mechanically and writes the answer, `evidence_valid=yes|no` with the reasons, to `versions.txt`. A run is valid only if all of the following hold:
+1. **Is this run valid evidence?** The harness answers this mechanically and writes the answer, `evidence_valid=yes|no` with the reasons, to `validity.txt` (`versions.txt` is written once, at the start). A run is valid only if all of the following hold:
    - `demo_repo_dirty=false`
    - `versions.txt`, `certs/`, and `timeline.log` are complete
    - every tick's checks were captured
    - the effective-leaf-lifetime check (§ 4.1) passed
    - the trust-anchor invariant (§ 4.3) held
-   - for #5, the negative control ran at the same commit and passed
+   - for the control, its § 4.4 criteria that a script can judge were met (`control-criteria.txt`)
+   - for #5, a valid control ran at the same **harness tree**: `lib/` plus `demos/cert-hygiene/` excluding `runs/`, hashed. A tree rather than a commit, because committing a run's evidence moves HEAD without changing the harness.
 
    The collector fails loudly on a missing artifact and never writes a placeholder. A dirty-tree run is allowed for development, records `harness.diff`, and is never valid evidence.
 2. **What happened to H1–H8?** Scripts **never** evaluate this. They record raw observations only. The hypothesis outcomes are judged by reading the evidence and are written up in `docs/articles/cert-hygiene/`, citing the run directory.

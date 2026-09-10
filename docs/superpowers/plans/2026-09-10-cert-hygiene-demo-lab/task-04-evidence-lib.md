@@ -379,7 +379,7 @@ Expected: no findings.
 
 - [ ] **Step 9: Update the article README and commit**
 
-In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: evidence validity library tested (plan Task 4 of 9)`.
+In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` row to `In progress: evidence validity library tested (plan Task 4 of 10)`.
 
 ```bash
 git add demos/cert-hygiene/lab/lib-evidence.sh demos/cert-hygiene/lab/tests demos/cert-hygiene/Justfile docs/articles/cert-hygiene/README.md

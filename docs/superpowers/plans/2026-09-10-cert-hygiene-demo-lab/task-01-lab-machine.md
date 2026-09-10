@@ -270,7 +270,7 @@ In the repo-root `README.md` demo table, add this row after `spiffe-cross-bounda
 | [cert-hygiene](demos/cert-hygiene/) | Reproducible Linkerd certificate-expiry failures (issuer, trust anchor, webhooks) in a disposable one-box k3s lab, recorded as raw evidence for the certificate-hygiene article. |
 ```
 
-In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` status row to `In progress: lab machine up (plan Task 1 of 9)`.
+In `docs/articles/cert-hygiene/README.md`, set the `Lab harness` status row to `In progress: lab machine up (plan Task 1 of 10)`.
 
 - [ ] **Step 15: Commit and push**
 
