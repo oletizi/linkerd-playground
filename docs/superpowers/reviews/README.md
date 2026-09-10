@@ -24,3 +24,15 @@ Two independent sub-agent passes over `demos/spiffe-cross-boundary/`:
   agent-only edge, non-root proxy attested by uid+path, pinned bootstrap).
 
 These are the raw review outputs as written; they reflect the demo at review time.
+
+## 2026-09-10 — cert-hygiene demo lab design
+
+- [`2026-09-10-cert-hygiene-demo-lab-design-review.md`](2026-09-10-cert-hygiene-demo-lab-design-review.md)
+  — third-party review of the lab design at commit `5d4f92a`: H2 conflated credential
+  expiry with traffic failure; the recovery step needed a trust-anchor invariant; the stream
+  probe had to fail closed; the "restarted workload" experiment was ambiguous; plus
+  evidence-hardening items.
+
+**What it produced:** the revised design
+`docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md`, whose § 9 records
+each item's disposition (accepted, extended, or accepted with a different method).
