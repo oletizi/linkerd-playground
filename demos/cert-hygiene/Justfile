@@ -1,0 +1,13 @@
+set shell := ["bash", "-cu"]
+
+# Create (or reuse) the OrbStack lab machine and install its packages
+lab-up:
+    bash scripts/lab-up.sh
+
+# Delete the lab machine (and the lab keys inside it)
+lab-down:
+    bash scripts/lab-down.sh
+
+# Shell inside the lab machine, in this directory
+sh:
+    bash scripts/in-lab.sh lab/shell.sh
