@@ -1,6 +1,6 @@
 # Cert-Hygiene Lab, Slice 2 — Design
 
-**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. Awaiting approval.
+**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. Awaiting approval.
 
 **Builds on:** [slice 1 design](2026-09-10-cert-hygiene-demo-lab-design.md). Its substrate, versions, evidence rules, and validity model all carry over unchanged unless this document says otherwise. This is an internal design document; it uses the lab's shorthand, which the reader-facing article pages avoid.
 
@@ -406,7 +406,7 @@ Third-party review of an earlier revision: [2026-09-11-cert-hygiene-lab-slice-2-
 
 ### 12.2 Combined implementation review, and the as-built evidence review
 
-Reviews: [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) (C1–C7) and [as-built evidence review](../../articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md) (E-numbered).
+Reviews: [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) (C1–C7) and [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md) (E-numbered).
 
 | # | Review item | Disposition |
 | --- | --- | --- |

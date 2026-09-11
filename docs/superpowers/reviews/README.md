@@ -54,7 +54,7 @@ records each item's disposition.
   webhook expiries, treat supplied-credential recovery as a branching observation, gate
   restart stages, make S-hard and A's recovery test what they claim, plus acceptance
   conditions and publishing guardrails. Its companion as-built evidence review is
-  `docs/articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md`.
+  `docs/articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md`.
 
 **What they produced:** the slice 2 design's § 12.2 (dispositions), § 13 (acceptance
 conditions) and § 14 (guardrails), and narrowed claims in
