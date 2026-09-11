@@ -17,7 +17,7 @@ Every statement says where it comes from:
 ### What we reproduced
 
 1. **When the identity issuer expires, every workload certificate in the mesh expires at the same moment.** Linkerd caps each workload certificate at the issuer's own expiry, so there's no gradual spread.
-2. **New connections break first; connections that are already open keep working.** New pods, and restarted copies of existing ones, never become ready. The mesh looks half-broken: some calls succeed, some fail, and nothing new rolls out.
+2. **Some traffic broke at once, and some kept working.** A client opening a fresh TCP connection for every request failed within seconds. An HTTP client, and one TCP connection that was already open, kept working for the roughly 10 minutes we recorded. New pods, and restarted copies of existing ones, never became ready. The mesh looked half-broken: some calls succeeded, some failed, and nothing new rolled out.
 3. **Replacing the issuer isn't enough on its own.** Linkerd picked up the new issuer by itself within about 30 seconds, but workloads whose certificates had already expired stayed broken until they were restarted. Linkerd's own procedure says to restart every meshed workload after replacing the issuer.
 4. **`linkerd check` catches an expired issuer, but it can't tell you that recovery finished.** It reported everything healthy while workloads were still running on expired certificates.
 
@@ -36,9 +36,9 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 
 | What you're seeing | What to suspect | Why | Details |
 | --- | --- | --- | --- |
-| Some calls work and some fail. New connections fail, often as a plain "connection reset", while connections that were already open keep working. | Identity issuer expired | Every workload certificate is capped at the issuer's expiry, so they all expire at once, and nothing can renew. | [Traffic partly broken](#issuer-expired-traffic-partly-broken) |
+| Some calls work and some fail. Fresh TCP connections fail, often as a plain "connection reset", while an already-open connection and an HTTP client keep working. | Identity issuer expired | Every workload certificate is capped at the issuer's expiry, so they all expire at once, and nothing can renew. | [Traffic partly broken](#issuer-expired-traffic-partly-broken) |
 | A deployment won't finish rolling out. New pods sit in `Init` with `linkerd-proxy` failing its startup probe, while the old pods keep serving. | Identity issuer expired | The new pod's proxy can't get a certificate, so it never becomes ready. | [Rollout stuck](#issuer-expired-rollout-stuck-while-old-pods-keep-serving) |
-| After the issuer was replaced, a proxy is still on an expired certificate. | Its workload hasn't been restarted | Proxies whose certificates had already expired didn't renew on their own after the issuer was replaced. | [Proxy still expired](#a-proxy-is-still-on-an-expired-certificate-after-an-issuer-fix) |
+| After the issuer was replaced, a proxy is still on an expired certificate. | Proxies that expired before the fix don't renew by themselves; restart the workload | In our lab, such proxies stayed expired for the 10 minutes we watched, and restarting the lab workloads restored them. | [Proxy still expired](#a-proxy-is-still-on-an-expired-certificate-after-an-issuer-fix) |
 | After an issuer fix, `linkerd check` passes but traffic is still failing. | Workloads not yet restarted, still on expired certificates | `linkerd check` reported healthy while proxies still held expired certificates. | [check passes, traffic fails](#linkerd-check-passes-but-traffic-still-fails) |
 
 ### Expected from Linkerd's code, not yet tested
@@ -58,11 +58,12 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 ### Issuer expired: traffic partly broken
 
 - Every workload certificate, including the control plane's own, had the same expiry time as the issuer. All of them expired in the same second.
-- New connections started failing within 2 seconds of the expiry. The application saw `Connection reset by peer`, not a TLS or certificate error.
-- A TCP connection that was already open kept working for the roughly 10 minutes we recorded after the expiry.
-- An HTTP client also kept working over those roughly 10 minutes. Why is *still open*: one likely explanation, from Linkerd's code, is that its requests kept reusing a connection opened before the expiry, but we didn't record that.
+- A client that opens a fresh TCP connection for every request started failing within 2 seconds of the expiry. The application saw `Connection reset by peer`, not a TLS or certificate error.
+- One TCP connection that was already open kept working for the whole 574 seconds (about 9.5 minutes) we recorded after the expiry. How much longer it would have lasted, and whether every open connection behaves the same, is *still open*.
+- An HTTP client that starts a fresh `curl` for every request also kept working over those 574 seconds. Why is *still open*: one likely explanation, from Linkerd's code, is that the proxies kept reusing a connection between them that was opened before the expiry, but we didn't record that.
+- So "new connections fail first" is too broad. What failed in our lab was a fresh TCP connection through the mesh.
 - Pods that started after the expiry never became ready (see [Rollout stuck](#issuer-expired-rollout-stuck-while-old-pods-keep-serving)).
-- **Suggested wording:** "Once the issuer expires, Linkerd can't sign new workload certificates. Current Linkerd also caps every workload certificate at the issuer's expiry, so they all expire at the same moment. New connections start failing immediately, often as a plain 'connection reset' rather than a certificate error, while connections that were already open can keep working. That's why the mesh looks partly broken rather than down, and why anything that restarts gets worse."
+- **Suggested wording:** "Once the issuer expires, Linkerd can't sign new workload certificates. In current Linkerd, every workload certificate is also capped at the issuer's expiry, so they all expire at the same moment. In our testing, some traffic failed immediately, often as a plain 'connection reset' rather than a certificate error, while other traffic, including a connection that was already open, kept working for as long as we watched. That's why the mesh looks partly broken rather than down, and why anything that restarts gets worse."
 - To confirm it, see [Diagnosis](#diagnosis-how-to-tell-its-the-issuer). To fix it, see [Fixing it](#fixing-it-replacing-an-expired-issuer-while-the-trust-anchor-is-still-valid).
 
 [Back to the triage table](#triage-table)
@@ -82,9 +83,9 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 
 - After the expired issuer was replaced, proxies whose certificates had already expired did not get new ones on their own. They were still on their expired certificates about 10 minutes later, when we restarted them.
 - Proxies that had never had a certificate (the stuck new pods) did get one, within about a minute.
-- So a proxy with an expired certificate right after an issuer fix usually means "not restarted yet".
-- **Suggested wording:** "If you've just replaced the issuer, a proxy still holding an expired certificate probably hasn't been restarted. Restart its workload before you go looking for anything else."
-- Why those proxies didn't renew, and whether they would have recovered eventually, is *still open*.
+- Restarting every lab workload restored them. The run didn't show which of those restarts were strictly necessary.
+- **Suggested wording:** "If you've just replaced the issuer and a proxy is still on an expired certificate, restart its workload. In our testing, proxies that had already expired didn't renew by themselves, and restarting the workloads restored them."
+- Why those proxies didn't renew, and whether they would have recovered eventually, is *still open*. So is whether other causes can leave a proxy in the same state.
 
 [Back to the triage table](#triage-table)
 
@@ -155,7 +156,7 @@ None of these have been reproduced. Each says what the code or documentation sta
 
 These signals were all *seen in the lab*, in roughly the order an operator runs into them. They go with the first two rows of the [triage table](#triage-table).
 
-- **Application errors:** new connections fail with `Connection reset by peer`. The message doesn't mention certificates.
+- **Application errors:** fresh TCP connections fail with `Connection reset by peer`. The message doesn't mention certificates. Other traffic may keep working (see [Traffic partly broken](#issuer-expired-traffic-partly-broken)).
 - **`linkerd check`:**
   - Before expiry: `‼ issuer cert is valid for at least 60 days`, with the exact expiry time in the detail line.
   - Afterwards: `× issuer cert is within its validity period`, with `issuer certificate is not valid anymore. Expired on <time>`.
@@ -203,6 +204,7 @@ Linkerd's "Replacing expired certificates" page sends you to the [manual rotatio
 ### From what we saw in the lab
 
 - **Watch the issuer directly.** The identity service exposes `issuer_cert_ttl_seconds`, a live countdown of the issuer's remaining life that goes negative once it expires.
+- **Metric names are as of Linkerd `edge-26.9.1`,** the version we tested; check them against your version.
 - **Watch workload certificates too.** Each proxy exposes `control_identity_cert_expiration_timestamp_seconds`, its certificate's expiry time. After any rotation, check that this value moved on every proxy. `linkerd check` passed while it hadn't moved on four proxies (see [`linkerd check` passes but traffic still fails](#linkerd-check-passes-but-traffic-still-fails)).
 - **Don't rely on the `linkerd check` warning headline.** From the start of the run, the headline read `‼ issuer cert is valid for at least 60 days` for an issuer with 15 minutes to live, and it stayed unchanged until the issuer expired. Only the date in the detail line showed how close expiry was. Alert on that date, or on the metric, instead.
 - **After replacing the issuer, restart every meshed workload** (see [Fixing it](#fixing-it-replacing-an-expired-issuer-while-the-trust-anchor-is-still-valid)).
@@ -224,7 +226,7 @@ Linkerd's "Replacing expired certificates" page sends you to the [manual rotatio
 - How any of this plays out with the default 24-hour workload certificates.
 - Everything in the [not-yet-tested table](#expected-from-linkerds-code-not-yet-tested): the webhook, identity-outage, trust-anchor and viz scenarios haven't been run in the lab.
 
-A repeat of the issuer experiment, with fuller logging, is pending. It should answer the first two questions.
+A repeat of the issuer experiment, run twice with fuller logging, is pending. It should answer the first two questions. The findings above rest on a single run until then.
 
 ---
 

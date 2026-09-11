@@ -48,3 +48,14 @@ each item's disposition (accepted, extended, or accepted with a different method
 **What it produced:** the revised design
 `docs/superpowers/specs/2026-09-11-cert-hygiene-lab-slice-2-design.md`, whose § 12
 records each item's disposition.
+
+- [`2026-09-11-cert-hygiene-lab-combined-implementation-review.md`](2026-09-11-cert-hygiene-lab-combined-implementation-review.md)
+  — implementation-facing review of the slice 2 design and the first issuer run: isolate
+  webhook expiries, treat supplied-credential recovery as a branching observation, gate
+  restart stages, make S-hard and A's recovery test what they claim, plus acceptance
+  conditions and publishing guardrails. Its companion as-built evidence review is
+  `docs/articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md`.
+
+**What they produced:** the slice 2 design's § 12.2 (dispositions), § 13 (acceptance
+conditions) and § 14 (guardrails), and narrowed claims in
+`docs/articles/cert-hygiene/findings.md`.
