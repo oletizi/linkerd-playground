@@ -146,8 +146,7 @@ run_scenario() { # SCENARIO PROFILE RUN_DIR
   snap_events final
   snap_journal final "$start"
   snap_probes final   # control_criteria_check reads probes/final/
-  _write_result trust-invariant.txt trust_invariant_check \
-    "$RUN_DIR/trust/baseline.txt" "$RUN_DIR/trust/pre-recover.txt" "$RUN_DIR/trust/verify.txt" || true
+  _write_result credential-plan.txt credential_plan_check "$RUN_DIR" "$SCENARIO" || true
   if [ "$SCENARIO" = 00-baseline-control ]; then
     _write_result control-criteria.txt control_criteria_check "$RUN_DIR" || true
   fi
