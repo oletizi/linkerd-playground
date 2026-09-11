@@ -154,6 +154,7 @@ These readings of the design are settled; none needs a further decision.
 | 10 | Scenario R changes | [task-10-issuer-expiry.md](task-10-issuer-expiry.md) | 1800 s window; gated four-stage recovery with the two-pair matrix |
 | 11 | W admission probes and their discovery | [task-11-admission.md](task-11-admission.md) | Invalid/valid resources chosen by discovery (**stop gate**); `admission.sh`; `admission_proof_check` |
 | 12 | Scenario W | [task-12-webhooks.md](task-12-webhooks.md) | Two W scenarios: staggered expiry, per-tick probes, recovery after T3 + 600 s, declared-branch recovery, key decode scan |
+| 12b | W's forced-reconnect phase (added after discovery, user-approved) | [task-12b-webhook-reconnect.md](task-12b-webhook-reconnect.md) | Restart the Deployments behind the three webhooks after T3 + window, then probe again before recovery; `w-reconnect` rule. Runs after Task 19's first W discovery runs; Task 19 repeats both W runs on it |
 | 13 | Scenario O | [task-13-identity-outage.md](task-13-identity-outage.md) | Identity scaled to zero for `OUTAGE_S`; no-restart window, then stages |
 | 14 | Scenario K | [task-14-check-threshold.md](task-14-check-threshold.md) | Bracketed 60-day checks; `k_remaining_check` |
 | 15 | Scenario A | [task-15-anchor-expiry.md](task-15-anchor-expiry.md) | Anchor expiry; named recovery stages with a proven canary |

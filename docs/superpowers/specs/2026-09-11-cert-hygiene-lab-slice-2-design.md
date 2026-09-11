@@ -1,6 +1,6 @@
 # Cert-Hygiene Lab, Slice 2 — Design
 
-**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. **Approved.** Implementation plan: [`docs/superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/`](../plans/2026-09-11-cert-hygiene-lab-slice-2/README.md).
+**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. **Approved.** Amended once, with the user's approval, after the first webhook discovery run: § 3 gains a forced-reconnect phase and hypothesis W7 (§ 12.3). Implementation plan: [`docs/superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/`](../plans/2026-09-11-cert-hygiene-lab-slice-2/README.md).
 
 **Builds on:** [slice 1 design](2026-09-10-cert-hygiene-demo-lab-design.md). Its substrate, versions, evidence rules, and validity model all carry over unchanged unless this document says otherwise. This is an internal design document; it uses the lab's shorthand, which the reader-facing article pages avoid.
 
@@ -105,6 +105,7 @@ The slice-1 trust-anchor invariant becomes the special case "the anchor componen
 | Credential states walk the declared plan | every scenario |
 | Recovery apply succeeded (`recover/linkerd-upgrade.txt` ends `[exit 0]`) | R, A |
 | Webhook baseline proved each admission probe exercises its webhook (§ 3) | W |
+| The forced-reconnect restart and its rollouts succeeded (§ 3) | W |
 | Both K measurements fall on opposite sides of 60 days at the moment each check ran (§ 5) | K |
 | S-hard stage 1 reached its per-endpoint condition before its timeout (§ 7) | S-hard |
 | A valid control at the same harness tree | every timed scenario (all except K) |
@@ -201,7 +202,15 @@ For each expiry phase the run also records:
 - the serving certificate's identity and expiry
 - the matching `linkerd check` transcript
 
-**Recovery, observed as it branches.** Recovery starts after T3 plus the post-expiry window:
+**Forced reconnect (added after discovery).** In the first `Ignore` discovery run, only the policy validator failed after its certificate expired. The proxy injector kept injecting for about 24 minutes past its `notAfter`, and the sp-validator kept denying. The k3s journal recorded `x509: certificate has expired` only for calls to the policy validator. That fits the API server reusing connections it opened while the certificates were valid: TLS checks a certificate's dates only at the handshake. So after T3 plus the post-expiry window, and before recovery, the run forces new connections:
+
+1. Find the Deployments whose pods back the three webhook Services, from each Service's selector at run time. Record the mapping. One Deployment may back more than one webhook.
+2. `kubectl rollout restart` each of them once, then wait for each rollout, recording both steps. The new pods still mount the expired serving certificates.
+3. Run one admission probe round per webhook immediately, then one on every tick for `W_RECONNECT_WINDOW_S`. These go under the phase `reconnect-NNNN`, with the same per-attempt artifacts and `linkerd check` transcript as the other phases.
+
+The restart may disturb mesh traffic, because a webhook may share a pod with the destination or policy controller. W3 is judged only on the window before this phase; traffic during it is recorded as observed.
+
+**Recovery, observed as it branches.** Recovery starts after the forced-reconnect phase:
 
 1. Delete the three `…-k8s-tls` Secrets (Linkerd's rotating-webhooks guide).
 2. Run a plain `linkerd upgrade | kubectl apply -f -`.
@@ -228,6 +237,7 @@ An upgrade command's exit status is never counted as recovery by itself.
 | W3 | Mesh traffic is unaffected in both runs. | Source (a separate trust chain) | Traffic probes |
 | W4 | `linkerd check` goes fatal on each "… webhook has valid cert" row after that webhook's expiry. | Source | Check transcripts, per phase |
 | W6 | *(Observation, not a hypothesis.)* Which recovery branch (i), (ii) or (iii) plain `linkerd upgrade` produces for supplied credentials. Our source notes say every render regenerates webhook certificates, but supplied values may take precedence. | Source notes § 5 (inconclusive for supplied values) | Recovery artifacts |
+| W7 | Once the API server must open new connections to an expired webhook (its pods restarted), every call to that webhook fails the TLS handshake. With `Ignore`, its probe gets through, as in W1. With `Fail`, its probes are rejected, as in W2. Before that, a webhook reached over a reused pre-expiry connection may keep working; how long it does is an observation, not a prediction. | Kubernetes docs + TLS (dates checked only at the handshake); first `Ignore` discovery run | Reconnect-phase admission records, k3s journal |
 
 Supplementary: whether the k3s journal records the failed webhook calls, and how it represents the TLS error. This is recorded, never required (§ 1.4).
 
@@ -424,6 +434,12 @@ Reviews: [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab
 | E-rec6 | Repeat the core issuer scenario | **Accepted:** R runs twice. |
 | E-narrow | Narrow the reader-facing claims (new connections, survival bound, restart direction, 60-day scope) | **Done** in `findings.md`, in the commit that adopts this revision. |
 
+### 12.3 Discovery-driven change
+
+| Trigger | Change | Status |
+| --- | --- | --- |
+| The first `Ignore` discovery run (`runs/_discovery/20260911T172403Z-02-webhook-expiry-ignore`): the injector and sp-validator kept working past their `notAfter`, and the journal shows TLS failures only for the policy validator, which suggests the API server reused pre-expiry connections. | § 3 forced-reconnect phase before recovery; W7; a `w-reconnect` validity rule (§ 1.3); § 13's W row names the reconnect phase. | **Approved by the user.** Implemented as plan Task 12b. Both W discovery runs are repeated after it. |
+
 ## 13. Acceptance conditions
 
 A scenario is written up as **reproduced** only when all of these hold:
@@ -431,7 +447,7 @@ A scenario is written up as **reproduced** only when all of these hold:
 | Scenario | Don't call it reproduced until… |
 | --- | --- |
 | **R** | Workload `linkerd-proxy` logs, per-pod continuous probe history, and gated recovery stages exist, in both runs. Any established-connection claim names its protocol and measured duration. |
-| **W** | Each webhook's expiry phase is recorded, with a healthy baseline proving its probe; exact responses, object states, checks and recovery-branch artifacts exist for both `Ignore` and `Fail`. |
+| **W** | Each webhook's expiry phase is recorded, with a healthy baseline proving its probe; the forced-reconnect phase is recorded; exact responses, object states, checks and recovery-branch artifacts exist for both `Ignore` and `Fail`. Any claim about when an expired webhook fails names whether the API server had reconnected. |
 | **O** | The credential and configuration invariant holds; the outage outlasts the leaf window; the no-restart recovery window is evaluated before any restart stage. |
 | **K** | Both measured remaining-validity values, and both command transcripts, put the checks on opposite sides of the 60-day boundary. |
 | **A** | Per-proxy final-leaf timing, identity CSR evidence, checks, and the named recovery stages (including whether an identity/control-plane restart was needed) exist. |
