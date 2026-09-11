@@ -36,3 +36,15 @@ These are the raw review outputs as written; they reflect the demo at review tim
 **What it produced:** the revised design
 `docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md`, whose § 9 records
 each item's disposition (accepted, extended, or accepted with a different method).
+
+## 2026-09-11 — cert-hygiene lab, slice 2 design
+
+- [`2026-09-11-cert-hygiene-lab-slice-2-design-review.md`](2026-09-11-cert-hygiene-lab-slice-2-design-review.md)
+  — third-party review of the slice 2 design at commit `31b920f`: separate the
+  webhook-credential models and make W's recovery a deliberate experiment; make S-hard
+  actually create the mixed-anchor state; test K at the 60-day boundary; generalise the
+  anchor invariant into planned credential transitions; plus evidence-design refinements.
+
+**What it produced:** the revised design
+`docs/superpowers/specs/2026-09-11-cert-hygiene-lab-slice-2-design.md`, whose § 12
+records each item's disposition.
