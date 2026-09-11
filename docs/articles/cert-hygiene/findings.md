@@ -144,7 +144,7 @@ None of these have been reproduced. Each says what the code or documentation sta
   - `linkerd viz tap` is served through a Kubernetes aggregated API with its own serving certificate.
   - `linkerd viz check` checks that certificate. No check covers the viz tap-injector's certificate.
 - **Our inference:** when the tap API's certificate expires, Kubernetes marks that aggregated API unavailable, and tap stops working.
-- **A related real-world report** has a different cause: tap stopped working after the Kubernetes API server's own CA was rotated, until the tap pod was restarted ([linkerd2 #13196](https://github.com/linkerd/linkerd2/issues/13196)).
+- **A related real-world report** has a different cause: tap stopped working after the Kubernetes API server's request-header client CA, which it uses for aggregated APIs, was rotated, until the tap pod was restarted ([linkerd2 #13196](https://github.com/linkerd/linkerd2/issues/13196)).
 - **What would confirm it:** install viz in the lab and expire the tap API certificate.
 
 [Back to the triage table](#triage-table)
