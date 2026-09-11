@@ -77,8 +77,8 @@ Today `evaluate_validity` special-cases `00-baseline-control` and `05-issuer-exp
 
 ### 1.4 Collector additions
 
-- **Webhook state:** each Linkerd webhook configuration's `failurePolicy` and `caBundle` SHA-256, plus each webhook serving Secret's certificate metadata (serial, `notAfter`), in `webhooks/<tick>.txt`. The key field is never read.
-- **Connection metrics:** proxy series matching `^tcp_(open|close)_total|^tcp_open_connections`, alongside the identity series. `tcp_open_total` was confirmed in slice 1's discovery run. The other names are confirmed in the first baseline run.
+- **Webhook state:** each Linkerd webhook configuration's `failurePolicy` and `caBundle` SHA-256, plus each webhook serving Secret's certificate metadata (serial, `notAfter`), in `webhooks/<tick>.txt`. The Secrets are `linkerd-proxy-injector-k8s-tls`, `linkerd-policy-validator-k8s-tls` and `linkerd-sp-validator-k8s-tls`, with the certificate under the `tls.crt` key. Only that field is read, never the key field.
+- **Connection metrics:** proxy series matching `^(tcp_open_total|tcp_close_total|tcp_open_connections|outbound_tcp_route_open_total|outbound_tcp_route_close_total)`, alongside the identity series. All five names are present in slice 1's discovery data (`demos/cert-hygiene/runs/_discovery/20260911T004528Z`).
 - **Pod listing per log snapshot:** `logs/<label>/pods.txt`, closing the parked "vacuous proxy-log rule" item.
 - **APIService status**, for V only.
 - **Write-up instructions:** the evidence-reading commands for write-ups move to the per-pod probe layout (`probes/<label>/<pod>.log`), closing the parked plan-Task-10 item.
@@ -117,7 +117,9 @@ Two runs: `webhook-short` (default `Ignore`) and `webhook-short-fail` (`Fail`). 
 
 A discovery step picks the invalid resources for (b) and (c). The baseline must show (b) and (c) rejected, and (a) injected, or the run is invalid.
 
-**Recovery.** Replace the webhook certificates using the procedure in Linkerd's [rotating webhooks certificates](https://linkerd.io/2-edge/tasks/rotating_webhooks_certificates/) guide; the exact commands are read during implementation. Then repeat the admission probes.
+**Recovery.** Replace the webhook certificates, then repeat the admission probes. Linkerd's [rotating webhooks certificates](https://linkerd.io/2-edge/tasks/rotating_webhooks_certificates/) guide says to delete the three `…-k8s-tls` Secrets and run `linkerd upgrade | kubectl apply -f -`, which "will recreate the secrets without restarting Linkerd". Restarting the webhook pods is "usually not necessary".
+
+**The catch:** this run supplied its certificates as Helm values, so a plain `linkerd upgrade` may re-render the same expired values instead of generating new ones. The recover phase therefore records what a plain `linkerd upgrade` does. If it re-applies the expired certificates, recovery passes fresh ones with `--set-file`, and the write-up reports that difference, which matters to operators who supply their own webhook certificates.
 
 | # | Hypothesis | Basis | Falsified by |
 | --- | --- | --- | --- |
@@ -228,6 +230,7 @@ Confirm with the user before starting.
 | Question | Resolved by |
 | --- | --- |
 | Which policy and ServiceProfile resources the healthy validators reject | A discovery step before W's baseline |
-| The exact webhook-certificate replacement commands | Reading the rotating-webhooks guide |
-| Exported names of the proxy connection metrics | The first baseline run (`tcp_open_total` is already known) |
+| The exact webhook-certificate replacement commands | **Resolved:** delete the `…-k8s-tls` Secrets and run `linkerd upgrade` (see § 3, including the catch for supplied certificates) |
+| Exported names of the proxy connection metrics | **Resolved:** found in slice 1's discovery data (§ 1.4) |
 | Whether `linkerd install` validates supplied webhook certificates | The first `webhook-short` reset |
+| Whether a plain `linkerd upgrade` regenerates supplied webhook certificates or re-applies them | W's recover phase (§ 3) |
