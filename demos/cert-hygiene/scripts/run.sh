@@ -2,7 +2,9 @@
 # Runs on the macOS HOST. Launches a scenario detached inside the lab machine, after
 # recording the harness's git state (the VM never runs git). The harness is lib/ plus
 # demos/cert-hygiene/ excluding runs/. Prints the demo-relative run dir last.
-# Usage: run.sh <scenario>, e.g. run.sh 00-baseline-control
+# Usage: run.sh [--discovery [--short]] <scenario>, e.g. run.sh 00-baseline-control. With
+# --discovery the run goes under runs/_discovery/, carries discovery.txt and is never
+# evidence; --short (discovery only) shortens its observation windows.
 set -euo pipefail
 DEMO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$DEMO/../.." && pwd)"
@@ -10,11 +12,25 @@ ROOT="$(cd "$DEMO/../.." && pwd)"
 . "$ROOT/lib/common.sh"; load_config "$DEMO"
 require_cmd orb git shasum
 
-scenario="${1:?usage: run.sh <scenario>}"
+discovery=no; short=no
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --discovery) discovery=yes; shift ;;
+    --short) short=yes; shift ;;
+    *) break ;;
+  esac
+done
+[ "$short" = no ] || [ "$discovery" = yes ] || die "--short is discovery-only: evidence runs refuse shortened windows"
+scenario="${1:?usage: run.sh [--discovery [--short]] <scenario>}"
 [ -f "$DEMO/scenarios/$scenario.sh" ] || die "no scenario '$scenario' in $DEMO/scenarios/"
-rel="runs/$scenario/$(date -u +%Y%m%dT%H%M%SZ)"
+if [ "$discovery" = yes ]; then
+  rel="runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-$scenario"
+else
+  rel="runs/$scenario/$(date -u +%Y%m%dT%H%M%SZ)"
+fi
 run="$DEMO/$rel"
 mkdir -p "$run"
+if [ "$discovery" = yes ]; then printf 'discovery=yes\nshort_windows=%s\n' "$short" > "$run/discovery.txt"; fi
 
 commit="$(git -C "$ROOT" rev-parse HEAD)"
 status="$(git -C "$ROOT" status --porcelain -- lib demos/cert-hygiene ':(exclude)demos/cert-hygiene/runs')"

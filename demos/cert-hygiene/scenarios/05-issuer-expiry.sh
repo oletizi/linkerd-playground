@@ -38,11 +38,6 @@ _recovered_now() { # TICK: the recovery gate -- new-connection probes ok, and bo
   return 1
 }
 
-_before_restart() { # LABEL: capture the pods a restart stage is about to replace
-  snap_logs "$1"
-  snap_probes "$1"
-}
-
 _recover_ticks() { # PREFIX TIMEOUT_S: tick until recovered (return 0) or timed out (return 1)
   local prefix="$1" deadline=$(( $(date -u +%s) + $2 )) n=1
   while :; do
@@ -56,20 +51,6 @@ _recover_ticks() { # PREFIX TIMEOUT_S: tick until recovered (return 0) or timed 
   done
 }
 
-_wait_issuer_updated() { # TIMEOUT_S: record when (or whether) identity reloaded the issuer
-  local t0 deadline
-  t0="$(date -u +%s)"
-  deadline=$(( t0 + $1 ))
-  until kubectl -n linkerd get events --field-selector reason=IssuerUpdated -o name 2>/dev/null | grep -q .; do
-    if [ "$(date -u +%s)" -ge "$deadline" ]; then
-      mark issuer-updated "no IssuerUpdated event within ${1}s"
-      return 0
-    fi
-    sleep 5
-  done
-  mark issuer-updated "IssuerUpdated event seen $(( $(date -u +%s) - t0 ))s after apply"
-}
-
 scenario_recover() {
   local rep="$CERTS/replacement"
   # Invariant (spec 4.3): the replacement is signed by the EXISTING anchor, and
@@ -79,21 +60,21 @@ scenario_recover() {
   mark recover-apply "linkerd upgrade with the replacement issuer; no trust-anchor flag"
   capture recover/linkerd-upgrade.txt bash -o pipefail -c \
     "linkerd upgrade --identity-issuer-certificate-file='$rep/issuer.crt' --identity-issuer-key-file='$rep/issuer.key' | kubectl apply -f -"
-  _wait_issuer_updated 180
+  wait_issuer_updated 180
   snap_events issuer-updated
 
   if _recover_ticks recover "$RECOVER_WINDOW_S"; then
     mark recovery "no workload restarts"
     return 0
   fi
-  _before_restart pre-stage1
+  snap_before_restart pre-stage1
   mark restart "stage 1: the workloads that never became Ready (probe-new, restart-target)"
   capture recover/restart-stage1.txt kubectl -n "$LAB_NS" rollout restart deploy/probe-new deploy/restart-target
   if _recover_ticks recover-s1 "$RECOVER_WINDOW_S"; then
     mark recovery "after stage-1 restarts"
     return 0
   fi
-  _before_restart pre-stage2
+  snap_before_restart pre-stage2
   mark restart "stage 2: every lab Deployment, as Linkerd's issuer-rotation guide directs"
   capture recover/restart-stage2.txt kubectl -n "$LAB_NS" rollout restart deploy
   if _recover_ticks recover-s2 "$RECOVER_WINDOW_S"; then

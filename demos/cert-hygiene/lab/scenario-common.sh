@@ -8,6 +8,10 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-lab.sh"
 # shellcheck source=/dev/null
 . "$LAB_DIR/collect.sh"
+# shellcheck source=/dev/null
+. "$LAB_DIR/gates.sh"
+# shellcheck source=/dev/null
+. "$LAB_DIR/stages.sh"
 
 CONTROL_RUNS="$DEMO/runs/00-baseline-control"
 PROBES=(probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream)
@@ -83,7 +87,7 @@ _write_result() { # FILE CMD...: "result=ok|fail", then the command's output
 
 run_scenario() { # SCENARIO PROFILE RUN_DIR
   SCENARIO="$1"
-  local profile="$2" start sampled max comp
+  local profile="$2" start sampled max comp d
   RUN_DIR="$3"
   load_profile "$profile"
   [ -f "$RUN_DIR/git-state.txt" ] || die "$RUN_DIR/git-state.txt missing: launch scenarios with scripts/run.sh"
@@ -141,8 +145,9 @@ run_scenario() { # SCENARIO PROFILE RUN_DIR
   snap_secret verify
   snap_pod_detail verify probe-new
   snap_pod_detail verify restart-target
-  capture pods/verify-rollout-restart-target.txt kubectl -n "$LAB_NS" rollout status deploy/restart-target --timeout=120s
-  capture pods/verify-rollout-probe-new.txt kubectl -n "$LAB_NS" rollout status deploy/probe-new --timeout=120s
+  for d in $(lab_deployments); do
+    capture "pods/verify-rollout-$d.txt" kubectl -n "$LAB_NS" rollout status "deploy/$d" --timeout=120s
+  done
 
   snap_logs final
   snap_events final
