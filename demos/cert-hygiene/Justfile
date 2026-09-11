@@ -11,3 +11,7 @@ lab-down:
 # Shell inside the lab machine, in this directory
 sh:
     bash scripts/in-lab.sh lab/shell.sh
+
+# Unit tests for the lab's evidence helpers (run inside the lab machine)
+test:
+    bash scripts/in-lab.sh lab/tests/run.sh
