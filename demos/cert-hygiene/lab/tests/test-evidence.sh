@@ -30,8 +30,9 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 now="$(date -u +%s)"
 got="$(cert_not_after_epoch "$T/c.pem")"
 delta=$(( got - now - 86400 ))
-[ "$delta" -ge -5 ] && [ "$delta" -le 5 ]
-assert_eq "$?" 0 "cert_not_after_epoch is now+1d (delta ${delta}s)"
+within=no
+if [ "$delta" -ge -5 ] && [ "$delta" -le 5 ]; then within=yes; fi
+assert_eq "$within" yes "cert_not_after_epoch is now+1d (delta ${delta}s)"
 meta="$(cert_meta < "$T/c.pem")"
 assert_contains "$meta" "notAfter=" "cert_meta prints notAfter"
 assert_contains "$meta" "serial=" "cert_meta prints serial"
@@ -69,11 +70,13 @@ printf 'configmap_sha256=aaa\nlab/server-1 h1\nlab/probe-new-9 h2\n' > "$T/t4.tx
 assert_succeeds "same bundle, pods added" trust_invariant_check "$T/t1.txt" "$T/t2.txt"
 assert_fails "configmap hash changed" trust_invariant_check "$T/t1.txt" "$T/t3.txt"
 assert_fails "a pod carries a second bundle" trust_invariant_check "$T/t1.txt" "$T/t4.txt"
+printf 'configmap_sha256=aaa\n[pod annotation listing failed: exit 1] connection refused\n' > "$T/t5.txt"
+assert_fails "a snapshot recording a failed read never satisfies the invariant" trust_invariant_check "$T/t5.txt" "$T/t5.txt"
 
 # ---- evaluate_validity ----
 make_run() { # dir scenario commit harness dirty
   local d="$1"
-  mkdir -p "$d/certs" "$d/checks" "$d/metrics" "$d/pods"
+  mkdir -p "$d/certs" "$d/checks" "$d/metrics" "$d/pods" "$d/logs/final" "$d/logs/pre-recover"
   printf 'demo_repo_commit=%s\ndemo_repo_dirty=%s\nharness_tree_sha256=%s\n' "$3" "$5" "$4" > "$d/git-state.txt"
   printf 'linkerd_cli_version=edge-26.9.1\nlinkerd_controller_image=cr.l5d.io/linkerd/controller:edge-26.9.1\n' > "$d/versions.txt"
   printf '2026-09-10T10:00:00Z reset\n2026-09-10T10:05:00Z tick baseline\n2026-09-10T10:40:00Z tick verify\n2026-09-10T10:41:00Z done\n' > "$d/timeline.log"
@@ -85,6 +88,16 @@ make_run() { # dir scenario commit harness dirty
   printf 'result=ok\n' > "$d/leaf-lifetime.txt"
   printf 'result=ok\n' > "$d/trust-invariant.txt"
   printf 'result=ok\n' > "$d/control-criteria.txt"
+  for f in identity identity-proxy k3s-journal server-1-http server-1-echo server-1-linkerd-proxy server-1-linkerd-init; do
+    echo x > "$d/logs/final/$f.txt"
+  done
+  for f in probe-http-1-probe probe-http-1-probe-previous probe-http-1-linkerd-proxy; do
+    echo x > "$d/logs/pre-recover/$f.txt"
+  done
+  if [ "$2" = 05-issuer-expiry ]; then
+    mkdir -p "$d/recover"
+    printf '$ linkerd upgrade ... | kubectl apply -f -\nsecret/linkerd-identity-issuer configured\n[exit 0]\n' > "$d/recover/linkerd-upgrade.txt"
+  fi
 }
 V=edge-26.9.1
 make_run "$T/ctl/r1" 00-baseline-control c1 h1 false
@@ -126,6 +139,42 @@ make_run "$T/norep" 05-issuer-expiry c2 h1 false
 rm "$T/norep/certs/issuer-replacement.pem"
 assert_fails "#5 without the replacement issuer is invalid" evaluate_validity "$T/norep" 05-issuer-expiry "$V" "$T/ctl"
 
+# ---- evaluate_validity: workload proxy logs (a lab pod's app log needs its proxy log) ----
+make_run "$T/noproxy" 00-baseline-control c1 h1 false
+rm "$T/noproxy/logs/pre-recover/probe-http-1-linkerd-proxy.txt"
+assert_fails "an app-container log without the pod's linkerd-proxy log is invalid" evaluate_validity "$T/noproxy" 00-baseline-control "$V"
+assert_contains "$(cat "$T/noproxy/validity.txt")" "pre-recover: probe-http-1 has a probe log but no probe-http-1-linkerd-proxy.txt" "reason names the pod and label"
+make_run "$T/noproxy2" 00-baseline-control c1 h1 false
+rm "$T/noproxy2/logs/final/server-1-linkerd-proxy.txt"
+assert_fails "a multi-container pod without its proxy log is invalid" evaluate_validity "$T/noproxy2" 00-baseline-control "$V"
+
+# ---- evaluate_validity: #5 recovery apply must have succeeded ----
+make_run "$T/noup" 05-issuer-expiry c2 h1 false
+rm "$T/noup/recover/linkerd-upgrade.txt"
+assert_fails "#5 without a recorded recovery apply is invalid" evaluate_validity "$T/noup" 05-issuer-expiry "$V" "$T/ctl"
+assert_contains "$(cat "$T/noup/validity.txt")" "reason=recovery apply" "reason names the recovery apply"
+make_run "$T/badup" 05-issuer-expiry c2 h1 false
+printf '$ linkerd upgrade ... | kubectl apply -f -\nerror: unable to connect\n[exit 1]\n' > "$T/badup/recover/linkerd-upgrade.txt"
+assert_fails "#5 whose recovery apply failed is invalid" evaluate_validity "$T/badup" 05-issuer-expiry "$V" "$T/ctl"
+
+# ---- evaluate_validity: paths without earlier coverage ----
+make_run "$T/ctl2/r1" 00-baseline-control c4 h3 false
+printf 'result=fail\n' > "$T/ctl2/r1/control-criteria.txt"
+evaluate_validity "$T/ctl2/r1" 00-baseline-control "$V" >/dev/null 2>&1
+assert_eq "$(head -n1 "$T/ctl2/r1/validity.txt")" evidence_valid=no "fixture: the h3 control is invalid"
+make_run "$T/r5c" 05-issuer-expiry c5 h3 false
+assert_fails "#5 invalid when the control at its harness tree is itself invalid" evaluate_validity "$T/r5c" 05-issuer-expiry "$V" "$T/ctl2"
+
+make_run "$T/img" 00-baseline-control c1 h1 false
+printf 'linkerd_cli_version=edge-26.9.1\nlinkerd_controller_image=cr.l5d.io/linkerd/controller:edge-26.7.2\n' > "$T/img/versions.txt"
+assert_fails "controller image at another version is invalid" evaluate_validity "$T/img" 00-baseline-control "$V"
+assert_contains "$(cat "$T/img/validity.txt")" "reason=control plane is not $V" "reason names the control plane"
+
+make_run "$T/nogit" 00-baseline-control c1 h1 false
+rm "$T/nogit/git-state.txt"
+assert_fails "missing git-state.txt is invalid" evaluate_validity "$T/nogit" 00-baseline-control "$V"
+assert_contains "$(cat "$T/nogit/validity.txt")" "git-state.txt missing" "reason names git-state.txt"
+
 # ---- evaluate_validity: the control must have met its criteria ----
 make_run "$T/ctlbad" 00-baseline-control c1 h9 false
 printf 'result=fail\nfail: probe-http has 3 fail/closed lines\n' > "$T/ctlbad/control-criteria.txt"
@@ -133,23 +182,30 @@ assert_fails "control that failed its criteria is invalid" evaluate_validity "$T
 assert_contains "$(cat "$T/ctlbad/validity.txt")" "reason=control criteria not met" "reason names the criteria"
 
 # ---- control_criteria_check ----
-make_ctl() { # dir: a control run that meets every criterion
-  local d="$1"
-  mkdir -p "$d/probes" "$d/pods" "$d/checks"
+make_ctl() { # dir: a control run that meets every criterion (probes/final/, one pod per probe)
+  local d="$1" p="$1/probes/final"
+  mkdir -p "$p" "$d/pods" "$d/checks"
   printf '2026-09-10T10:00:00Z reset\n2026-09-10T10:05:00Z tick baseline\n' > "$d/timeline.log"
-  printf '2026-09-10T10:04:58Z probe-http seq=1 fail curl_rc=7 http=000 err=refused\n2026-09-10T10:05:01Z probe-http seq=2 ok http=200\n' > "$d/probes/probe-http.log"
-  printf '2026-09-10T10:05:01Z probe-tcp-new seq=2 ok\n' > "$d/probes/probe-tcp-new.log"
-  printf '2026-09-10T10:04:59Z probe-tcp-stream seq=0 conn=ab-1 connect target=s:9000\n2026-09-10T10:05:01Z probe-tcp-stream seq=2 conn=ab-1 ok\n' > "$d/probes/probe-tcp-stream.log"
+  printf '$ kubectl -n lab logs probe-http-1 -c probe\n2026-09-10T10:04:58Z probe-http seq=1 fail curl_rc=7 http=000 err=refused\n2026-09-10T10:05:01Z probe-http seq=2 ok http=200\n[exit 0]\n' > "$p/probe-http-1.log"
+  printf '$ kubectl -n lab logs probe-http-1 -c probe --previous\nError from server (BadRequest): previous terminated container "probe" in pod "probe-http-1" not found\n[exit 1]\n' > "$p/probe-http-1-previous.log"
+  printf '2026-09-10T10:05:01Z probe-tcp-new seq=2 ok\n' > "$p/probe-tcp-new-1.log"
+  printf '2026-09-10T10:04:59Z probe-tcp-stream seq=0 conn=ab-1 connect target=s:9000\n2026-09-10T10:05:01Z probe-tcp-stream seq=2 conn=ab-1 ok\n' > "$p/probe-tcp-stream-1.log"
   printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-restart-target.txt"
   printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-probe-new.txt"
   printf '$ linkerd check\n√ issuer cert is valid for at least 60 days\n‼ cli is up-to-date\n[exit 0]\n' > "$d/checks/verify-check.txt"
 }
 make_ctl "$T/cc"
 assert_succeeds "healthy control meets criteria (a fail before baseline is ignored)" control_criteria_check "$T/cc"
-make_ctl "$T/cc1"; printf '2026-09-10T10:20:00Z probe-tcp-new seq=9 fail socat_rc=1\n' >> "$T/cc1/probes/probe-tcp-new.log"
+assert_succeeds "control_criteria_check completes under set -e when nothing matches" \
+  bash -c ". '$ROOT/lib/common.sh'; . '$DEMO/lab/lib-evidence.sh'; set -euo pipefail; control_criteria_check '$T/cc'"
+make_ctl "$T/cc1"; printf '2026-09-10T10:20:00Z probe-tcp-new seq=9 fail socat_rc=1\n' >> "$T/cc1/probes/final/probe-tcp-new-1.log"
 assert_fails "a probe failure after baseline breaks the control" control_criteria_check "$T/cc1"
-make_ctl "$T/cc2"; printf '2026-09-10T10:20:00Z probe-tcp-stream seq=0 conn=ab-2 connect target=s:9000\n' >> "$T/cc2/probes/probe-tcp-stream.log"
-assert_fails "a second stream connection breaks the control" control_criteria_check "$T/cc2"
+make_ctl "$T/cc2"; printf '2026-09-10T10:20:00Z probe-tcp-stream seq=0 conn=ab-2 connect target=s:9000\n' > "$T/cc2/probes/final/probe-tcp-stream-2.log"
+assert_fails "a second stream connection, in another pod, breaks the control" control_criteria_check "$T/cc2"
+make_ctl "$T/cc6"; printf '2026-09-10T10:20:00Z probe-http seq=9 fail curl_rc=7\n' > "$T/cc6/probes/final/probe-http-1-previous.log"
+assert_fails "a failure in a previous container's log breaks the control" control_criteria_check "$T/cc6"
+make_ctl "$T/cc7"; rm -r "$T/cc7/probes/final"
+assert_fails "no probe logs breaks the control" control_criteria_check "$T/cc7"
 make_ctl "$T/cc3"; printf '$ kubectl rollout status\n[exit 1]\n' > "$T/cc3/pods/verify-rollout-probe-new.txt"
 assert_fails "an incomplete rollout breaks the control" control_criteria_check "$T/cc3"
 make_ctl "$T/cc4"; printf '× issuer cert is within its validity period\n' >> "$T/cc4/checks/verify-check.txt"

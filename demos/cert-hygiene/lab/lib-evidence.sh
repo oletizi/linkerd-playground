@@ -63,9 +63,11 @@ leaf_lifetime_check() {
 }
 
 # trust_summary FILE: the trust-roots ConfigMap hash plus the distinct trust-bundle
-# annotations carried by pods (pods without one are ignored).
+# annotations carried by pods (pods without one are ignored). A snapshot in which the
+# collector recorded a failed read (a line starting "[") has no summary: it dies.
 trust_summary() {
   local f="${1:?trust_summary: FILE required}"
+  if grep -q '^\[' "$f"; then die "trust_summary: $f records a failed read: $(grep -m1 '^\[' "$f")"; fi
   grep -m1 '^configmap_sha256=' "$f" || die "trust_summary: no configmap_sha256 line in $f"
   printf 'annotations=%s\n' "$(awk 'NR > 1 && $2 != "-" { print $2 }' "$f" | sort -u | paste -sd, -)"
 }
@@ -74,13 +76,18 @@ trust_summary() {
 # every snapshot. Recovery in scenario #5 replaces the issuer, never the anchor.
 trust_invariant_check() {
   [ $# -ge 2 ] || die "trust_invariant_check: two or more snapshots required"
-  local first="$1" ref f bad=0
-  ref="$(trust_summary "$first")"
+  local first="$1" ref f s bad=0
+  # trust_summary dies inside a command substitution, which only ends the subshell:
+  # its status must be checked here, or two unusable snapshots would compare equal.
+  ref="$(trust_summary "$first")" || { echo "fail: $first has no usable trust summary"; return 1; }
   shift
   for f in "$@"; do
-    if [ "$(trust_summary "$f")" != "$ref" ]; then
+    if ! s="$(trust_summary "$f")"; then
+      echo "fail: $f has no usable trust summary"; bad=1; continue
+    fi
+    if [ "$s" != "$ref" ]; then
       echo "fail: $f differs from $first"
-      diff <(printf '%s\n' "$ref") <(trust_summary "$f") || true
+      diff <(printf '%s\n' "$ref") <(printf '%s\n' "$s") || true
       bad=1
     fi
   done
@@ -88,31 +95,46 @@ trust_invariant_check() {
   return "$bad"
 }
 
+# _probe_lines DIR PROBE: every line PROBE wrote (field 2 is the probe name), from the
+# current and previous logs of all its pods under DIR. Never fails.
+_probe_lines() {
+  local dir="$1" p="$2" f
+  for f in "$dir"/*.log; do
+    [ -f "$f" ] || continue
+    awk -v p="$p" '$2 == p' "$f"
+  done
+  return 0
+}
+
 # control_criteria_check RUN_DIR: the negative control's pass criteria (design spec
-# section 4.4) that a script can judge. Probe lines before the baseline tick are
-# startup noise and are ignored. Other check warnings are compared by a human.
+# section 4.4) that a script can judge, from the per-pod probe logs the run captured
+# at its end (probes/final/). Probe lines before the baseline tick are startup noise
+# and are ignored. Other check warnings are compared by a human.
 control_criteria_check() {
-  local run="${1:?control_criteria_check: RUN_DIR required}" bad=0 t p n f
+  local run="${1:?control_criteria_check: RUN_DIR required}" bad=0 t p n f lines
+  local pdir="$run/probes/final"
   t="$(awk '$2 == "tick" && $3 == "baseline" { print $1; exit }' "$run/timeline.log" 2>/dev/null)"
   [ -n "$t" ] || { echo "fail: no baseline tick in timeline.log"; return 1; }
   for p in probe-http probe-tcp-new probe-tcp-stream; do
-    f="$run/probes/$p.log"
-    if [ ! -s "$f" ]; then echo "fail: $f missing"; bad=1; continue; fi
-    n="$(awk -v t="$t" '$1 >= t && / (fail|closed) /' "$f" | wc -l | tr -d ' ')"
+    lines="$(_probe_lines "$pdir" "$p")"
+    if [ -z "$lines" ]; then echo "fail: no $p lines in $pdir"; bad=1; continue; fi
+    n="$(printf '%s\n' "$lines" | awk -v t="$t" '$1 >= t && / (fail|closed) /' | wc -l | tr -d ' ')"
     if [ "$n" -eq 0 ]; then echo "ok: $p has no fail/closed lines after baseline"
     else echo "fail: $p has $n fail/closed lines after baseline"; bad=1; fi
   done
-  n="$(grep -c ' connect ' "$run/probes/probe-tcp-stream.log" 2>/dev/null || true)"
+  n="$(_probe_lines "$pdir" probe-tcp-stream | awk '/ connect /' | wc -l | tr -d ' ')"
   if [ "$n" = 1 ]; then echo "ok: one stream connection"
   else echo "fail: $n stream connect lines, want 1"; bad=1; fi
   for f in verify-rollout-restart-target verify-rollout-probe-new; do
     if [ "$(tail -n 1 "$run/pods/$f.txt" 2>/dev/null)" = "[exit 0]" ]; then echo "ok: $f completed"
     else echo "fail: $f did not complete"; bad=1; fi
   done
-  n="$(grep -l '×' "$run"/checks/*.txt 2>/dev/null | wc -l | tr -d ' ')"
+  # grep -l exits 1 when nothing matches -- the passing case -- so it must not fail
+  # the pipeline under set -e / pipefail.
+  n="$({ grep -l '×' "$run"/checks/*.txt 2>/dev/null || true; } | wc -l | tr -d ' ')"
   if [ "$n" -eq 0 ]; then echo "ok: no fatal check results"
   else echo "fail: $n check files contain a fatal (×) result"; bad=1; fi
-  n="$(grep -lE '‼.*valid for at least 60 days' "$run"/checks/*.txt 2>/dev/null | wc -l | tr -d ' ')"
+  n="$({ grep -lE '‼.*valid for at least 60 days' "$run"/checks/*.txt 2>/dev/null || true; } | wc -l | tr -d ' ')"
   if [ "$n" -eq 0 ]; then echo "ok: no certificate-lifetime warnings"
   else echo "fail: $n check files carry a certificate-lifetime warning"; bad=1; fi
   return "$bad"
@@ -131,6 +153,33 @@ _control_passed() { # CONTROL_RUNS_DIR HARNESS_TREE_SHA
     [ "$(_kv harness_tree_sha256 "$(dirname "$v")/git-state.txt")" = "$tree" ] && return 0
   done
   return 1
+}
+
+# The lab's application containers (lab/workloads/*.yaml). A log file of one of them
+# is how a lab pod shows up in logs/<label>/.
+LAB_APP_CONTAINERS=(probe idle http echo)
+
+# _missing_proxy_logs RUN_DIR: the proxy-log rule. In every logs/<label>/ directory,
+# each file <pod>-<c>.txt, where <c> is in LAB_APP_CONTAINERS (never a -previous.txt
+# file), marks <pod> as a captured lab pod; <pod>-linkerd-proxy.txt must then exist,
+# non-empty, in the same directory. The proxy is a native-sidecar init container, so a
+# collector that walks only .spec.containers misses it. Prints one line per miss.
+_missing_proxy_logs() {
+  local run="$1" dir f base c pod
+  for dir in "$run"/logs/*/; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"*.txt; do
+      [ -f "$f" ] || continue
+      base="$(basename "$f" .txt)"
+      for c in "${LAB_APP_CONTAINERS[@]}"; do
+        pod="${base%-"$c"}"
+        [ "$pod" != "$base" ] || continue
+        [ -s "$dir$pod-linkerd-proxy.txt" ] \
+          || echo "$(basename "$dir"): $pod has a $c log but no $pod-linkerd-proxy.txt"
+      done
+    done
+  done
+  return 0
 }
 
 # evaluate_validity RUN_DIR SCENARIO EXPECTED_LINKERD_VERSION [CONTROL_RUNS_DIR]:
@@ -155,6 +204,9 @@ evaluate_validity() {
       [ -s "$run/$f" ] || reasons+=("tick $tick missing $f")
     done
   done < <(awk '$2 == "tick" { print $3 }' "$run/timeline.log" 2>/dev/null)
+  while read -r f; do
+    reasons+=("missing workload proxy log: $f")
+  done < <(_missing_proxy_logs "$run")
   [ "$(head -n 1 "$run/leaf-lifetime.txt" 2>/dev/null)" = result=ok ] || reasons+=("effective leaf lifetime check did not pass")
   [ "$(head -n 1 "$run/trust-invariant.txt" 2>/dev/null)" = result=ok ] || reasons+=("trust-anchor invariant did not hold")
   [ "$(_kv linkerd_cli_version "$run/versions.txt")" = "$expected" ] || reasons+=("linkerd CLI is not $expected")
@@ -167,6 +219,8 @@ evaluate_validity() {
   fi
   if [ "$scenario" = 05-issuer-expiry ]; then
     local tree
+    [ "$(tail -n 1 "$run/recover/linkerd-upgrade.txt" 2>/dev/null)" = "[exit 0]" ] \
+      || reasons+=("recovery apply did not succeed: recover/linkerd-upgrade.txt missing or not ending [exit 0]")
     tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
     _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree")
   fi

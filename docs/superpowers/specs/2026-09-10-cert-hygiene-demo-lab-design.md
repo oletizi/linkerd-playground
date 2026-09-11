@@ -99,7 +99,7 @@ All workloads run in a meshed namespace, `lab`. Images are multi-arch, pinned by
 
 **Certificate observation.**
 
-- **Workload leaves.** Each meshed pod's proxy exposes identity metrics on `:4191/metrics`. The metric stems `expiration_timestamp`, `refresh_timestamp`, and `refreshes` were read from proxy source. **Unverified:** their exported names (expected prefix `identity_cert_`); the first baseline run confirms them. These give each workload leaf's `notAfter` and refresh history over time.
+- **Workload leaves.** Each meshed pod's proxy exposes identity metrics on `:4191/metrics`. The metric stems `expiration_timestamp`, `refresh_timestamp`, and `refreshes` were read from proxy source. Source reading suggested an `identity_cert_` prefix; discovery (§ 7) confirmed the exported names carry `control_identity_cert_` instead, so leaf expiry is `control_identity_cert_expiration_timestamp_seconds`. These give each workload leaf's `notAfter` and refresh history over time.
 - **Issuer, as loaded.** The identity controller exposes `issuer_cert_ttl_seconds` on `:9990`. It is computed from the issuer the process currently holds, so it goes negative after expiry and jumps when a replacement is loaded.
 - **Trust anchor.** No metric exists (**Source:** it is a `TODO` in the identity controller), so the anchor's `notAfter` comes from `certs/`.
 
@@ -114,14 +114,15 @@ Every scenario run writes `demos/cert-hygiene/runs/<scenario>/<UTC-start>/`:
 | `certs/` | `trust-anchor.pem`, `issuer-initial.pem`, `issuer-replacement.pem`, each with a `.txt` from `step certificate inspect` (serial, issuer, SANs, `notBefore`, `notAfter`, fingerprint). Certificates only, never keys. |
 | `timeline.log` | Harness phase markers with UTC timestamps: `reset`, `baseline`, `fault`, `observe-N`, `recover`, `verify` |
 | `checks/<tick>-check.txt`, `checks/<tick>-check-proxy.txt` | Raw `linkerd check` and `linkerd check --proxy` output, each with its exit code |
-| `probes/<probe>.log` | Probe output (§ 2) |
+| `probes/<label>/<pod>.log`, `probes/<label>/<pod>-previous.log`, `probes/<label>/pods.txt` | Probe output (§ 2) from every pod of each probe, Terminating pods included, current and previous container, at each labelled point (`final`; for #5 also `pre-stage1` and `pre-stage2`, before each restart stage; `aborted`) |
 | `metrics/<tick>.txt` | Proxy identity metrics for every meshed pod; the identity controller's `issuer_cert_ttl_seconds` |
 | `secrets/<tick>-identity-issuer.txt` | Metadata of the `linkerd-identity-issuer` Secret: `uid`, `resourceVersion`, and the serial, fingerprint, and `notAfter` of its **certificate field only**. The collector extracts fields with jsonpath and never reads the key field. |
 | `trust/<tick>.txt` | SHA-256 of `linkerd-identity-trust-roots/ca-bundle.crt`, plus each meshed pod's `linkerd.io/trust-root-sha256` annotation |
-| `logs/` | `linkerd-identity` logs; proxy logs of each lab pod; the k3s server journal slice for the run window (API-server side) |
+| `logs/` | `linkerd-identity` logs; proxy logs of each lab pod; the k3s server journal slice for the run window (API-server side). Every container of each lab pod is captured, init containers included, because the `linkerd-proxy` runs as a native-sidecar init container: `logs/<label>/<pod>-<container>.txt` and `-previous.txt` |
 | `events/<label>.txt` | `kubectl get events -A`, sorted by time, snapshotted at several labelled points because Kubernetes drops events after an hour. This includes the identity controller's `IssuerValidationFailed`, `IssuerUpdated`, and `IssuerUpdateSkipped` events. |
 | `pods/<tick>.txt` | `kubectl get pods -A -o wide`: readiness and restart counts |
 | `pods/<tick>-<pod>.yaml`, `pods/<tick>-<pod>-describe.txt` | For `probe-new` and every `restart-target` pod: full status, container states, readiness conditions, and events. This is what links "not Ready" to "proxy has no identity". |
+| `recover/<tick>-gate.txt` | #5 only: every input the recovery gate read at that recover tick (each gated probe's latest line and both rollout statuses, with exit codes) and its verdict |
 
 Rules:
 
@@ -208,12 +209,14 @@ Two separate questions apply to every run:
    - `demo_repo_dirty=false`
    - `versions.txt`, `certs/`, and `timeline.log` are complete
    - every tick's checks were captured
+   - in every `logs/<label>/`, each lab pod with an application-container log also has its `<pod>-linkerd-proxy.txt`
    - the effective-leaf-lifetime check (§ 4.1) passed
    - the trust-anchor invariant (§ 4.3) held
    - for the control, its § 4.4 criteria that a script can judge were met (`control-criteria.txt`)
+   - for #5, the recovery apply succeeded: `recover/linkerd-upgrade.txt` ends `[exit 0]`
    - for #5, a valid control ran at the same **harness tree**: `lib/` plus `demos/cert-hygiene/` excluding `runs/`, hashed. A tree rather than a commit, because committing a run's evidence moves HEAD without changing the harness.
 
-   The collector fails loudly on a missing artifact and never writes a placeholder. A dirty-tree run is allowed for development, records `harness.diff`, and is never valid evidence.
+   The collector fails loudly on a missing artifact and never writes a placeholder. A dirty-tree run is allowed for development, records `harness.diff`, and is never valid evidence. An aborted run is evaluated too, so its `validity.txt` says why it does not count. A rule added to this list applies to runs recorded after it; earlier runs keep the verdict their harness tree computed.
 2. **What happened to H1–H8?** Scripts **never** evaluate this. They record raw observations only. The hypothesis outcomes are judged by reading the evidence and are written up in `docs/articles/cert-hygiene/`, citing the run directory.
 
 Also:
@@ -234,7 +237,7 @@ Also:
 | Opaque-port connection-per-connection behavior | § 2 probe design | Resolved: each new application TCP connection to the opaque port produces its own outbound proxy-to-proxy TLS connection (`tcp_open_total` delta == attempt count, 15 == 15), see demos/cert-hygiene/runs/_discovery/20260911T004528Z/FINDINGS.md |
 | Exported proxy identity metric names | § 2 leaf observation | Resolved: leaf expiry is `control_identity_cert_expiration_timestamp_seconds`, refresh count `control_identity_cert_refreshes_total`, refresh time `control_identity_cert_refresh_timestamp_seconds`, see demos/cert-hygiene/runs/_discovery/20260911T004528Z/FINDINGS.md |
 | OrbStack home mount inside machines | § 1.3 copy/no-copy | Resolved: mounted at the same path (Task 1 lab-up check) |
-| Exact recovery commands in the current "Replacing expired certificates" doc, and whether they touch the anchor | § 4.3 recover phase and its invariant | Read the doc when implementing the phase |
+| Exact recovery commands in the current "Replacing expired certificates" doc, and whether they touch the anchor | § 4.3 recover phase and its invariant | Resolved: for the issuer-only case the doc points to the [manual rotation guide](https://linkerd.io/2-edge/tasks/manually-rotating-control-plane-tls-credentials/). It applies the new issuer with `linkerd upgrade --identity-issuer-certificate-file=… --identity-issuer-key-file=… \| kubectl apply -f -`, passes no trust-anchor flag and no `--force`, and then says to restart the proxies of all injected workloads. The #5 run's `trust/` snapshots confirm the anchor was untouched (`trust-invariant.txt`: `ok: trust configuration identical across 3 snapshots`), see demos/cert-hygiene/runs/05-issuer-expiry/20260911T021157Z |
 
 ## 8. Impact on the article brief
 

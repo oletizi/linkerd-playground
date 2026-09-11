@@ -58,13 +58,19 @@ post_expiry_hook() { # NAME: evidence of why the post-expiry pods are (not) Read
   capture "pods/$1-rollout.txt" kubectl -n "$LAB_NS" rollout status deploy/restart-target --timeout=1s
 }
 
-_on_exit() { # RC: mark an aborted run and keep what evidence exists
+_on_exit() { # RC: mark an aborted run, keep what evidence exists, and record in
+  # validity.txt why it does not count (spec section 5). Nothing here may fail the
+  # trap: the shell must still exit with RC.
   local rc="$1"
   [ "$rc" -ne 0 ] || return 0
   [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ] || return 0
   mark aborted "exit $rc, see harness.log"
   snap_logs aborted
   snap_events aborted
+  snap_probes aborted
+  if [ ! -e "$RUN_DIR/validity.txt" ]; then
+    evaluate_validity "$RUN_DIR" "$SCENARIO" "$LINKERD_EDGE_VERSION" "$CONTROL_RUNS" || true
+  fi
 }
 
 _write_result() { # FILE CMD...: "result=ok|fail", then the command's output
@@ -138,7 +144,7 @@ run_scenario() { # SCENARIO MODE RUN_DIR
   snap_logs final
   snap_events final
   snap_journal final "$start"
-  snap_probes
+  snap_probes final   # control_criteria_check reads probes/final/
   _write_result trust-invariant.txt trust_invariant_check \
     "$RUN_DIR/trust/baseline.txt" "$RUN_DIR/trust/pre-recover.txt" "$RUN_DIR/trust/verify.txt" || true
   if [ "$SCENARIO" = 00-baseline-control ]; then
