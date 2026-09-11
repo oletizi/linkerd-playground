@@ -12,16 +12,35 @@ scenario_mark_epoch() {
   cert_not_after_epoch "$CERTS/issuer.crt"
 }
 
-_recovered_now() { # new-connection probes ok, and both post-expiry workloads rolled out.
+_recovered_now() { # TICK: the recovery gate -- new-connection probes ok, and both
+  # post-expiry workloads rolled out. Every input it reads (each probe's latest line,
+  # both rollout statuses, with exit codes) and its verdict go to recover/TICK-gate.txt.
   # The stream probe is excluded: it fails closed, so once its connection is gone it
   # never reports ok again, by design.
-  local p
+  local f="$RUN_DIR/recover/$1-gate.txt" p d out rc pass=yes
+  [ ! -e "$f" ] || die "_recovered_now: $f exists; evidence is written once"
+  mkdir -p "$RUN_DIR/recover"
+  printf 'sampled_at=%s\n' "$(_utc)" > "$f"
   for p in probe-http probe-tcp-new; do
-    kubectl -n "$LAB_NS" logs "deploy/$p" -c probe --tail=1 2>/dev/null \
-      | grep -qE ' seq=[0-9]+ ok( |$)' || return 1
+    rc=0
+    out="$(kubectl -n "$LAB_NS" logs "deploy/$p" -c probe --tail=1 2>&1)" || rc=$?
+    printf '$ kubectl -n %s logs deploy/%s -c probe --tail=1\n%s\n[exit %s]\n' "$LAB_NS" "$p" "$out" "$rc" >> "$f"
+    if [ "$rc" -ne 0 ] || ! grep -qE ' seq=[0-9]+ ok( |$)' <<< "$out"; then pass=no; fi
   done
-  kubectl -n "$LAB_NS" rollout status deploy/restart-target --timeout=1s >/dev/null 2>&1 || return 1
-  kubectl -n "$LAB_NS" rollout status deploy/probe-new --timeout=1s >/dev/null 2>&1 || return 1
+  for d in restart-target probe-new; do
+    rc=0
+    out="$(kubectl -n "$LAB_NS" rollout status "deploy/$d" --timeout=1s 2>&1)" || rc=$?
+    printf '$ kubectl -n %s rollout status deploy/%s --timeout=1s\n%s\n[exit %s]\n' "$LAB_NS" "$d" "$out" "$rc" >> "$f"
+    [ "$rc" -eq 0 ] || pass=no
+  done
+  if [ "$pass" = yes ]; then echo gate=pass >> "$f"; return 0; fi
+  echo gate=fail >> "$f"
+  return 1
+}
+
+_before_restart() { # LABEL: capture the pods a restart stage is about to replace
+  snap_logs "$1"
+  snap_probes "$1"
 }
 
 _recover_ticks() { # PREFIX TIMEOUT_S: tick until recovered (return 0) or timed out (return 1)
@@ -30,7 +49,7 @@ _recover_ticks() { # PREFIX TIMEOUT_S: tick until recovered (return 0) or timed 
     tick "$prefix-$n"
     post_expiry_hook "$prefix-$n"
     snap_secret "$prefix-$n"
-    if _recovered_now; then mark recovered "at tick $prefix-$n"; return 0; fi
+    if _recovered_now "$prefix-$n"; then mark recovered "at tick $prefix-$n"; return 0; fi
     [ "$(date -u +%s)" -lt "$deadline" ] || return 1
     n=$((n + 1))
     sleep "$OBSERVE_INTERVAL_S"
@@ -67,12 +86,14 @@ scenario_recover() {
     mark recovery "no workload restarts"
     return 0
   fi
+  _before_restart pre-stage1
   mark restart "stage 1: the workloads that never became Ready (probe-new, restart-target)"
   capture recover/restart-stage1.txt kubectl -n "$LAB_NS" rollout restart deploy/probe-new deploy/restart-target
   if _recover_ticks recover-s1 "$RECOVER_WINDOW_S"; then
     mark recovery "after stage-1 restarts"
     return 0
   fi
+  _before_restart pre-stage2
   mark restart "stage 2: every lab Deployment, as Linkerd's issuer-rotation guide directs"
   capture recover/restart-stage2.txt kubectl -n "$LAB_NS" rollout restart deploy
   if _recover_ticks recover-s2 "$RECOVER_WINDOW_S"; then

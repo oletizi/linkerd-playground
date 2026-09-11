@@ -27,7 +27,7 @@ snap_pod_detail manual restart-target
 snap_logs manual
 snap_events manual
 snap_journal manual "$(( since - 600 ))"
-snap_probes
+snap_probes manual
 assert_no_keys
 # shellcheck disable=SC1010
 mark done
