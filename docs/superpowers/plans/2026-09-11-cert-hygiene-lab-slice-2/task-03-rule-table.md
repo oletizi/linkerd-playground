@@ -227,6 +227,7 @@ assert_contains "$(reason "$T/ctlbad")" "reason=control criteria not met" "reaso
 make_run "$T/ctl2/r1" 00-baseline-control c4 h3 false
 printf 'result=fail\n' > "$T/ctl2/r1/control-criteria.txt"
 evaluate_validity "$T/ctl2/r1" 00-baseline-control "$V" >/dev/null 2>&1
+assert_eq "$(head -n1 "$T/ctl2/r1/validity.txt")" evidence_valid=no "fixture: the h3 control is invalid"
 make_run "$T/r5c" 05-issuer-expiry c5 h3 false
 assert_fails "R invalid when the control at its tree is itself invalid" evaluate_validity "$T/r5c" 05-issuer-expiry "$V" "$T/ctl2"
 make_run "$T/badup" 06-anchor-expiry c2 h1 false

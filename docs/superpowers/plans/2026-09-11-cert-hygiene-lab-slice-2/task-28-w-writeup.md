@@ -16,7 +16,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first, then [
 
 - [ ] **Step 1: Facts**
 
-For each of `WI`, `WF`: `cat $WI/validity.txt; grep harness_tree $WI/git-state.txt $C/git-state.txt; grep -E ' (t_mark|webhook-expired|admission-probes|recover-[a-z]+|propagated|done) ' $WI/timeline.log; grep failurePolicy $WI/webhooks/baseline.txt`
+For each of `WI`, `WF`: `cat $WI/validity.txt; grep harness_tree $WI/git-state.txt $C/git-state.txt; grep -E ' (t_mark|webhook-expired|admission-probes|recover-[a-z]+|propagated|done)' $WI/timeline.log; grep failurePolicy $WI/webhooks/baseline.txt`
 Expected: both valid at the control's tree; three `webhook-expired` markers, each naming the first tick that *started* after that expiry; `failurePolicy=Ignore` in `WI` and `Fail` in `WF`. Recovery began about 600 s after the last expiry (W's own post-expiry window, design § 3).
 
 - [ ] **Step 2: W's acceptance condition (design § 13), per run**

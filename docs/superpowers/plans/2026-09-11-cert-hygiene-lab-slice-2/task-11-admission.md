@@ -31,6 +31,7 @@ A discovery run picks the invalid resources. A candidate qualifies only if the h
   - `admission_attempt PHASE OBJECT TEMPLATE` → the three files above, plus `<object>.delete.txt` when the object existed.
   - `admission_probes PHASE SUFFIX` → five attempts, objects `inject-probe-SUFFIX`, `policy-invalid-SUFFIX`, `serviceprofile-invalid-SUFFIX`, `policy-valid-SUFFIX`, `serviceprofile-valid-SUFFIX`, in that order.
   - `admission_proof_check DIR SUFFIX POLICY_WEBHOOK SP_WEBHOOK` (pure) → `ok:`/`fail:` lines; returns 0 only if: the inject probe was created and its observed pod has a `linkerd-proxy` container; both invalid objects were rejected (non-zero exit) with `admission webhook "<their validator>" denied the request`; both valid objects were created (`[exit 0]`).
+  - `admission_denied_by NAME FILE` (pure) → true only when FILE records a non-zero exit (its last line is not `[exit 0]`) and contains `admission webhook "NAME" denied the request`: the one "rejected by its own validator" predicate, used everywhere that check is made (`admission_proof_check`, `discover-admission.sh`, and Task 12's `_w_serving_now`), instead of each repeating the `grep -qF` text.
   - Config: `POLICY_VALIDATOR_WEBHOOK_NAME`, `SP_VALIDATOR_WEBHOOK_NAME`.
 
 - [ ] **Step 1: Failing tests, `demos/cert-hygiene/lab/tests/test-scenarios.sh`**
@@ -53,9 +54,18 @@ set +e   # assertions count failures; they must not abort the suite
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-# ---- admission_proof_check ----
+# ---- admission_denied_by ----
 PW=linkerd-policy-validator.linkerd.io
 SW=linkerd-sp-validator.linkerd.io
+printf '$ kubectl create\nError from server: admission webhook "%s" denied the request: bad ttl\n[exit 1]\n' "$SW" > "$T/dby-ok.txt"
+assert_succeeds "denied by its own validator" admission_denied_by "$SW" "$T/dby-ok.txt"
+printf '$ kubectl create\ncreated\n[exit 0]\n' > "$T/dby-accepted.txt"
+assert_fails "an accepted object is not denied" admission_denied_by "$SW" "$T/dby-accepted.txt"
+printf '$ kubectl create\nError from server: admission webhook "%s" denied the request\n[exit 1]\n' "$PW" > "$T/dby-wrong.txt"
+assert_fails "denied by a different validator does not count" admission_denied_by "$SW" "$T/dby-wrong.txt"
+assert_fails "a missing file is not denied" admission_denied_by "$SW" "$T/dby-missing.txt"
+
+# ---- admission_proof_check ----
 proof() { # DIR: a probe set (suffix s1) that proves all three webhooks
   local d="$1"
   mkdir -p "$d"
@@ -85,7 +95,7 @@ finish test-scenarios
 ```
 
 Run: `just demo cert-hygiene test`
-Expected: `test-scenarios` fails with `admission_proof_check: command not found`.
+Expected: `test-scenarios` fails with `admission_denied_by: command not found`.
 
 - [ ] **Step 2: Write `demos/cert-hygiene/lab/lib-evidence-scenarios.sh`**
 
@@ -96,6 +106,15 @@ Expected: `test-scenarios` fails with `admission_proof_check: command not found`
 # No kubectl. Sourced by lab/lib-evidence.sh; do not execute.
 
 _last_line() { tail -n 1 "$1" 2>/dev/null; } # FILE
+
+# admission_denied_by NAME FILE: was the object recorded in the response FILE denied by
+# the validator NAME, with its own message (design section 3)? A CRD-schema rejection
+# (some other non-zero exit) does not count. The one place this check is made; also
+# used by discover-admission.sh and Task 12's _w_serving_now.
+admission_denied_by() {
+  local name="${1:?admission_denied_by: NAME required}" f="${2:?admission_denied_by: FILE required}"
+  [ -f "$f" ] && [ "$(_last_line "$f")" != "[exit 0]" ] && grep -qF "admission webhook \"$name\" denied the request" "$f"
+}
 
 # admission_proof_check DIR SUFFIX POLICY_WEBHOOK SP_WEBHOOK: did the probe set with this
 # SUFFIX exercise all three webhooks (design section 3)? Rejections count only when the
@@ -110,7 +129,7 @@ admission_proof_check() {
   fi
   for o in "policy-invalid-$s:$pw" "serviceprofile-invalid-$s:$sw"; do
     f="$d/${o%%:*}.response.txt"
-    if [ -f "$f" ] && [ "$(_last_line "$f")" != "[exit 0]" ] && grep -qF "admission webhook \"${o#*:}\" denied the request" "$f"; then
+    if admission_denied_by "${o#*:}" "$f"; then
       echo "ok: ${o%%:*} was denied by ${o#*:}"
     else
       echo "fail: ${o%%:*} was not denied by ${o#*:}"; bad=1
@@ -341,7 +360,7 @@ for c in policy-1 policy-2 policy-3 sp-1 sp-2 sp-3; do
   inv="$RUN_DIR/admission/candidates/$c-invalid-discovery.response.txt"
   val="$RUN_DIR/admission/candidates/$c-valid-discovery.response.txt"
   denied=no; accepted=no
-  if [ "$(tail -n 1 "$inv")" != "[exit 0]" ] && grep -qF "admission webhook \"$wh\" denied the request" "$inv"; then denied=yes; fi
+  if admission_denied_by "$wh" "$inv"; then denied=yes; fi
   if [ "$(tail -n 1 "$val")" = "[exit 0]" ]; then accepted=yes; fi
   printf 'candidate=%s invalid_denied_by_validator=%s valid_accepted=%s\n' "$c" "$denied" "$accepted"
 done > "$RUN_DIR/summary.txt"

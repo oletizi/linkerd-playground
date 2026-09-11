@@ -22,7 +22,7 @@ The credential plan is `A/I1 → B/I2` (Task 3). A5 asks whether the canary beca
 - Modify: `demos/cert-hygiene/lab/deploy.sh` (`identity-canary`), `demos/cert-hygiene/config.example.env` (`NEW_ANCHOR_LIFETIME`)
 
 **Interfaces:**
-- Consumes: Task 9 `run_scenario`, Task 7 `restart_and_gate`, `lab_deployments`, `_leaf_state`, `_trust_now`, Task 8 `snap_before_restart`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`, `snap_logs`, `snap_events`, `observe_until`.
+- Consumes: Task 9 `run_scenario`, Task 7 `restart_and_gate`, `lab_deployments`, `_leaf_state`, `_trust_now`, Task 8 `snap_before_restart`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`, `snap_logs`, `snap_events`, `observe_until`, Task 12 `capture_cp_rollouts` (`lab/stages.sh`).
 - Produces:
   - Deployment `identity-canary` (label `app=identity-canary`, container `idle`), applied without waiting by `deploy.sh identity-canary`.
   - Evidence: `certs/trust-anchor-new.{pem,txt}`, `certs/issuer-replacement.{pem,txt}`, `recover/linkerd-upgrade.txt`, `recover/a-stage1-rollout.txt`, `controlplane/a-stage1-before.txt`, `controlplane/a-stage1-after.txt`, tick `a-stage1`; `recover/a-stage2-canary.txt`, ticks `a-stage2-N`, `recover/a-stage2-canary-N.txt`, `recover/a-stage2-canary-N-state.txt` (the `_a_canary_state` line), `recover/a-stage2-canary-reapply-N.txt` when a canary had no proxy, `logs/a-stage2/`, `events/a-stage2.txt`; when stage 3 runs: `recover/a-stage3-identity.txt`, `recover/a-stage3-identity-rollout.txt`, `recover/a-stage3-stale.txt`, `recover/a-stage3-control-plane.txt`, `controlplane/a-stage3-after.txt`, ticks `a-stage3-N`, `recover/a-stage3-canary-N.txt`; `gates/a-stage4.txt`, tick `a-stage4`.
@@ -55,7 +55,7 @@ spec:
 
 - [ ] **Step 2: Add it to `demos/cert-hygiene/lab/deploy.sh`**
 
-Change the usage text on both usage lines to `<baseline|probe-new|identity-canary>`, add to the header comment `#   identity-canary: A's canary, created after recovery's apply; applied WITHOUT waiting.`, and add this case before the `*)` case:
+`deploy.sh` reads `<baseline|probe-new>` in three places: the header comment's usage line, the `${1:?usage: …}` default, and the `*) die "usage: …"` case. Change all three to `<baseline|probe-new|identity-canary>`, add to the header comment `#   identity-canary: A's canary, created after recovery's apply; applied WITHOUT waiting.`, and add this case before the `*)` case:
 
 ```bash
   identity-canary)
@@ -178,9 +178,7 @@ scenario_recover() {
   mark a-stage1-apply "linkerd upgrade with a new anchor and issuer, --force"
   capture recover/linkerd-upgrade.txt bash -o pipefail -c \
     "linkerd upgrade --identity-issuer-certificate-file='$new/issuer.crt' --identity-issuer-key-file='$new/issuer.key' --identity-trust-anchors-file='$new/ca.crt' --force | kubectl apply -f -"
-  # shellcheck disable=SC2016
-  capture recover/a-stage1-rollout.txt bash -c \
-    'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  capture_cp_rollouts recover/a-stage1-rollout.txt
   snap_controlplane a-stage1-after
   tick a-stage1
   # Stage 2: no manual restarts; the canary shows whether identity issues new-anchor leaves.

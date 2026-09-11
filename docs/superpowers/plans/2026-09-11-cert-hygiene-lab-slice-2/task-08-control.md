@@ -99,7 +99,9 @@ Replace the function and its comment with:
 ```bash
 # _all_probe_lines RUN_DIR PROBE: PROBE's lines from every probes/<label>/ snapshot
 # (restart stages replace probe pods, so no single snapshot holds them all),
-# deduplicated and sorted by time.
+# deduplicated and sorted by time. Twin: scripts/probe-lines.sh (Task 18) does the same
+# merge on the host (macOS bash 3.2 / POSIX awk); kept as a separate implementation for
+# that reason. lab/tests/test-read.sh checks the two agree on one fixture.
 _all_probe_lines() {
   local run="$1" p="$2" dir
   for dir in "$run"/probes/*/; do
