@@ -15,7 +15,7 @@ Working research materials for the Linkerd certificate-hygiene article.
 | Scenario | State |
 | --- | --- |
 | Lab design | Approved after [third-party review](../../superpowers/reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); [implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md) written |
-| Lab harness | In progress: probes live; metric names and opaque-port behaviour confirmed (plan Task 6 of 10) |
+| Lab harness | In progress: evidence collector verified on a live lab (plan Task 7 of 10) |
 | Baseline control (`00-baseline-control`) | Not started |
 | #5 Issuer expiry | Not started |
 | All other scenarios in [demo-feasibility.md](demo-feasibility.md) | Not started |

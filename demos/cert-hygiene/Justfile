@@ -28,3 +28,7 @@ deploy WHAT="baseline":
 # Record raw data answering the design's open lab questions (spec section 7)
 discover:
     bash scripts/in-lab.sh lab/discover.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)
+
+# One full evidence snapshot of the current lab into .lab-logs/ (not evidence)
+snapshot:
+    bash scripts/in-lab.sh lab/snapshot-once.sh .lab-logs/snapshot-$(date -u +%Y%m%dT%H%M%SZ)
