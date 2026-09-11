@@ -54,8 +54,12 @@ matrix_restart_stages() {
 
 # capture_cp_rollouts FILE: wait for every control-plane Deployment's rollout,
 # recorded to FILE with capture. The one control-plane rollout-status loop; this task,
-# and Tasks 15, 16 and 17, each called it verbatim before this helper existed.
+# and Tasks 15, 16 and 17, each called it verbatim before this helper existed. FILE
+# ends [exit 0] only when the listing succeeded, listed at least one Deployment, and
+# every rollout completed: a failed or empty listing would otherwise wait for nothing.
 capture_cp_rollouts() {
   # shellcheck disable=SC2016
-  capture "$1" bash -c 'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  capture "$1" bash -c 'ds="$(kubectl -n linkerd get deploy -o name)" || exit 1
+    [ -n "$ds" ] || { echo "no control-plane Deployments listed"; exit 1; }
+    for d in $ds; do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
 }

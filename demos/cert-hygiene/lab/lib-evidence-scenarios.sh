@@ -52,7 +52,7 @@ _has_key_b64() {
     dec="$(printf '%s' "$run" | base64 -d 2>/dev/null | tr -d '\0' || true)"
     [ -n "$dec" ] || continue
     if _has_key_b64 $(( depth - 1 )) "$dec"; then return 0; fi
-  done < <(printf '%s\n' "$text" | grep -oE '[A-Za-z0-9+/]{40,}={0,2}' || true)
+  done < <(printf '%s\n' "$text" | LC_ALL=C grep -aoE '[A-Za-z0-9+/]{40,}={0,2}' || true)
   return 1
 }
 
@@ -89,6 +89,8 @@ redact_manifest() {
 #   i   -- none is, and each is valid now and verifies against its caBundle, and the
 #          post-propagation admission probes proved all three webhooks;
 #   iii -- anything else.
+# A component whose Secret certificate w_fact_line recorded as "unreadable" is neither
+# the supplied certificate nor valid-and-verifying, so it always makes the branch iii.
 w_branch_classify() {
   local f="${1:?w_branch_classify: FACTS_FILE required}" n
   n="$(grep -c '^component=' "$f" || true)"
@@ -102,14 +104,55 @@ w_branch_classify() {
   echo branch=iii
 }
 
-# b64_key_hits DIR: files under DIR holding a base64 run (40+ characters) that decodes,
-# directly or through nested base64 up to three layers, to text containing "PRIVATE KEY".
-# assert_no_keys runs it next to its literal "PRIVATE KEY" search.
+# w_fact_line COMPONENT SUPPLIED_SHA256 SECRET_CERT CABUNDLE NOW: one webhook's facts line
+# for w_branch_classify. SECRET_CERT is the Secret's decoded tls.crt and CABUNDLE its
+# webhook configuration's decoded caBundle; either may be empty (not read). No
+# certificate records "-". A non-empty value that is not a readable certificate records
+# "unreadable" in its fingerprint and every field depending on it: a failed read is
+# recorded, never fatal. Certificates compare by X.509 fingerprint and verify with openssl
+# against the caBundle, never by raw bytes: the caBundle loses its PEM's trailing newline
+# in the Helm/API round trip (Task 1 discovery).
+w_fact_line() {
+  local comp="${1:?}" sfp="${2:?}" crt="${3:?}" ca="${4:?}" now="${5:?}" facts fp=- eq=no exp=- valid=no ver=no
+  if [ -s "$crt" ]; then
+    if facts="$(cert_facts c < "$crt" 2>/dev/null)"; then
+      fp="$(awk -F= '$1 == "c_sha256" { print $2 }' <<< "$facts")"
+      exp="$(awk -F= '$1 == "c_not_after_epoch" { print $2 }' <<< "$facts")"
+      if [ "$fp" = "$sfp" ]; then eq=yes; fi
+      if [ "$exp" -gt "$now" ]; then valid=yes; fi
+      if [ -s "$ca" ] && openssl verify -partial_chain -CAfile "$ca" "$crt" > /dev/null 2>&1; then ver=yes; fi
+    else
+      fp=unreadable; eq=unreadable; exp=unreadable; valid=unreadable; ver=unreadable
+    fi
+  fi
+  printf 'component=%s secret_sha256=%s supplied_sha256=%s equals_supplied=%s not_after_epoch=%s valid_now=%s cabundle_verifies=%s\n' \
+    "$comp" "$fp" "$sfp" "$eq" "$exp" "$valid" "$ver"
+}
+
+# b64_key_hits DIR: files under DIR (or DIR itself, if a file) holding a base64 run (40+
+# characters) that decodes, directly or through nested base64 up to three layers, to text
+# containing "PRIVATE KEY". Byte-safe: LC_ALL=C grep -a, so no byte hides a match.
 b64_key_hits() {
   local d="${1:?b64_key_hits: DIR required}" f
   while IFS= read -r f; do
-    if _has_key_b64 3 "$(cat "$f")"; then echo "$f"; fi
-  done < <(grep -rlE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
+    if _has_key_b64 3 "$(tr -d '\0' < "$f")"; then echo "$f"; fi
+  done < <(LC_ALL=C grep -rlaE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
+}
+
+# key_scan PATH: every private key under PATH (a directory, or one file), one line per
+# hit: literal PEM key text, then base64 decoding to a key (b64_key_hits). Returns 1 on
+# any hit. Fails closed: dies if PATH is missing or anything under it is unreadable. The
+# one scan behind assert_no_keys, lab/key-guard.sh and W's manifest redaction.
+key_scan() {
+  local p="${1:?key_scan: PATH required}" pem b64 rc=0 f
+  [ -e "$p" ] || die "key_scan: no such path $p"
+  pem="$(LC_ALL=C grep -rlaF 'PRIVATE KEY' "$p")" || rc=$?
+  [ "$rc" -le 1 ] || die "key_scan: cannot read everything under $p (grep exit $rc)"
+  b64="$(b64_key_hits "$p")"
+  [ -n "$pem$b64" ] || return 0
+  if [ -n "$pem" ]; then while IFS= read -r f; do echo "private key PEM text: $f"; done <<< "$pem"; fi
+  if [ -n "$b64" ]; then while IFS= read -r f; do echo "base64-encoded private key: $f"; done <<< "$b64"; fi
+  return 1
 }
 
 # _w_upgrade_cmd OUT [ARGS...]: the shell command rendering `linkerd upgrade ARGS` into

@@ -41,6 +41,10 @@ run SCENARIO:
 wait RUN TIMEOUT="3600":
     bash scripts/wait-run.sh {{RUN}} {{TIMEOUT}}
 
+# Private-key guard for DIR (e.g. a run before committing it, valid or not): PEM text and base64
+key-guard DIR:
+    bash scripts/in-lab.sh lab/key-guard.sh {{DIR}}
+
 # Discovery: does the current lab serve the lab-supplied webhook certificates?
 discover-webhooks:
     bash scripts/in-lab.sh lab/discover-webhooks.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-webhooks

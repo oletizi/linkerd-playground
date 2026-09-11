@@ -10,6 +10,15 @@ ROOT="$(cd "$DEMO/../.." && pwd)"
 . "$DEMO/lab/lib-evidence.sh"
 # shellcheck source=/dev/null
 . "$TESTS/assert.sh"
+# capture and assert_no_keys; capture_cp_rollouts; W's _w_render_apply (LAB_DIR for its source)
+# shellcheck source=/dev/null
+. "$DEMO/lab/collect.sh"
+# shellcheck source=/dev/null
+. "$DEMO/lab/stages.sh"
+# shellcheck disable=SC2034
+LAB_DIR="$DEMO/lab"
+# shellcheck source=/dev/null
+. "$DEMO/lab/scenario-webhook.sh"
 set +e   # assertions count failures; they must not abort the suite
 
 T="$(mktemp -d)"
@@ -122,5 +131,110 @@ assert_eq "$(_w_upgrade_cmd /tmp/w-render.yaml)" "linkerd upgrade > /tmp/w-rende
   "no arguments: exactly \"linkerd upgrade\", no trailing empty argument"
 assert_eq "$(_w_upgrade_cmd /tmp/w-render.yaml --set-file x=a)" "linkerd upgrade --set-file x=a > /tmp/w-render.yaml" \
   "arguments are present and quoted"
+# An argument with a space and a comma, and an OUT with a space, each stay one word (%q).
+mkdir -p "$T/bin-args"
+cat > "$T/bin-args/linkerd" <<'EOF'
+#!/bin/sh
+for a in "$@"; do printf '[%s]\n' "$a"; done
+EOF
+chmod +x "$T/bin-args/linkerd"
+PATH="$T/bin-args:$PATH" bash -c "$(_w_upgrade_cmd "$T/out dir.txt" --set-file 'p.crtPEM=/a b/c.crt,p.keyPEM=/a b/c.key')"
+assert_eq "$(cat "$T/out dir.txt")" "$(printf '[upgrade]\n[--set-file]\n[p.crtPEM=/a b/c.crt,p.keyPEM=/a b/c.key]')" \
+  "an argument with a space and a comma survives the shell as one word"
+
+# ---- scans read bytes, not text ----
+# One invalid UTF-8 byte makes an unforced grep call the file binary and print no match.
+mkdir -p "$T/ev/e" "$T/ev/f" "$T/ev/h"
+printf '\377 data:\n  tls.key: %s\n' "$key_b64" > "$T/ev/e/nonutf8.yaml"
+assert_eq "$(LC_ALL=C.UTF-8 b64_key_hits "$T/ev/e")" "$T/ev/e/nonutf8.yaml" "a base64 key in a non-UTF-8 file is reported"
+printf '\377 -----BEGIN EC PRIVATE KEY-----\n' > "$T/ev/f/nonutf8-pem.txt"
+assert_contains "$(LC_ALL=C.UTF-8 key_scan "$T/ev/f")" "private key PEM text: $T/ev/f/nonutf8-pem.txt" "PEM key text in a non-UTF-8 file is reported"
+printf 'blob: %s\n' "$(printf '\377 -----BEGIN EC PRIVATE KEY-----\nAAAAFake\n' | base64 -w0)" > "$T/ev/h/inner.yaml"
+assert_eq "$(LC_ALL=C.UTF-8 b64_key_hits "$T/ev/h")" "$T/ev/h/inner.yaml" "a key whose decoded text is not UTF-8 is reported"
+# A NUL byte before the key: grep reading such a file directly stops printing matches.
+mkdir -p "$T/ev/n"
+printf 'a\0b\n  tls.key: %s\n' "$key_b64" > "$T/ev/n/nul.yaml"
+assert_eq "$(b64_key_hits "$T/ev/n")" "$T/ev/n/nul.yaml" "a base64 key after a NUL byte is reported"
+
+# ---- depth pin: three layers of base64 around a PEM key ----
+mkdir -p "$T/ev/g"
+mid="$(printf 'overrides: %s\n' "$outer" | base64 -w0)"
+printf 'data:\n  deep: %s\n' "$mid" > "$T/ev/g/deep.yaml"
+assert_fails "the fixture really needs depth 3" _has_key_b64 2 "$mid"
+assert_eq "$(b64_key_hits "$T/ev/g")" "$T/ev/g/deep.yaml" "a key under three layers of base64 is reported"
+assert_eq "$(grep -cF "$mid" <<< "$(redact_manifest "$T/ev/g/deep.yaml")")" 0 "a key under three layers of base64 is redacted"
+
+# ---- key_scan: the one scan behind assert_no_keys and key-guard.sh ----
+mkdir -p "$T/run-b64" "$T/run-clean"
+printf 'data:\n  tls.key: %s\n' "$key_b64" > "$T/run-b64/leak.yaml"   # base64 only: no literal key text
+printf 'data:\n  tls.crt: %s\n' "$crt_b64" > "$T/run-clean/cert.yaml"
+assert_eq "$(key_scan "$T/run-b64")" "base64-encoded private key: $T/run-b64/leak.yaml" "key_scan reports a base64-only key"
+assert_succeeds "key_scan passes a clean directory" key_scan "$T/run-clean"
+assert_fails "key_scan fails closed on a missing path" key_scan "$T/no-such-dir"
+no_keys_in() { RUN_DIR="$1" assert_no_keys; } # DIR
+assert_fails "assert_no_keys fails on a base64-only key" no_keys_in "$T/run-b64"
+assert_succeeds "assert_no_keys passes a clean run" no_keys_in "$T/run-clean"
+kg="$(bash "$DEMO/lab/key-guard.sh" "$T/run-b64" 2>/dev/null)"
+assert_eq "$?" 1 "key-guard exits non-zero on a hit"
+assert_contains "$kg" "base64-encoded private key: $T/run-b64/leak.yaml" "key-guard prints the hit"
+assert_eq "$(bash "$DEMO/lab/key-guard.sh" "$T/run-clean" 2>/dev/null)" "key-guard: clean $T/run-clean" "key-guard passes a clean directory"
+assert_fails "key-guard fails on a missing directory" bash "$DEMO/lab/key-guard.sh" "$T/no-such-dir"
+
+# ---- _w_render_apply fails closed: a redaction the scan still flags never reaches RUN_DIR ----
+mkdir -p "$T/bin-r"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\ncat "$STUB_MANIFEST"\n' > "$T/bin-r/linkerd"
+printf '#!/bin/sh\nexit 0\n' > "$T/bin-r/kubectl"
+chmod +x "$T/bin-r/linkerd" "$T/bin-r/kubectl"
+ra() { mkdir -p "$1-certs"; RUN_DIR="$1" CERTS="$1-certs" STUB_MANIFEST="$2" PATH="$T/bin-r:$PATH" _w_render_apply plain; } # RUN MANIFEST
+printf 'kind: Secret\ndata:\n  tls.key: "%s"\n' "$key_b64" > "$T/quoted.yaml"   # quoted: redaction misses it
+printf 'kind: Secret\ndata:\n  tls.key: %s\n' "$key_b64" > "$T/plain.yaml"
+assert_fails "a redacted manifest that still holds a key dies" ra "$T/ra1" "$T/quoted.yaml"
+assert_eq "$(ls "$T/ra1/recover")" plain-render.txt "only the render transcript reached RUN_DIR; nothing was applied"
+( ra "$T/ra2" "$T/plain.yaml" ) > /dev/null 2>&1
+assert_contains "$(cat "$T/ra2/recover/plain-manifest.yaml" 2>/dev/null)" "tls.key: <redacted sha256=" "a clean redaction reaches RUN_DIR"
+assert_eq "$(tail -n 1 "$T/ra2/recover/plain-apply.txt" 2>/dev/null)" "[exit 0]" "then the manifest is applied"
+
+# ---- capture_cp_rollouts: [exit N] is non-zero unless every listed rollout completed ----
+mkdir -p "$T/bin"
+cat > "$T/bin/kubectl" <<'EOF'
+#!/bin/sh
+case "$3" in
+  get) [ "$STUB_GET" = ok ] || exit 1; printf '%s' "$STUB_LIST" ;;
+  rollout) exit "$STUB_ROLLOUT" ;;
+esac
+EOF
+chmod +x "$T/bin/kubectl"
+cp_last() { # RUN GET LIST ROLLOUT: the last line of capture_cp_rollouts against the stub
+  RUN_DIR="$1" STUB_GET="$2" STUB_LIST="$3" STUB_ROLLOUT="$4" PATH="$T/bin:$PATH" capture_cp_rollouts rollout.txt
+  tail -n 1 "$1/rollout.txt"
+}
+assert_eq "$(cp_last "$T/cp1" ok deployment.apps/linkerd-identity 0)" "[exit 0]" "every listed rollout completed"
+assert_eq "$(cp_last "$T/cp2" ok '' 0)" "[exit 1]" "no control-plane Deployment listed: non-zero"
+assert_eq "$(cp_last "$T/cp3" fail '' 0)" "[exit 1]" "the Deployment listing failed: non-zero"
+assert_eq "$(cp_last "$T/cp4" ok deployment.apps/linkerd-identity 1)" "[exit 1]" "a rollout did not complete: non-zero"
+
+# ---- w_branch_classify: valid_now alone; w_fact_line ----
+facts "$T/b8" no no no no yes healthy
+assert_eq "$(w_branch_classify "$T/b8")" branch=iii "fresh, verifying, serving, but not valid now: iii"
+printf 'not a certificate\n' > "$T/junk.crt"
+: > "$T/empty.pem"
+assert_eq "$(w_fact_line proxyInjector bb "$T/junk.crt" "$T/empty.pem" 100)" \
+  "component=proxyInjector secret_sha256=unreadable supplied_sha256=bb equals_supplied=unreadable not_after_epoch=unreadable valid_now=unreadable cabundle_verifies=unreadable" \
+  "a Secret value that is not a certificate is recorded as unreadable, not fatal"
+assert_eq "$(w_fact_line policyValidator bb "$T/empty.pem" "$T/empty.pem" 100)" \
+  "component=policyValidator secret_sha256=- supplied_sha256=bb equals_supplied=no not_after_epoch=- valid_now=no cabundle_verifies=no" \
+  "no Secret certificate: dashes"
+{ w_fact_line proxyInjector bb "$T/junk.crt" "$T/empty.pem" 100; grep -v '^component=proxyInjector ' "$T/b1"; } > "$T/b9"
+assert_eq "$(w_branch_classify "$T/b9")" branch=iii "an unreadable Secret matches neither i nor ii: iii"
+{ w_fact_line proxyInjector bb "$T/junk.crt" "$T/empty.pem" 100; grep -v '^component=proxyInjector ' "$T/b2"; } > "$T/b10"
+assert_eq "$(w_branch_classify "$T/b10")" branch=iii "two supplied and one unreadable: iii"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout "$T/wk.key" -out "$T/wc.crt" \
+  -days 1 -subj /CN=w-test > /dev/null 2>&1
+printf '%s' "$(cat "$T/wc.crt")" > "$T/wca.pem"   # a caBundle without its trailing newline (Task 1's round trip)
+wsha="$(cert_facts x < "$T/wc.crt" | awk -F= '$1 == "x_sha256" { print $2 }')"
+wline="$(w_fact_line profileValidator "$wsha" "$T/wc.crt" "$T/wca.pem" "$(date -u +%s)")"
+assert_contains "$wline" " equals_supplied=yes " "the supplied certificate matches by X.509 fingerprint"
+assert_contains "$wline" " valid_now=yes cabundle_verifies=yes" "a valid certificate verifies against a caBundle without its trailing newline"
 
 finish test-scenarios

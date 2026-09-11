@@ -57,12 +57,16 @@ scenario_post_actions() { # T_mark + 60s: admission probes instead of new worklo
   mark admission-probes post-actions
 }
 
-_w_render_apply() { # LABEL [linkerd upgrade args...]: render into the VM-only cert set,
-  # record a redacted copy of the complete manifest, then apply it
-  local label="$1" m="$CERTS/recover-$1.yaml"
+_w_render_apply() { # LABEL [linkerd upgrade args...]: render into the VM-only cert set and
+  # redact there; scan the redacted copy (key_scan) and die on any hit (fails closed).
+  # Only a clean copy reaches RUN_DIR, and only then is the manifest applied.
+  local label="$1" m="$CERTS/recover-$1.yaml" r="$CERTS/recover-$1-redacted.yaml" hits
   shift
   capture "recover/$label-render.txt" bash -o pipefail -c "$(_w_upgrade_cmd "$m" "$@")"
-  redact_manifest "$m" > "$RUN_DIR/recover/$label-manifest.yaml" || die "_w_render_apply: cannot redact $m"
+  redact_manifest "$m" > "$r" || die "_w_render_apply: cannot redact $m"
+  hits="$(key_scan "$r")" \
+    || die "_w_render_apply: the redacted $label manifest still holds private key material ($hits); not recorded, not applied"
+  cp "$r" "$RUN_DIR/recover/$label-manifest.yaml"
   capture "recover/$label-apply.txt" kubectl apply -f "$m"
 }
 
@@ -99,26 +103,22 @@ _w_settle() { # LABEL: control-plane rollouts, webhook propagation, then the sta
   snap_webhooks "recover-$1"
 }
 
-_w_facts() { # LABEL SUPPLIED_DIR: recover/LABEL-facts.txt, the inputs of w_branch_classify
-  local label="$1" sup="$2" f="$RUN_DIR/recover/$1-facts.txt" tmp i comp fp sfp exp valid ver now
+_w_facts() { # LABEL SUPPLIED_DIR: recover/LABEL-facts.txt, the inputs of w_branch_classify.
+  # Cluster reads are recorded, never fatal: w_fact_line records a missing Secret
+  # certificate as "-" and one that is not a readable certificate as "unreadable".
+  local label="$1" sup="$2" f="$RUN_DIR/recover/$1-facts.txt" tmp i comp sfp now
   tmp="$(mktemp -d)"
   now="$(date -u +%s)"
   : > "$f"
   for i in "${!WEBHOOK_COMPONENTS[@]}"; do
     comp="${WEBHOOK_COMPONENTS[i]}"
-    fp=-; exp=-; valid=no; ver=no
-    sfp="$(cert_facts s < "$sup/$comp.crt" | awk -F= '$1 == "s_sha256" { print $2 }')"
-    if kubectl -n linkerd get secret "$(webhook_secret "$comp")" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
-        | base64 -d > "$tmp/$comp.crt" 2>/dev/null && [ -s "$tmp/$comp.crt" ]; then
-      fp="$(cert_facts c < "$tmp/$comp.crt" | awk -F= '$1 == "c_sha256" { print $2 }')"
-      exp="$(cert_not_after_epoch "$tmp/$comp.crt")"
-      if [ "$exp" -gt "$now" ]; then valid=yes; fi
-      if kubectl get "${WEBHOOK_CONFIGS[i]}" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null \
-          | base64 -d > "$tmp/$comp-ca.pem" 2>/dev/null \
-          && openssl verify -partial_chain -CAfile "$tmp/$comp-ca.pem" "$tmp/$comp.crt" > /dev/null 2>&1; then ver=yes; fi
-    fi
-    printf 'component=%s secret_sha256=%s supplied_sha256=%s equals_supplied=%s not_after_epoch=%s valid_now=%s cabundle_verifies=%s\n' \
-      "$comp" "$fp" "$sfp" "$(_yn "$fp" "$sfp")" "$exp" "$valid" "$ver" >> "$f"
+    sfp="$(cert_facts s < "$sup/$comp.crt" | awk -F= '$1 == "s_sha256" { print $2 }')" \
+      || die "_w_facts: cannot read the lab-supplied certificate $sup/$comp.crt"
+    kubectl -n linkerd get secret "$(webhook_secret "$comp")" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+      | base64 -d > "$tmp/$comp.crt" 2>/dev/null || true
+    kubectl get "${WEBHOOK_CONFIGS[i]}" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null \
+      | base64 -d > "$tmp/$comp-ca.pem" 2>/dev/null || true
+    w_fact_line "$comp" "$sfp" "$tmp/$comp.crt" "$tmp/$comp-ca.pem" "$now" >> "$f"
   done
   rm -rf "$tmp"
   admission_probes recovered "recover-$label"
