@@ -242,10 +242,10 @@ Source reading contradicts or sharpens several rows of the brief's triage table.
 
 | Brief says | Source says | Settled by |
 | --- | --- | --- |
-| Issuer expiry: "failure spreads gradually" | **Certificate expiry is simultaneous; observed traffic failure may not be.** Leaves are clamped to the issuer's `notAfter`, so every identity expires at `T_iss`, but established and pooled connections may outlive that boundary. | #5 (H2, H5, H6, HTTP observation) |
+| Issuer expiry: "failure spreads gradually" | **Certificate expiry is simultaneous; observed traffic failure may not be.** Leaves are clamped to the issuer's `notAfter`, so every identity expires at `T_iss`, but established and pooled connections may outlive that boundary. | #5 — see docs/articles/cert-hygiene/evidence-05-issuer-expiry.md |
 | Policy-validator: "a Fail policy turns an expired cert into a hard admission rejection" | Every Linkerd webhook defaults to `failurePolicy: Ignore`, so an expired validator cert lets unvalidated resources through **silently**. No rejection happens unless the operator changed `webhookFailurePolicy`. | Webhook slice |
 | Trust anchor expired: "peers can't validate each other" | Proxies don't check the anchor's own dates. Visible breakage waits until leaves expire, while identity refuses to sign immediately. | #6 |
-| "Exact `linkerd check` output for each failure" | `linkerd check` never inspects workload leaf certs or the tap-injector cert, and warns at a fixed 60 days | #5, webhook slice |
+| "Exact `linkerd check` output for each failure" | `linkerd check` never inspects workload leaf certs or the tap-injector cert, and warns at a fixed 60 days | #5 — see docs/articles/cert-hygiene/evidence-05-issuer-expiry.md; webhook slice |
 
 ## 9. Review dispositions
 
