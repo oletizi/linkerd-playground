@@ -73,13 +73,14 @@ snap_metrics() { # NAME: identity-related series for every lab proxy + the issue
   } > "$f"
 }
 
-tick() { # NAME: the four files every tick must have (see evaluate_validity)
+tick() { # NAME: the seven files every tick must have (see evaluate_validity)
   local name="$1"
   mark tick "$name"
   capture "checks/$name-check.txt" linkerd check --wait 20s &
   capture "checks/$name-check-proxy.txt" linkerd check --proxy --wait 20s &
   snap_metrics "$name"
   capture "pods/$name.txt" kubectl get pods -A -o wide
+  snap_credentials "$name"
   wait
 }
 
@@ -91,77 +92,8 @@ snap_pod_detail() { # NAME APP
   done
 }
 
-_decode_cert() { base64 -d < "$1" | cert_meta; } # B64_FILE: metadata of the encoded cert
-
-snap_secret() { # NAME: issuer Secret metadata and certificate facts -- never key.pem
-  local f="$RUN_DIR/secrets/$1-identity-issuer.txt" tmp
-  mkdir -p "$RUN_DIR/secrets"
-  tmp="$(mktemp)"
-  {
-    printf 'sampled_at=%s\n' "$(_utc)"
-    _record "issuer Secret metadata read" kubectl -n linkerd get secret linkerd-identity-issuer \
-      -o jsonpath='uid={.metadata.uid}{"\n"}resourceVersion={.metadata.resourceVersion}{"\n"}' || true
-    if _record "issuer Secret crt.pem read" kubectl -n linkerd get secret linkerd-identity-issuer \
-        -o jsonpath='{.data.crt\.pem}' > "$tmp"; then
-      _record "crt.pem decode and inspection" _decode_cert "$tmp" || true
-    else
-      cat "$tmp"
-    fi
-  } > "$f"
-  rm -f "$tmp"
-}
-
-snap_trust() { # NAME: trust-roots ConfigMap hash + each pod's injected-bundle annotation.
-  # A failed read is recorded as a "[... failed: exit N]" line; trust_summary refuses it.
-  local f="$RUN_DIR/trust/$1.txt" tmp
-  mkdir -p "$RUN_DIR/trust"
-  tmp="$(mktemp)"
-  {
-    if _record "trust-roots ConfigMap read" kubectl -n linkerd get cm linkerd-identity-trust-roots \
-        -o jsonpath='{.data.ca-bundle\.crt}' > "$tmp"; then
-      printf 'configmap_sha256=%s\n' "$(sha256sum < "$tmp" | cut -d' ' -f1)"
-    else
-      cat "$tmp"
-    fi
-    { _record "pod annotation listing" kubectl get pods -A \
-        -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {.metadata.annotations.linkerd\.io/trust-root-sha256}{"\n"}{end}' \
-        || true; } | awk 'NF == 1 { print $1, "-"; next } { print }'
-  } > "$f"
-  rm -f "$tmp"
-}
-
-snap_logs() { # NAME: identity logs, then every container of every lab pod. The
-  # linkerd-proxy is a native-sidecar INIT container, so both lists are walked.
-  local dir="logs/$1" pod c
-  capture "$dir/identity.txt" kubectl -n linkerd logs deploy/linkerd-identity -c identity --timestamps
-  capture "$dir/identity-proxy.txt" kubectl -n linkerd logs deploy/linkerd-identity -c linkerd-proxy --timestamps
-  for pod in $(_lab_pods); do
-    for c in $(kubectl -n "$LAB_NS" get pod "$pod" \
-        -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}' 2>/dev/null); do
-      capture "$dir/$pod-$c.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps
-      capture "$dir/$pod-$c-previous.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps --previous
-    done
-  done
-}
-
 snap_events() { # NAME
   capture "events/$1.txt" kubectl get events -A --sort-by=.lastTimestamp -o wide
-}
-
-snap_journal() { # NAME SINCE_EPOCH: API-server side of the run window
-  capture "logs/$1/k3s-journal.txt" sudo journalctl -u k3s --since "@$2" --no-pager
-}
-
-snap_probes() { # LABEL: probe output from EVERY pod of each probe -- Terminating pods
-  # included -- current and previous container, into probes/LABEL/<pod>[-previous].log.
-  # Per pod, because a restart replaces the pod that deploy/<probe> would read.
-  local label="$1" sel='app in (probe-http,probe-tcp-new,probe-tcp-stream)' pod
-  capture "probes/$label/pods.txt" kubectl -n "$LAB_NS" get pods -l "$sel" -o wide
-  for pod in $(kubectl -n "$LAB_NS" get pods -l "$sel" \
-      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
-    capture "probes/$label/$pod.log" kubectl -n "$LAB_NS" logs "$pod" -c probe
-    capture "probes/$label/$pod-previous.log" kubectl -n "$LAB_NS" logs "$pod" -c probe --previous
-  done
 }
 
 write_versions() { # SCENARIO CERT_SET: runs once, before baseline; dies naming any
@@ -219,3 +151,10 @@ assert_no_keys() {
   hits="$(grep -rl 'PRIVATE KEY' "$RUN_DIR" 2>/dev/null || true)"
   [ -z "$hits" ] || die "private key material found in evidence: $hits"
 }
+
+# The rest of the collector, split by concern to keep each file short.
+_COLLECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$_COLLECT_DIR/collect-state.sh"
+# shellcheck source=/dev/null
+. "$_COLLECT_DIR/collect-logs.sh"

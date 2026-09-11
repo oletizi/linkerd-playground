@@ -83,7 +83,7 @@ _write_result() { # FILE CMD...: "result=ok|fail", then the command's output
 
 run_scenario() { # SCENARIO PROFILE RUN_DIR
   SCENARIO="$1"
-  local profile="$2" start sampled max
+  local profile="$2" start sampled max comp
   RUN_DIR="$3"
   load_profile "$profile"
   [ -f "$RUN_DIR/git-state.txt" ] || die "$RUN_DIR/git-state.txt missing: launch scenarios with scripts/run.sh"
@@ -97,6 +97,10 @@ run_scenario() { # SCENARIO PROFILE RUN_DIR
   bash "$LAB_DIR/reset.sh" "$profile" "$CERT_SET" > "$RUN_DIR/install.log" 2>&1 || die "reset failed; see install.log"
   write_cert trust-anchor "$CERTS/ca.crt"
   write_cert issuer-initial "$CERTS/issuer.crt"
+  if [ -n "$WEBHOOK_CERT_LIFETIMES" ]; then
+    write_cert webhook-ca "$CERTS/webhooks/ca.crt"
+    for comp in "${WEBHOOK_COMPONENTS[@]}"; do write_cert "webhook-$comp" "$CERTS/webhooks/$comp.crt"; done
+  fi
   bash "$LAB_DIR/deploy.sh" baseline >> "$RUN_DIR/install.log" 2>&1 || die "baseline deploy failed; see install.log"
   write_versions "$SCENARIO" "$CERT_SET"
   T_MARK="$(scenario_mark_epoch)"
