@@ -1,0 +1,16 @@
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: ${NAME}
+  namespace: ${LAB_NS}
+spec:
+  routes:
+    - name: inert
+      condition:
+        method: GET
+        pathRegex: /inert
+      responseClasses:
+        - condition:
+            status:
+              min: 500
+          isFailure: true

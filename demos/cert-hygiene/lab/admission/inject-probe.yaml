@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${NAME}
+  namespace: ${LAB_NS}
+  labels:
+    app: inject-probe
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+    - name: idle
+      image: ${IMAGE_BUSYBOX}
+      command: ["sh", "-c", "sleep 3600"]

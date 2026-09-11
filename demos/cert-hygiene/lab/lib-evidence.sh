@@ -97,3 +97,5 @@ _EVIDENCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_EVIDENCE_DIR/lib-evidence-rules.sh"
 # shellcheck source=/dev/null
 . "$_EVIDENCE_DIR/lib-evidence-control.sh"
+# shellcheck source=/dev/null
+. "$_EVIDENCE_DIR/lib-evidence-scenarios.sh"
