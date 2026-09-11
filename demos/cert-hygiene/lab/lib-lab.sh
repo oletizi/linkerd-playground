@@ -14,6 +14,28 @@ load_config "$DEMO"
 . "$ROOT/lib/linkerd.sh"
 # shellcheck source=/dev/null
 . "$LAB_DIR/lib-evidence.sh"
+# shellcheck source=/dev/null
+. "$LAB_DIR/lib-webhook.sh"
+
+# load_profile PROFILE: export the credential profile lab/profiles/PROFILE.env
+# (design section 1.1) and PROFILE itself. Dies on an unknown profile or a missing key.
+load_profile() {
+  local p="${1:?load_profile: PROFILE required}" f v
+  f="$LAB_DIR/profiles/$p.env"
+  [ -f "$f" ] || die "no credential profile '$p' (expected $f)"
+  set -a
+  # shellcheck source=/dev/null
+  . "$f"
+  set +a
+  for v in ANCHOR_LIFETIME ISSUER_LIFETIME LEAF_LIFETIME; do
+    [ -n "${!v:-}" ] || die "$f does not set $v"
+  done
+  for v in WEBHOOK_CERT_LIFETIMES EXTRA_INSTALL_FLAGS; do
+    grep -q "^$v=" "$f" || die "$f does not define $v (define it empty when unused)"
+  done
+  PROFILE="$p"
+  export PROFILE
+}
 
 # Lab keys live here, inside the VM, never under the repo (which is a Mac path).
 # Used by every script that sources this file (reset.sh and later tasks), not by this

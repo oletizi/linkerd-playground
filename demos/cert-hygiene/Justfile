@@ -16,10 +16,10 @@ sh:
 test:
     bash scripts/in-lab.sh lab/tests/run.sh
 
-# Fresh k3s + Linkerd with lab credentials, for manual poking (MODE: short | long)
-reset MODE="short":
-    bash scripts/in-lab.sh --detach .lab-logs/reset.log lab/reset.sh {{MODE}} manual-$(date -u +%Y%m%dT%H%M%SZ)
-    bash scripts/wait-log.sh .lab-logs/reset.log 1500
+# Fresh k3s + Linkerd with the credential profile PROFILE (lab/profiles/PROFILE.env)
+reset PROFILE="issuer-short":
+    bash scripts/in-lab.sh --detach .lab-logs/reset.log lab/reset.sh {{PROFILE}} manual-$(date -u +%Y%m%dT%H%M%SZ)
+    bash scripts/wait-log.sh .lab-logs/reset.log 540
 
 # Deploy lab workloads into the current lab cluster (WHAT: baseline | probe-new)
 deploy WHAT="baseline":
@@ -40,3 +40,7 @@ run SCENARIO:
 # Wait for a run to finish; prints its timeline tail and validity verdict
 wait RUN TIMEOUT="3600":
     bash scripts/wait-run.sh {{RUN}} {{TIMEOUT}}
+
+# Discovery: does the current lab serve the lab-supplied webhook certificates?
+discover-webhooks:
+    bash scripts/in-lab.sh lab/discover-webhooks.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-webhooks

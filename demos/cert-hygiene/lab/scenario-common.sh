@@ -81,10 +81,11 @@ _write_result() { # FILE CMD...: "result=ok|fail", then the command's output
   [ "$r" = ok ]
 }
 
-run_scenario() { # SCENARIO MODE RUN_DIR
+run_scenario() { # SCENARIO PROFILE RUN_DIR
   SCENARIO="$1"
-  local mode="$2" start sampled max
+  local profile="$2" start sampled max
   RUN_DIR="$3"
+  load_profile "$profile"
   [ -f "$RUN_DIR/git-state.txt" ] || die "$RUN_DIR/git-state.txt missing: launch scenarios with scripts/run.sh"
   [ ! -e "$RUN_DIR/timeline.log" ] || die "$RUN_DIR already has a timeline; runs are never resumed"
   trap '_on_exit $?' EXIT
@@ -92,8 +93,8 @@ run_scenario() { # SCENARIO MODE RUN_DIR
   CERT_SET="$SCENARIO-$(basename "$RUN_DIR")"
   CERTS="$CERTS_ROOT/$CERT_SET"
 
-  mark reset "mode=$mode cert_set=$CERT_SET"
-  bash "$LAB_DIR/reset.sh" "$mode" "$CERT_SET" > "$RUN_DIR/install.log" 2>&1 || die "reset failed; see install.log"
+  mark reset "profile=$profile cert_set=$CERT_SET"
+  bash "$LAB_DIR/reset.sh" "$profile" "$CERT_SET" > "$RUN_DIR/install.log" 2>&1 || die "reset failed; see install.log"
   write_cert trust-anchor "$CERTS/ca.crt"
   write_cert issuer-initial "$CERTS/issuer.crt"
   bash "$LAB_DIR/deploy.sh" baseline >> "$RUN_DIR/install.log" 2>&1 || die "baseline deploy failed; see install.log"

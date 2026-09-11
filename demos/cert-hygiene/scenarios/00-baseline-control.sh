@@ -7,7 +7,7 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lab" && pwd)/scenario-common.sh"
 
 scenario_mark_epoch() {
-  echo $(( $(cert_not_before_epoch "$CERTS/issuer.crt") + $(duration_to_seconds "$ISSUER_LIFETIME") ))
+  echo $(( $(cert_not_before_epoch "$CERTS/issuer.crt") + $(duration_to_seconds "$CONTROL_T_MARK_AFTER") ))
 }
 scenario_recover() {
   mark recover-none "control run: nothing expired, nothing to recover"
