@@ -16,7 +16,7 @@
   - The evidence library (`lab/lib-evidence*.sh`, pure, unit-tested) gains a credential-plan walk and one validity rule table keyed by scenario name.
   - Restart stages are gated (`lab/gates.sh`) and composed into choreographies (`lab/stages.sh`).
   - `run_scenario` gains three hooks, and a second entry point, `run_steps_scenario`, serves the step-driven scenarios (K, S-staged).
-  - Before the freeze, every new scenario runs once as a discovery run (Task 19).
+  - Before the freeze, every new scenario, and R, runs once as a discovery run (Task 19).
 - **Evidence (Phase 2).** No harness changes. Control first, then every scenario at the same harness tree, each run committed the moment it finishes.
 - **Write-ups (Phase 3).** Hypotheses are judged only in `docs/articles/cert-hygiene/notes/`. Reader-facing pages change last, and only where design § 13 is met.
 
@@ -64,7 +64,7 @@ These readings of the design are settled; none needs a further decision.
   - Linkerd for cert-hygiene: `LINKERD_EDGE_VERSION=edge-26.9.1`. Gateway API CRDs `v1.5.1`, applied with `kubectl apply --server-side`.
   - Lab machine: OrbStack, `ubuntu:24.04`, named `cert-hygiene-lab`, native architecture. Never pass `-a amd64`.
   - **Never alter any clock.** Expiry comes only from short-lived certificates.
-  - **Private keys never enter the repo tree.** Lab keys live in the VM under `$HOME/cert-hygiene-certs/`, and evidence holds certificates only. `assert_no_keys` must pass on every run: it searches for PEM key text and decodes base64 tokens (Task 12). Rendered manifests are redacted before they are written to evidence (Task 12).
+  - **Private keys never enter the repo tree.** Lab keys live in the VM under `$HOME/cert-hygiene-certs/`, and evidence holds certificates only. `assert_no_keys` must pass on every run. It searches for PEM key text, and it decodes every base64 run of 40 or more characters, including base64 nested inside base64 (the `linkerd-config-overrides` shape), looking for a private key (Task 12, unit-tested). Rendered manifests are redacted by the same nested test before they are written to evidence (Task 12).
   - Every bash script starts with `set -euo pipefail` and sources `lib/common.sh`, directly or through `lab/lib-lab.sh`. Sourced libraries (`lib-*.sh`, `collect*.sh`, `gates.sh`, `stages.sh`, `admission.sh`, `scenario-*.sh`) are sourced, never executed.
   - Keep every code file under 300 lines. This plan splits `lib-evidence.sh` (Tasks 2–3), `collect.sh` (Task 4) and `scenario-common.sh` (Tasks 7–9) for that reason.
   - No fallbacks and no mock data outside tests. Fail loudly with a message naming what is missing. A collector read that fails during a run is *recorded*, never fatal: after an expiry, failing commands are the observation.
@@ -131,7 +131,7 @@ These readings of the design are settled; none needs a further decision.
 | `demos/cert-hygiene/lab/scenario-webhook.sh` | W's shared timeline and recovery branches | 12 |
 | `demos/cert-hygiene/lab/workloads/identity-canary.yaml` | A's canary for "is identity issuing new-anchor leaves" | 15 |
 | `demos/cert-hygiene/scripts/probe-lines.sh`, `pod-series.sh`, `gate-table.sh`, `docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md` | Read-only evidence helpers and write-up instructions for the per-pod layout | 18 |
-| `demos/cert-hygiene/runs/_discovery/` | Discovery records (never evidence): webhooks, second client, gates, admission, timestamps, one control and seven scenario discovery runs | 1, 6, 7, 9, 11, 18, 19 |
+| `demos/cert-hygiene/runs/_discovery/` | Discovery records (never evidence): webhooks, second client, gates, admission, timestamps, one control discovery run and eight scenario discovery runs (the six new scenarios, with W's two files, and R) | 1, 6, 7, 9, 11, 18, 19 |
 | `demos/cert-hygiene/runs/<scenario>/<UTC>/` | Committed raw evidence | 20–26 |
 | `docs/articles/cert-hygiene/notes/lab-evidence-*.md` | Per-scenario judgement against design § 13 | 27–32 |
 | `docs/articles/cert-hygiene/findings.md`, `sources.md`, `README.md` | Reader-facing updates | 33 |
@@ -160,7 +160,7 @@ These readings of the design are settled; none needs a further decision.
 | 16 | Scenario S-staged | [task-16-rotation-staged.md](task-16-rotation-staged.md) | The guide's 11 steps with gates |
 | 17 | Scenario S-hard | [task-17-rotation-hard.md](task-17-rotation-hard.md) | One-step swap; per-endpoint stage-1 condition; matrix stages |
 | 18 | Evidence-reading helpers and write-up instructions | [task-18-reading-guide.md](task-18-reading-guide.md) | Per-pod probe history tools; reading guide; timestamp-zone discovery |
-| 19 | Discovery runs of the new scenarios | [task-19-discovery-runs.md](task-19-discovery-runs.md) | Each new scenario run once, short windows, Phase 2 sanity checks applied, harness fixed before the freeze |
+| 19 | Discovery runs of the new scenarios, and of R | [task-19-discovery-runs.md](task-19-discovery-runs.md) | Each new scenario and R run once (eight runs), short windows, Phase 2 sanity checks applied, harness fixed before the freeze |
 
 ### Phase 2 — evidence (no harness changes)
 

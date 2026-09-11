@@ -88,7 +88,7 @@ Under "Start here" item 3 of `docs/articles/cert-hygiene/README.md`, add:
    - [notes/lab-evidence-anchor-rotation.md](notes/lab-evidence-anchor-rotation.md) — rotating a trust anchor by Linkerd's staged procedure, and replacing it in one step.
 ```
 
-In the status bullet, set the "Written up so far" sentence to: `Written up so far: every experiment of this round; carrying them into the findings is next.`
+In the status bullet, replace both sentences that follow "every experiment has been run." (the "Written up so far: …" sentence, and "The other write-ups are in progress; until each is done, its results are not findings.") with one sentence: `Every write-up is done; carrying them into the findings is next.`
 
 ```bash
 git add docs/articles/cert-hygiene/notes/lab-evidence-anchor-rotation.md docs/articles/cert-hygiene/README.md
