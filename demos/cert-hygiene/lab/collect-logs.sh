@@ -3,18 +3,29 @@
 # the k3s journal (supplementary evidence only, design section 1.4), and per-pod probe
 # history. Sourced by lab/collect.sh; do not execute. Failed commands are recorded.
 
-snap_logs() { # NAME: identity logs, then every container of every lab pod. The
-  # linkerd-proxy is a native-sidecar INIT container, so both lists are walked.
-  local dir="logs/$1" pod c
+snap_logs() { # NAME: identity logs, then every container of every lab pod listed in
+  # logs/NAME/pods.txt. The linkerd-proxy is a native-sidecar INIT container, so both
+  # container lists are walked; pods.txt makes the proxy-log rule non-vacuous.
+  local dir="logs/$1" pod c tmp line containers
+  mkdir -p "$RUN_DIR/$dir"
   capture "$dir/identity.txt" kubectl -n linkerd logs deploy/linkerd-identity -c identity --timestamps
   capture "$dir/identity-proxy.txt" kubectl -n linkerd logs deploy/linkerd-identity -c linkerd-proxy --timestamps
-  for pod in $(_lab_pods); do
-    for c in $(kubectl -n "$LAB_NS" get pod "$pod" \
-        -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}' 2>/dev/null); do
+  tmp="$(mktemp)"
+  if _record "lab pod listing" kubectl -n "$LAB_NS" get pods -o json > "$tmp"; then
+    jq -r '.items[] | ([.spec.initContainers[]?.name] + [.spec.containers[].name]) as $c
+      | "pod=\(.metadata.name) proxy=\(if ($c | index("linkerd-proxy")) then "yes" else "no" end) containers=\($c | join(","))"' \
+      "$tmp" > "$RUN_DIR/$dir/pods.txt"
+  else
+    cp "$tmp" "$RUN_DIR/$dir/pods.txt"
+  fi
+  rm -f "$tmp"
+  while read -r line; do
+    read -r pod containers < <(_pods_txt_parse "$line")
+    for c in ${containers//,/ }; do
       capture "$dir/$pod-$c.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps
       capture "$dir/$pod-$c-previous.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps --previous
     done
-  done
+  done < <(grep '^pod=' "$RUN_DIR/$dir/pods.txt" || true)
 }
 
 snap_journal() { # NAME SINCE_EPOCH: API-server side of the run window

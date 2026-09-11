@@ -109,7 +109,6 @@ run_scenario() { # SCENARIO PROFILE RUN_DIR
   wait_probes_ok 180 || die "probes did not all report ok within 180s of deploy"
   tick baseline
   snap_secret baseline
-  snap_trust baseline
   snap_pod_detail baseline restart-target
   sampled="$(awk -F= '/^sampled_at_epoch=/ { print $2 }' "$RUN_DIR/metrics/baseline.txt")"
   max=$(( $(duration_to_seconds "$LEAF_LIFETIME") + 25 ))   # + Linkerd's 20s clock-skew allowance + 5s slack
@@ -140,7 +139,6 @@ run_scenario() { # SCENARIO PROFILE RUN_DIR
 
   tick verify
   snap_secret verify
-  snap_trust verify
   snap_pod_detail verify probe-new
   snap_pod_detail verify restart-target
   capture pods/verify-rollout-restart-target.txt kubectl -n "$LAB_NS" rollout status deploy/restart-target --timeout=120s

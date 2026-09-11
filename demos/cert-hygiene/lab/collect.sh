@@ -4,6 +4,10 @@
 # fatal: after an expiry, failing commands are the observation. Nothing here ever
 # reads a private key; assert_no_keys proves it.
 
+# Proxy series recorded on every tick: identity (both prefixes, Ruling P1a) and the
+# connection counters and gauges (design section 1.4).
+PROXY_METRIC_FILTER='^(identity_|control_identity_|tcp_open_total|tcp_close_total|tcp_open_connections|outbound_tcp_route_open_total|outbound_tcp_route_close_total)'
+
 _utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 mark() { # PHASE [detail...]
@@ -35,7 +39,11 @@ _record() { # WHAT CMD...: CMD's stdout, byte for byte; if CMD fails, instead on
   return "$rc"
 }
 
-_lab_pods() { kubectl -n "$LAB_NS" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null; }
+_lab_pod_mesh() { # "<pod> yes|no" per lab pod: does it have a linkerd-proxy container?
+  kubectl -n "$LAB_NS" get pods -o json 2>/dev/null | jq -r '.items[]
+    | "\(.metadata.name) \(if ([.spec.initContainers[]?.name, .spec.containers[].name] | index("linkerd-proxy")) then "yes" else "no" end)"' \
+    || true
+}
 _identity_pod() {
   kubectl -n linkerd get pod -l linkerd.io/control-plane-component=identity \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
@@ -56,14 +64,18 @@ _metrics_section() { # NS POD PORT FILTER-REGEX: up to 3 attempts, 2s apart (Rul
   done
 }
 
-snap_metrics() { # NAME: identity-related series for every lab proxy + the issuer TTL
-  local f="$RUN_DIR/metrics/$1.txt" pod idpod
+snap_metrics() { # NAME: identity and connection series for every lab proxy + the issuer TTL
+  local f="$RUN_DIR/metrics/$1.txt" pod meshed idpod
   mkdir -p "$RUN_DIR/metrics"
   {
     printf 'sampled_at_epoch=%s\n' "$(date -u +%s)"
-    # Ruling P1a: match both identity_* and control_identity_* -- the discovered
-    # series all carry the control_identity_ prefix and must not be dropped.
-    for pod in $(_lab_pods); do _metrics_section "$LAB_NS" "$pod" 4191 '^(identity_|control_identity_)'; done
+    while read -r pod meshed; do
+      if [ "$meshed" = yes ]; then
+        _metrics_section "$LAB_NS" "$pod" 4191 "$PROXY_METRIC_FILTER"
+      else
+        printf '== %s/%s :4191\n[no linkerd-proxy container: not scraped]\n' "$LAB_NS" "$pod"
+      fi
+    done < <(_lab_pod_mesh)
     idpod="$(_identity_pod)"
     if [ -n "$idpod" ]; then
       _metrics_section linkerd "$idpod" 9990 "^${ISSUER_TTL_METRIC}"
@@ -81,6 +93,9 @@ tick() { # NAME: the seven files every tick must have (see evaluate_validity)
   snap_metrics "$name"
   capture "pods/$name.txt" kubectl get pods -A -o wide
   snap_credentials "$name"
+  snap_trust "$name"
+  snap_webhooks "$name"
+  snap_controlplane "$name"
   wait
 }
 
