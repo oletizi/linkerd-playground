@@ -103,4 +103,4 @@ scenario_recover() {
   mark recovery "not recovered after stage-2 restarts"
 }
 
-run_scenario 05-issuer-expiry short "${1:?usage: 05-issuer-expiry.sh <run-dir>}"
+run_scenario 05-issuer-expiry issuer-short "${1:?usage: 05-issuer-expiry.sh <run-dir>}"
