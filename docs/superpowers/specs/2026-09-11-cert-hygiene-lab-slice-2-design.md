@@ -1,6 +1,6 @@
 # Cert-Hygiene Lab, Slice 2 — Design
 
-**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. **Approved.** The implementation plan is being written.
+**Status:** Revised after two reviews: the [design review](../reviews/2026-09-11-cert-hygiene-lab-slice-2-design-review.md), and the [combined implementation review](../reviews/2026-09-11-cert-hygiene-lab-combined-implementation-review.md) with its companion [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md). Dispositions are in § 12; acceptance conditions in § 13. **Approved.** Implementation plan: [`docs/superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/`](../plans/2026-09-11-cert-hygiene-lab-slice-2/README.md).
 
 **Builds on:** [slice 1 design](2026-09-10-cert-hygiene-demo-lab-design.md). Its substrate, versions, evidence rules, and validity model all carry over unchanged unless this document says otherwise. This is an internal design document; it uses the lab's shorthand, which the reader-facing article pages avoid.
 
