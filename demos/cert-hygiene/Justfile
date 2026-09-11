@@ -20,3 +20,11 @@ test:
 reset MODE="short":
     bash scripts/in-lab.sh --detach .lab-logs/reset.log lab/reset.sh {{MODE}} manual-$(date -u +%Y%m%dT%H%M%SZ)
     bash scripts/wait-log.sh .lab-logs/reset.log 1500
+
+# Deploy lab workloads into the current lab cluster (WHAT: baseline | probe-new)
+deploy WHAT="baseline":
+    bash scripts/in-lab.sh lab/deploy.sh {{WHAT}}
+
+# Record raw data answering the design's open lab questions (spec section 7)
+discover:
+    bash scripts/in-lab.sh lab/discover.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)

@@ -231,9 +231,9 @@ Also:
 
 | Question | Blocks | Resolved by |
 | --- | --- | --- |
-| Opaque-port connection-per-connection behavior | § 2 probe design | First baseline run |
-| Exported proxy identity metric names | § 2 leaf observation | First baseline run |
-| OrbStack home mount inside machines | § 1.3 copy/no-copy | First `lab-up` |
+| Opaque-port connection-per-connection behavior | § 2 probe design | Resolved: each new application TCP connection to the opaque port produces its own outbound proxy-to-proxy TLS connection (`tcp_open_total` delta == attempt count, 15 == 15), see demos/cert-hygiene/runs/_discovery/20260911T004528Z/FINDINGS.md |
+| Exported proxy identity metric names | § 2 leaf observation | Resolved: leaf expiry is `control_identity_cert_expiration_timestamp_seconds`, refresh count `control_identity_cert_refreshes_total`, refresh time `control_identity_cert_refresh_timestamp_seconds`, see demos/cert-hygiene/runs/_discovery/20260911T004528Z/FINDINGS.md |
+| OrbStack home mount inside machines | § 1.3 copy/no-copy | Resolved: mounted at the same path (Task 1 lab-up check) |
 | Exact recovery commands in the current "Replacing expired certificates" doc, and whether they touch the anchor | § 4.3 recover phase and its invariant | Read the doc when implementing the phase |
 
 ## 8. Impact on the article brief
