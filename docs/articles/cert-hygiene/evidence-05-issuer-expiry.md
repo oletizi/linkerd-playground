@@ -277,8 +277,8 @@ The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/2026
 - **Issuer expiry: "failure spreads gradually"** (spec § 8; settled by #5).
   - Credential expiry was simultaneous: every leaf in the cluster, control plane included, expired at T_mark (H2).
   - Traffic did not fail gradually. It split by connection type: new mTLS connections failed within 2 s (H5), while an established TCP session and the HTTP probe kept working for the 574 s recorded (H6, HTTP).
-  - Pods created or rolled after expiry never became Ready, and a one-replica rollout stalled with the old pod still serving (H7a, H7b).
-  - Replacing the issuer reloaded identity without a restart. But proxies whose leaves had already expired did not re-certify in the 605 s observed, and recovery needed a restart of every lab Deployment (H8; that run used edge-26.9.1 with a 5m leaf).
+  - Pods created or rolled after expiry never became Ready before the issuer was replaced, and a one-replica rollout stalled with the old pod still serving (H7a, H7b).
+  - Replacing the issuer reloaded identity without a restart. But proxies whose leaves had already expired did not re-certify in the 605 s observed, and recovery came only after a restart of every lab Deployment (H8; that run used edge-26.9.1 with a 5m leaf).
   - **Still resting on source reading or inference alone:**
     - why HTTP survived (connection reuse);
     - how long established or pooled connections survive past 574 s;
@@ -286,7 +286,10 @@ The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/2026
     - why they did not re-certify;
     - everything at the default 24h leaf lifetime.
 - **"Exact `linkerd check` output for each failure"** (the #5 part).
-  - `linkerd check` showed `‼ issuer cert is valid for at least 60 days` from the first tick for a 15-minute issuer, so the warning cannot tell 15 minutes from 59 days.
+  - `linkerd check` showed `‼ issuer cert is valid for at least 60 days` from the first tick for a 15-minute issuer. Its detail line gave the exact expiry (`issuer certificate will expire on 2026-09-11T02:30:54Z`, `checks/baseline-check.txt`). The headline severity stayed `‼` from the first tick until expiry, with no escalation as expiry approached.
   - It went `×` on `issuer cert is within its validity period` by T+10 and stayed there until the issuer was replaced.
   - It then passed (`√`) at every tick of the recover phase, including `data plane proxies certificate match CA` under `--proxy`, while four lab proxies were still running on expired leaves. No check line at any tick mentioned workload leaf certificates.
-  - **Still resting on source reading alone:** that the 60-day threshold is fixed and cannot be configured, and that `linkerd check` never inspects leaf certificates in general. This run shows only that it did not here.
+  - **Still resting on source reading alone:**
+    - that the 60-day threshold is fixed and cannot be configured;
+    - that an issuer with 59 days left would get the same `‼` headline as this 15-minute issuer, so the headline alone cannot tell the two apart (the 59-day case was not run);
+    - that `linkerd check` never inspects leaf certificates in general. This run shows only that it did not here.
