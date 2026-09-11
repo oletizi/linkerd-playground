@@ -33,7 +33,7 @@ _a_canary_state() { # one line "state=<proven|no-proxy|waiting> pod=... proxy=..
   refresh="$(_leaf_state "$pod" | awk '{ print $1 }')"
   if [ "$proxy" = no ]; then
     state=no-proxy
-  elif [ "$ready" = True ] && [ "$trust" = "$(_trust_now)" ] \
+  elif [ "$ready" = True ] && [ "$(_trust_yn "$trust" "$(_trust_now)")" = yes ] \
       && awk -v r="$refresh" -v s="$start" 'BEGIN { exit !(r != "-" && r + 0 > s + 0) }'; then
     state=proven
   fi

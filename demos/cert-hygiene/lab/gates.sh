@@ -28,6 +28,11 @@ _trust_now() { # the trust-roots ConfigMap hash, as pods' trust-root-sha256 anno
   rm -f "$tmp"
 }
 
+_trust_yn() { # WANT GOT: yes when WANT is a real hash (not "-") and equals GOT; two failed
+  # reads (WANT and GOT both "-") must never compare equal and count as met
+  if [ "$1" != - ] && [ "$1" = "$2" ]; then echo yes; else echo no; fi
+}
+
 _deploy_pods() { # DEPLOY: "name uid start_epoch deleting ready trust app_ready" per pod;
   # nothing when the pod list is unreadable
   local js
@@ -70,7 +75,7 @@ _serving() { # DEPLOY POD: yes|no when a Service named DEPLOY exists, n/a otherw
 }
 
 _gate_check() { # STAGE DEPLOY TRUST: one check line; returns 0 when all five conditions hold
-  local stage="$1" d="$2" trust="$3" before now name uid start del ready ptrust app
+  local stage="$1" d="$2" trust="$3" before now name uid start del ready ptrust app trust_yn
   local new=- nstart=0 nready=False ntrust=- napp=no old=no serving=n/a refresh=- expiry=- unmet=() leaf=no
   before="$(awk -v d="$d" '$1 == "before" && $2 == d { print $4 }' "$(_gate_file "$stage")")"
   now="$(date -u +%s)"
@@ -85,14 +90,17 @@ _gate_check() { # STAGE DEPLOY TRUST: one check line; returns 0 when all five co
     read -r refresh expiry _ _ < <(_leaf_state "$new")
     if awk -v r="$refresh" -v e="$expiry" -v s="$nstart" -v n="$now" \
         'BEGIN { exit !(r != "-" && e != "-" && r + 0 > s + 0 && e + 0 > n + 0) }'; then leaf=yes; fi
+  else
+    serving=unknown # no new pod yet: serving cannot be checked, so it is never met
   fi
-  [ "$serving" != no ] || unmet+=(serving)
-  [ "$ntrust" = "$trust" ] || unmet+=(trust)
+  case "$serving" in yes | n/a) ;; *) unmet+=(serving) ;; esac
+  trust_yn="$(_trust_yn "$trust" "$ntrust")"
+  [ "$trust_yn" = yes ] || unmet+=(trust)
   [ "$leaf" = yes ] || unmet+=(leaf)
   [ "$napp" = yes ] || unmet+=(app-ready)
   printf 'check %s %s pod=%s ready=%s old_gone=%s serving=%s trust=%s leaf=%s app_ready=%s refresh=%s expiry=%s unmet=%s\n' \
     "$(_utc)" "$d" "$new" "$(_yn "$nready" True)" "$(_yn "$old" no)" \
-    "$serving" "$(_yn "$ntrust" "$trust")" "$leaf" "$napp" "$refresh" "$expiry" "$(_csv_or_dash "${unmet[@]}")"
+    "$serving" "$trust_yn" "$leaf" "$napp" "$refresh" "$expiry" "$(_csv_or_dash "${unmet[@]}")"
   [ ${#unmet[@]} -eq 0 ]
 }
 
