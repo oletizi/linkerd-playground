@@ -37,10 +37,15 @@ require_pinned_images() {
 # install manifest without lab certificates (the CLI then generates throwaway ones)
 # purely to read its image list -- nothing is applied.
 prepull_linkerd_images() {
-  local img
-  for img in $(linkerd install \
+  local manifest images img
+  # set -euo pipefail does not catch a failure inside a command substitution used as
+  # a for loop's word-list, so capture and check the manifest explicitly first.
+  manifest="$(linkerd install)" || die "could not render the Linkerd install manifest to list its images"
+  images="$(printf '%s\n' "$manifest" \
       | awk '{ for (i = 1; i < NF; i++) if ($i == "image:") print $(i + 1) }' \
-      | tr -d '"' | sort -u); do
+      | tr -d '"' | sort -u)"
+  [ -n "$images" ] || die "no images found in the Linkerd install manifest"
+  for img in $images; do
     log "pulling $img"
     sudo k3s crictl pull "$img" >/dev/null
   done
