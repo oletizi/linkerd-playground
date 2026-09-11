@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Runs INSIDE the lab VM. Renders and applies the lab workloads.
-# Usage: deploy.sh <baseline|probe-new>
+# Usage: deploy.sh <baseline|probe-new|identity-canary>
 #   baseline:  namespace, probe-script ConfigMap, server, the four probes and
 #              restart-target; waits for every rollout.
 #   probe-new: the workload first created after T_iss. Applied WITHOUT waiting: after
 #              issuer expiry it is expected never to become Ready.
+#   identity-canary: A's canary, created after recovery's apply; applied WITHOUT waiting.
 set -euo pipefail
 # shellcheck source=/dev/null
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-lab.sh"
-what="${1:?usage: deploy.sh <baseline|probe-new>}"
+what="${1:?usage: deploy.sh <baseline|probe-new|identity-canary>}"
 require_pinned_images
 export LAB_NS IMAGE_CURL IMAGE_SOCAT IMAGE_BUSYBOX PROBE_INTERVAL_S
 
@@ -30,5 +31,8 @@ case "$what" in
   probe-new)
     render probe-new | kubectl apply -f -
     ;;
-  *) die "usage: deploy.sh <baseline|probe-new>" ;;
+  identity-canary)
+    render identity-canary | kubectl apply -f -
+    ;;
+  *) die "usage: deploy.sh <baseline|probe-new|identity-canary>" ;;
 esac
