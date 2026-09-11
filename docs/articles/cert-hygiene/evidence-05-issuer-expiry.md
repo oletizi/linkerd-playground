@@ -6,13 +6,15 @@
 - **Lifetimes:** anchor 720h (`config_ANCHOR_LIFETIME=720h`), issuer 15m (`config_ISSUER_LIFETIME=15m`), leaf 5m (`identity_args` has `-identity-issuance-lifetime=5m0s` and `-identity-clock-skew-allowance=20s`). The replacement issuer was 8760h (`config_REPLACEMENT_ISSUER_LIFETIME=8760h`). The control used an 87600h anchor and an 8760h issuer.
 - **T_mark (issuer notAfter):** 2026-09-11T02:30:54Z. `timeline.log` has `t_mark epoch=1789093854 utc=2026-09-11T02:30:54Z`, and `certs/issuer-initial.txt` has `Not After : Sep 11 02:30:54 2026 UTC`.
 
-Paths are relative to the run directory unless they start with `demos/`. Times are UTC. `T+N` means N seconds after T_mark. Kubelet log prefixes are UTC−7, so `19:30:57` is 02:30:57Z. The leaf-expiry gauge is `control_identity_cert_expiration_timestamp_seconds` (`config_LEAF_EXPIRY_METRIC` in `versions.txt`).
+**Evidence gaps and pending re-run.** This run captured no workload `linkerd-proxy` logs: on edge-26.9.1 the proxy is a native-sidecar init container, and the collector at this run's harness tree walked only `.spec.containers`. It also captured no probe line between T+574 and T+1211. Both gaps were fixed in the harness afterwards. Until a re-run at the fixed harness, these stay open: H3's mechanism, H4 for workload proxies, which side rejected the handshakes in H5, and why H8's pre-existing proxies never re-certified. The `evidence_valid=yes` verdicts of this run and its control were computed by the harness at tree `e1d716be…`; validity requirements added to the harness later apply to future runs only.
+
+Paths are relative to the run directory unless they start with `demos/`. Times are UTC. `T+N` means N seconds after T_mark. The `--timestamps` prefixes in `logs/` are container-runtime timestamps in the VM's local time (−07:00), so `19:30:57` is 02:30:57Z. The leaf-expiry gauge is `control_identity_cert_expiration_timestamp_seconds` (`config_LEAF_EXPIRY_METRIC` in `versions.txt`).
 
 This is one run, on one Linkerd version, with these lifetimes. It shows what happened here, not what always happens. Anything marked **Source-derived** comes from [linkerd-source-notes.md](linkerd-source-notes.md) or the spec's § 4.2; it was not observed in this run.
 
 ## Where the evidence is, and what is missing
 
-- **Probe history.** In this run, `probes/<probe>.log` holds only the pods created by the stage-2 restarts; the first line is `2026-09-11T02:51:08Z` (T+1214). The collector writes those files at the end with `kubectl logs deploy/<probe>` (`demos/cert-hygiene/lab/collect.sh`, line 129). By then stage 2 had replaced every probe pod. The original probe pods' history runs from start-up to T+574 and is in `logs/pre-recover/<pod>-probe.txt`, so H5, H6 and the HTTP observation are judged from there. No probe line covers T+574 to T+1211, when those pods were replaced.
+- **Probe history.** In this run, `probes/<probe>.log` holds only the pods created by the stage-2 restarts; the first line is `2026-09-11T02:51:08Z` (T+1214). The collector writes those files at the end with `kubectl logs deploy/<probe>` (`demos/cert-hygiene/lab/collect.sh`, line 129, at the run's `demo_repo_commit` 8d158f4). By then stage 2 had replaced every probe pod. The original probe pods' history runs from start-up to T+574 and is in `logs/pre-recover/<pod>-probe.txt`, so H5, H6 and the HTTP observation are judged from there. No probe line covers T+574 to T+1211, when those pods were replaced.
 - **Proxy logs.** No workload `linkerd-proxy` container log was captured, in either log snapshot. The only proxy log is the identity pod's, in `identity-proxy.txt`. This limits the judgement on H3's competing prediction and on H4.
 
 ## Timeline
@@ -68,7 +70,7 @@ The 10 s floor shows in the identity pod's own proxy. Its last leaf was issued a
 **Notes:**
 - **Source-derived:** the proxy refreshes at 70% of the remaining lifetime, clamped to [10 s, 24 h] (notes § 2).
 - The first leaf clamped to the issuer is the one issued at T−216; before it, each leaf had about 320 s (5 m plus 20 s skew). The cadence therefore tightened only over the issuer's last 216 s.
-- For the workload proxies, the refresh that would have followed T−5.8 fell at the 10 s floor, at T+4.2, after expiry. Their refresh gauge never moved again (see H4 and H8).
+- **Inference from the source-derived 10 s floor:** for the workload proxies, the refresh after T−5.8 would have fallen at T+4.2, after expiry. No workload attempt at T+4.2 is recorded. What is observed is that their refresh gauge never moved again (see H4 and H8).
 - With the default 24 h leaf the same shape would stretch across the issuer's last day. That is an inference; it was not observed.
 
 ## H2 — simultaneous leaf expiry
@@ -114,7 +116,7 @@ control_identity_cert_expiration_timestamp_seconds 1789093854.0
 
 **Notes:**
 - **Source-derived:** the identity pod's proxy requires TLS on port 8080, and its own leaf also expired at T_mark (spec § 4.2).
-- The pattern fits that prediction. The identity pod's proxy reaches the controller over localhost (`controller{addr=localhost:8080}` in `identity-proxy.txt`), so it is the one proxy that does not cross the identity pod's inbound TLS, and it is the only one whose CSRs arrived.
+- The pattern fits that prediction. **Observed:** the identity pod's proxy reaches the controller over localhost (`controller{addr=localhost:8080}` in `logs/pre-recover/identity-proxy.txt`, line 11), and it is the only proxy whose CSRs arrived. **Inference, not observed:** localhost traffic skips the identity pod's inbound TLS requirement, which would make this the one proxy that requirement did not stop.
 - This run cannot show whether the other proxies failed at the handshake. Deciding it needs the `linkerd-proxy` logs of a workload pod and of `probe-new`, between T_mark and the reload.
 - **Source-derived:** a failed certify logs `Failed to obtain identity` (notes § 2). The workload proxies' `result="error"` counter never moved while their request counter rose. That suggests their attempts never completed as certify failures at all. This is an inference.
 
@@ -130,7 +132,7 @@ ERROR ... Failed to obtain identity ... current time 2026-09-11T02:31:07Z is aft
 ERROR ... Failed to obtain identity ... current time 2026-09-11T02:31:17Z is after 2026-09-11T02:30:54Z ...
 ```
 
-`logs/final/identity-proxy.txt` holds 61 of these lines. The first has kubelet time `19:30:57.966` (T+3) and the last `19:40:58.392` (T+604), so there are 60 intervals over about 600 s: every 10 s.
+`logs/final/identity-proxy.txt` holds 61 of these lines. The first carries the runtime timestamp `19:30:57.966` (T+3) and the last `19:40:58.392` (T+604), so there are 60 intervals over about 600 s: every 10 s.
 
 No `Failed to obtain identity` line appears anywhere in the run outside the two `identity-proxy.txt` files. As noted above, the `server` proxy's `control_identity_balancer_queue_requests_total` rose from 8 at `fault-plus10` to 22 at `post-18`, while `refreshes_total{result="error"}` stayed at 0.
 
@@ -205,14 +207,14 @@ In `pods/post-18-probe-new-ddf9946ff-wn2np.yaml`, the `initContainerStatuses` en
 
 **Notes:**
 - The old pod stayed Ready even though its own leaf had expired at T_mark (`metrics/post-18.txt`: `restart-target-554865b545-2nj5w`, `expiration_timestamp_seconds 1789093854.0`). Its readiness did not reflect the expired credential.
-- After the issuer was replaced, the rollout completed during the `recover-1` tick (`pods/recover-1-rollout.txt`: `deployment "restart-target" successfully rolled out`). The old pod is gone in `pods/recover-2.txt`.
+- After the issuer was replaced, the rollout completed during the `recover-1` tick. The old pod is still listed `2/2 Running` in `pods/recover-1.txt`; the rollout check taken later in that tick reports `deployment "restart-target" successfully rolled out` (`pods/recover-1-rollout.txt`); the old pod is gone in `pods/recover-2.txt`.
 
 ## H8 — recovery chain without restarts
 
 **Verdict:** falsified.
 - The first two links held: the Secret changed, and identity hot-reloaded it without a restart.
-- The third link held only for proxies that had no identity yet. None of the pre-existing lab proxies, whose leaves expired at T_mark, re-certified. Four of them (`probe-http`, `probe-tcp-new`, `probe-tcp-stream`, `server`) went the 605 s between the reload (T+606) and the stage-2 restarts (T+1211) without doing so. The fifth, the old `restart-target` pod, never re-certified before its rollout removed it during `recover-1`.
-- The harness reached recovery only after stage 2 restarted every lab Deployment.
+- The third link held only for proxies that had no identity yet. None of the pre-existing lab proxies, whose leaves expired at T_mark, re-certified. Four of them (`probe-http`, `probe-tcp-new`, `probe-tcp-stream`, `server`) went the 605 s between the reload (T+606) and the stage-2 restarts (T+1211) without doing so. The fifth, the old `restart-target` pod, never re-certified before its rollout removed it: it is listed `2/2 Running` in `pods/recover-1.txt`, the rollout reports complete in `pods/recover-1-rollout.txt`, and the pod is gone in `pods/recover-2.txt`.
+- The harness reached recovery only after stage 2 restarted every lab Deployment. The spec's "no pod restarts are needed" contradicted Linkerd's documented procedure: the [manual rotation guide](https://linkerd.io/2-edge/tasks/manually-rotating-control-plane-tls-credentials/), to which "Replacing expired certificates" points for the issuer-only case, says to restart the proxies of all injected workloads after applying a new issuer. This run is consistent with the documentation. It shows that a full restart worked, not which restarts were necessary: stage 1 restarted `probe-new` and `restart-target`, which had already become Ready by `recover-2`, and stage 2 restarted every lab Deployment at once (`recover/restart-stage2.txt`), including `server`, which spec § 2 otherwise never restarts.
 
 **Evidence, link by link:**
 
@@ -221,12 +223,13 @@ In `pods/post-18-probe-new-ddf9946ff-wn2np.yaml`, the `initContainerStatuses` en
 3. **Proxies re-certify.** Only proxies without an identity did.
    - After the reload, identity issued in this order: `02:41:08Z ... linkerd-identity... until 2026-09-11 02:46:28`, `default.lab` at `02:41:11Z` and `02:41:12Z`, then `linkerd-proxy-injector` and `linkerd-destination` at `02:41:12Z`.
    - The two `default.lab` leaves went to the two lab pods that had no identity. `metrics/recover-2.txt` shows `probe-new-ddf9946ff-wn2np` refreshing at `1789094471.3766702` (T+617.4) and `restart-target-5cffc96d6b-956wt` at `1789094472.451799` (T+618.5).
-   - The pre-existing proxies did not move. At `metrics/recover-s2-1.txt` (T+1212), `server-577d5dfdbd-9tk8f` still reads `expiration_timestamp_seconds 1789093854.0`, `refresh_timestamp_seconds 1789093848.1886087`, `refreshes_total{result="ok"} 7` and `{result="error"} 0`, the same as at `fault-plus10`. `probe-http`, `probe-tcp-new` and `probe-tcp-stream` show the same values through `recover-s2-1`, as did the old `restart-target` until it was removed after `recover-1`.
+   - The pre-existing proxies did not move. At `metrics/recover-s2-1.txt` (T+1212), `server-577d5dfdbd-9tk8f` still reads `expiration_timestamp_seconds 1789093854.0`, `refresh_timestamp_seconds 1789093848.1886087`, `refreshes_total{result="ok"} 7` and `{result="error"} 0`, the same as at `fault-plus10`. `probe-http`, `probe-tcp-new` and `probe-tcp-stream` show the same values through `recover-s2-1`, as did the old `restart-target` for as long as it was recorded (`metrics/recover-1.txt`; it is gone in `pods/recover-2.txt`).
    - `logs/final/identity.txt` shows 14 `default.lab` leaves issued after the reload, and each one lines up with a first certification or a refresh of a pod created after T_mark: 2 at 02:41:11–12, 2 at 02:44:55–56, 2 at 02:46:07 (stage 1), 2 at 02:49:51, and 6 at 02:51:07 (stage 2).
    - Meanwhile the `server` proxy kept sending identity requests that produced no result: `control_identity_balancer_queue_requests_total{addr="linkerd-identity-headless.linkerd.svc.cluster.local:8080"}` was `23` at `recover-1`, `49` at `recover-9`, and `78` at `recover-s1-9`.
 4. **Probes recover.** No probe line covers the recover ticks, because the original probe pods' logs stop at T+574.
    - The harness's recovery gate is `_recovered_now` in `demos/cert-hygiene/scenarios/05-issuer-expiry.sh`. It passes when the latest `probe-http` and `probe-tcp-new` lines are `ok` and both the `restart-target` and `probe-new` rollouts have finished.
-   - The gate was not met at any of `recover-1` to `recover-9` or `recover-s1-1` to `recover-s1-9`. Yet the `restart-target` rollout had finished by `recover-1` and `probe-new` was Ready by `recover-2`. By the gate's logic, then, a probe's latest line was not `ok`. This is an inference from the harness code, not a recorded probe line.
+   - The gate was not met at any of `recover-1` to `recover-9` or `recover-s1-1` to `recover-s1-9`, and this run did not record its inputs. At `recover-1`, `probe-new-ddf9946ff-wn2np` was still `0/2 Init:1/2` (`pods/recover-1.txt`), and at `recover-s1-1` the stage-1 replacements were `0/2 Init:0/2` (`pods/recover-s1-1.txt`), so at those two ticks the `probe-new` rollout check alone could have failed the gate.
+   - From `recover-2` to `recover-9` and from `recover-s1-2` to `recover-s1-9`, both rollouts had completed: each `restart-target` rollout check reports `successfully rolled out`, and the listing shows a single `probe-new` pod, `2/2 Running`. At those ticks, by the gate's logic, a gated probe's latest line was not `ok`. This is an inference from the harness code, not a recorded probe line. The harness now writes each gate call's inputs to `recover/<tick>-gate.txt`, so future runs record them.
    - After stage 2 the new probe pods report: `probes/probe-tcp-new.log` has `2026-09-11T02:51:08Z probe-tcp-new seq=1 fail ... Connection reset by peer`, then `ok` from `2026-09-11T02:51:10Z probe-tcp-new seq=2 ok` (T+1216); `probes/probe-http.log` has `ok` from its first line, `2026-09-11T02:51:08Z probe-http seq=1 ok http=200`.
    - `timeline.log` has two `restart` markers (T+911 and T+1211) and ends with `recovery after stage-2 restarts`.
 
@@ -252,7 +255,7 @@ In `pods/post-18-probe-new-ddf9946ff-wn2np.yaml`, the `initContainerStatuses` en
    - Stage 1 restarted `probe-new` and `restart-target`. Neither is on a probe's path, and both had already become Ready at `recover-2`, so the stage's label, "the workloads that never became Ready", did not fit this run.
    - The failing probe's path was `probe-tcp-new` → `server`. Both proxies kept leaves that expired at T_mark through `recover-s1-9` (`metrics/recover-s1-9.txt`: `expiration_timestamp_seconds 1789093854.0` for `probe-tcp-new-76f5d56859-nb79h` and `server-577d5dfdbd-9tk8f`).
    - Stage 2 replaced them. The six new lab pods were certified at 02:51:07, T+1213 (six `default.lab` lines in `logs/final/identity.txt`), and show `expiration_timestamp_seconds 1789095387.0` in `metrics/verify.txt`. `probe-tcp-new` reported `ok` from T+1216.
-4. **`linkerd check` passed while leaves were expired.** Every check file from `recover-1` to `verify`, for both `linkerd check` and `linkerd check --proxy`, ends with `Status check results are √`. That includes `√ data plane proxies certificate match CA` (`checks/recover-5-check-proxy.txt`), while four lab proxies held leaves that expired at T_mark (`metrics/recover-5.txt`: `expiration_timestamp_seconds 1789093854.0` for `probe-http`, `probe-tcp-new`, `probe-tcp-stream` and `server`).
+4. **`linkerd check` passed while leaves were expired.** Every check file from `recover-1` to `verify`, for both `linkerd check` and `linkerd check --proxy`, ends with the harness's `[exit 0]` line, and the line before it is `Status check results are √`. That includes `√ data plane proxies certificate match CA` (`checks/recover-5-check-proxy.txt`), while four lab proxies held leaves that expired at T_mark (`metrics/recover-5.txt`: `expiration_timestamp_seconds 1789093854.0` for `probe-http`, `probe-tcp-new`, `probe-tcp-stream` and `server`). **Source-derived:** that check compares each pod's injected trust-anchor PEM text with the `linkerd-identity-trust-roots` ConfigMap; it never inspects leaf certificates (notes § 7).
    - From T+10 to T+571, the only failure the checks reported was `× issuer cert is within its validity period`, with `issuer certificate is not valid anymore. Expired on 2026-09-11T02:30:54Z` (`checks/fault-plus10-check.txt`).
    - No check line mentions workload leaf certificates at any tick.
 5. **After stage 2, the new stream probe's first connection was reset at once.** `probes/probe-tcp-stream.log` reads `2026-09-11T02:51:08Z probe-tcp-stream seq=0 conn=291875c8-1789095068 connect ...`, then `socat[12] E read(5, ...): Connection reset by peer`, then `2026-09-11T02:51:08Z probe-tcp-stream seq=1 conn=291875c8-1789095068 closed socat_rc=1 fail-closed, not reconnecting` (T+1214).
@@ -270,7 +273,7 @@ Every `‼` line in the #5 run's `checks/*.txt` is a certificate-lifetime warnin
 
 The only `×` line is `× issuer cert is within its validity period`. It appears in 38 files: both commands at `fault-plus10` and at `post-1` through `post-18`.
 
-The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/20260911T014417Z/checks/`) contain no `‼` line and no `×` line, and each ends with `Status check results are √`. Neither run has a warning that is not about certificate lifetime, so there is no difference to explain. The control's `control-criteria.txt` records `result=ok`, with all eight criteria `ok`, including `ok: no certificate-lifetime warnings` and `ok: one stream connection`.
+The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/20260911T014417Z/checks/`) contain no `‼` line and no `×` line, and each ends with the harness's `[exit 0]` line, with `Status check results are √` on the line before it. Neither run has a warning that is not about certificate lifetime, so there is no difference to explain. The control's `control-criteria.txt` records `result=ok`, with all eight criteria `ok`, including `ok: no certificate-lifetime warnings` and `ok: one stream connection`.
 
 ## What this means for the article brief
 
@@ -278,7 +281,7 @@ The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/2026
   - Credential expiry was simultaneous: every leaf in the cluster, control plane included, expired at T_mark (H2).
   - Traffic did not fail gradually. It split by connection type: new mTLS connections failed within 2 s (H5), while an established TCP session and the HTTP probe kept working for the 574 s recorded (H6, HTTP).
   - Pods created or rolled after expiry never became Ready before the issuer was replaced, and a one-replica rollout stalled with the old pod still serving (H7a, H7b).
-  - Replacing the issuer reloaded identity without a restart. But proxies whose leaves had already expired did not re-certify in the 605 s observed, and recovery came only after a restart of every lab Deployment (H8; that run used edge-26.9.1 with a 5m leaf).
+  - Replacing the issuer reloaded identity without a restart. But proxies whose leaves had already expired did not re-certify in the 605 s observed, and recovery came only after a restart of every lab Deployment (H8; that run used edge-26.9.1 with a 5m leaf). H8's no-restart hypothesis contradicted Linkerd's documented procedure, which says to restart the proxies of all injected workloads after applying a new issuer; the run is consistent with that documentation. It shows that a full restart worked, not which restarts were necessary: stage 1 hit pods that had already recovered, and stage 2 restarted everything at once, `server` included.
   - **Still resting on source reading or inference alone:**
     - why HTTP survived (connection reuse);
     - how long established or pooled connections survive past 574 s;
@@ -288,7 +291,7 @@ The control's 102 check files (`demos/cert-hygiene/runs/00-baseline-control/2026
 - **"Exact `linkerd check` output for each failure"** (the #5 part).
   - `linkerd check` showed `‼ issuer cert is valid for at least 60 days` from the first tick for a 15-minute issuer. Its detail line gave the exact expiry (`issuer certificate will expire on 2026-09-11T02:30:54Z`, `checks/baseline-check.txt`). The headline severity stayed `‼` from the first tick until expiry, with no escalation as expiry approached.
   - It went `×` on `issuer cert is within its validity period` by T+10 and stayed there until the issuer was replaced.
-  - It then passed (`√`) at every tick of the recover phase, including `data plane proxies certificate match CA` under `--proxy`, while four lab proxies were still running on expired leaves. No check line at any tick mentioned workload leaf certificates.
+  - It then passed (`√`) at every tick of the recover phase, including `data plane proxies certificate match CA` under `--proxy`, while four lab proxies were still running on expired leaves. No check line at any tick mentioned workload leaf certificates. **Source-derived:** that `--proxy` check compares each pod's injected trust-anchor PEM text with the `linkerd-identity-trust-roots` ConfigMap and never inspects leaf certificates (notes § 7).
   - **Still resting on source reading alone:**
     - that the 60-day threshold is fixed and cannot be configured;
     - that an issuer with 59 days left would get the same `‼` headline as this 15-minute issuer, so the headline alone cannot tell the two apart (the 59-day case was not run);

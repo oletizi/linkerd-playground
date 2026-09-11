@@ -16,9 +16,9 @@ Working research materials for the Linkerd certificate-hygiene article.
 | Scenario | State |
 | --- | --- |
 | Lab design | Approved after [third-party review](../../superpowers/reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); [implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md) written |
-| Lab harness | Built (plan complete) |
+| Lab harness | Built (plan complete). Later fixes capture workload `linkerd-proxy` logs and per-pod probe history before each restart stage, record the recovery gate's inputs, and add matching validity rules |
 | Baseline control (`00-baseline-control`) | Valid run: demos/cert-hygiene/runs/00-baseline-control/20260911T014417Z |
-| #5 Issuer expiry | Observations recorded: evidence-05-issuer-expiry.md |
+| #5 Issuer expiry | Observations recorded: evidence-05-issuer-expiry.md. The recorded run lacks workload proxy logs and recover-phase probe history (T+574 to T+1211); a re-run of the control and #5 at the fixed harness is pending |
 | All other scenarios in [demo-feasibility.md](demo-feasibility.md) | Not started |
 
 ## Research conventions
