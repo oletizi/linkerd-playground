@@ -84,6 +84,7 @@ make_run() { # dir scenario commit harness dirty
   for f in trust-anchor issuer-initial issuer-replacement; do echo x > "$d/certs/$f.pem"; echo x > "$d/certs/$f.txt"; done
   printf 'result=ok\n' > "$d/leaf-lifetime.txt"
   printf 'result=ok\n' > "$d/trust-invariant.txt"
+  printf 'result=ok\n' > "$d/control-criteria.txt"
 }
 V=edge-26.9.1
 make_run "$T/ctl/r1" 00-baseline-control c1 h1 false
@@ -124,5 +125,36 @@ assert_fails "broken trust invariant is invalid" evaluate_validity "$T/trust" 05
 make_run "$T/norep" 05-issuer-expiry c2 h1 false
 rm "$T/norep/certs/issuer-replacement.pem"
 assert_fails "#5 without the replacement issuer is invalid" evaluate_validity "$T/norep" 05-issuer-expiry "$V" "$T/ctl"
+
+# ---- evaluate_validity: the control must have met its criteria ----
+make_run "$T/ctlbad" 00-baseline-control c1 h9 false
+printf 'result=fail\nfail: probe-http has 3 fail/closed lines\n' > "$T/ctlbad/control-criteria.txt"
+assert_fails "control that failed its criteria is invalid" evaluate_validity "$T/ctlbad" 00-baseline-control "$V"
+assert_contains "$(cat "$T/ctlbad/validity.txt")" "reason=control criteria not met" "reason names the criteria"
+
+# ---- control_criteria_check ----
+make_ctl() { # dir: a control run that meets every criterion
+  local d="$1"
+  mkdir -p "$d/probes" "$d/pods" "$d/checks"
+  printf '2026-09-10T10:00:00Z reset\n2026-09-10T10:05:00Z tick baseline\n' > "$d/timeline.log"
+  printf '2026-09-10T10:04:58Z probe-http seq=1 fail curl_rc=7 http=000 err=refused\n2026-09-10T10:05:01Z probe-http seq=2 ok http=200\n' > "$d/probes/probe-http.log"
+  printf '2026-09-10T10:05:01Z probe-tcp-new seq=2 ok\n' > "$d/probes/probe-tcp-new.log"
+  printf '2026-09-10T10:04:59Z probe-tcp-stream seq=0 conn=ab-1 connect target=s:9000\n2026-09-10T10:05:01Z probe-tcp-stream seq=2 conn=ab-1 ok\n' > "$d/probes/probe-tcp-stream.log"
+  printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-restart-target.txt"
+  printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-probe-new.txt"
+  printf '$ linkerd check\n√ issuer cert is valid for at least 60 days\n‼ cli is up-to-date\n[exit 0]\n' > "$d/checks/verify-check.txt"
+}
+make_ctl "$T/cc"
+assert_succeeds "healthy control meets criteria (a fail before baseline is ignored)" control_criteria_check "$T/cc"
+make_ctl "$T/cc1"; printf '2026-09-10T10:20:00Z probe-tcp-new seq=9 fail socat_rc=1\n' >> "$T/cc1/probes/probe-tcp-new.log"
+assert_fails "a probe failure after baseline breaks the control" control_criteria_check "$T/cc1"
+make_ctl "$T/cc2"; printf '2026-09-10T10:20:00Z probe-tcp-stream seq=0 conn=ab-2 connect target=s:9000\n' >> "$T/cc2/probes/probe-tcp-stream.log"
+assert_fails "a second stream connection breaks the control" control_criteria_check "$T/cc2"
+make_ctl "$T/cc3"; printf '$ kubectl rollout status\n[exit 1]\n' > "$T/cc3/pods/verify-rollout-probe-new.txt"
+assert_fails "an incomplete rollout breaks the control" control_criteria_check "$T/cc3"
+make_ctl "$T/cc4"; printf '× issuer cert is within its validity period\n' >> "$T/cc4/checks/verify-check.txt"
+assert_fails "a fatal check result breaks the control" control_criteria_check "$T/cc4"
+make_ctl "$T/cc5"; printf '‼ issuer cert is valid for at least 60 days\n' >> "$T/cc5/checks/verify-check.txt"
+assert_fails "a certificate-lifetime warning breaks the control" control_criteria_check "$T/cc5"
 
 finish test-evidence
