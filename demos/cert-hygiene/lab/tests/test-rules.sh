@@ -95,7 +95,31 @@ assert_fails "R without the replacement issuer is invalid" evaluate_validity "$T
 make_run "$T/noproxy" 00-baseline-control c1 h1 false
 rm "$T/noproxy/logs/pre-recover/probe-http-1-linkerd-proxy.txt"
 assert_fails "an app-container log without the pod's proxy log is invalid" evaluate_validity "$T/noproxy" 00-baseline-control "$V"
-assert_contains "$(reason "$T/noproxy")" "pre-recover: probe-http-1 has a probe log but no probe-http-1-linkerd-proxy.txt" "reason names the pod and label"
+assert_contains "$(reason "$T/noproxy")" "pre-recover: probe-http-1 has no probe-http-1-linkerd-proxy.txt" "reason names the pod and label"
+
+# ---- the proxy-log rule follows logs/<label>/pods.txt ----
+make_run "$T/nolist" 00-baseline-control c1 h1 false
+rm "$T/nolist/logs/final/pods.txt"
+assert_fails "a log snapshot without pods.txt is invalid" evaluate_validity "$T/nolist" 00-baseline-control "$V"
+assert_contains "$(reason "$T/nolist")" "final: pods.txt missing" "reason names the snapshot"
+make_run "$T/badlist" 00-baseline-control c1 h1 false
+printf '[lab pod listing failed: exit 1] connection refused\n' > "$T/badlist/logs/final/pods.txt"
+assert_fails "a failed pod listing is invalid" evaluate_validity "$T/badlist" 00-baseline-control "$V"
+make_run "$T/empty" 00-baseline-control c1 h1 false
+: > "$T/empty/logs/final/pods.txt"
+assert_fails "a snapshot listing no pod is invalid (the rule is never vacuous)" evaluate_validity "$T/empty" 00-baseline-control "$V"
+make_run "$T/noapp" 00-baseline-control c1 h1 false
+rm "$T/noapp/logs/final/server-1-echo.txt"
+assert_fails "a listed container without its log is invalid" evaluate_validity "$T/noapp" 00-baseline-control "$V"
+assert_contains "$(reason "$T/noapp")" "final: server-1 has no server-1-echo.txt" "reason names the container"
+make_run "$T/noproxy2" 00-baseline-control c1 h1 false
+rm "$T/noproxy2/logs/final/server-1-linkerd-proxy.txt"
+assert_fails "a multi-container meshed pod without its proxy log is invalid" evaluate_validity "$T/noproxy2" 00-baseline-control "$V"
+assert_contains "$(reason "$T/noproxy2")" "final: server-1 has no server-1-linkerd-proxy.txt" "reason names the pod and proxy container"
+make_run "$T/uninjected" 02-webhook-expiry-ignore c2 h1 false
+printf 'pod=inject-probe-post-3 proxy=no containers=idle\n' >> "$T/uninjected/logs/final/pods.txt"
+echo x > "$T/uninjected/logs/final/inject-probe-post-3-idle.txt"
+assert_succeeds "an un-injected pod needs no proxy log" evaluate_validity "$T/uninjected" 02-webhook-expiry-ignore "$V" "$T/ctl"
 
 # ---- per-scenario rules ----
 make_run "$T/ctlbad" 00-baseline-control c1 h9 false

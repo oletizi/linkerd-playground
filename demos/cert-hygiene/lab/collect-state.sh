@@ -87,3 +87,56 @@ snap_credentials() {
   done
   printf 'webhooks_sha256=%s\n' "$(printf '%s' "$joined" | sha256sum | cut -d' ' -f1)" >> "$f"
 }
+
+# The three Linkerd webhook configurations, in WEBHOOK_COMPONENTS order.
+WEBHOOK_CONFIGS=(mutatingwebhookconfiguration/linkerd-proxy-injector-webhook-config
+  validatingwebhookconfiguration/linkerd-policy-validator-webhook-config
+  validatingwebhookconfiguration/linkerd-sp-validator-webhook-config)
+
+_webhook_lines() { # CONFIG JSON_FILE: one line per webhook, with the caBundle hashed
+  local cfg="$1" name policy b64 hash
+  while read -r name policy b64; do
+    if [ "$b64" = "-" ]; then hash=-; else hash="$(printf '%s' "$b64" | base64 -d | sha256sum | cut -d' ' -f1)"; fi
+    printf 'config %s webhook=%s failurePolicy=%s caBundle_sha256=%s\n' "$cfg" "$name" "$policy" "$hash"
+  done < <(jq -r '.webhooks[] | "\(.name) \(.failurePolicy) \(.clientConfig.caBundle // "-")"' "$2")
+}
+
+snap_webhooks() { # NAME: webhook configurations and serving certificates -> webhooks/NAME.txt
+  local f="$RUN_DIR/webhooks/$1.txt" tmp cfg comp
+  mkdir -p "$RUN_DIR/webhooks"
+  tmp="$(mktemp)"
+  {
+    printf 'sampled_at_epoch=%s\n' "$(date -u +%s)"
+    for cfg in "${WEBHOOK_CONFIGS[@]}"; do
+      if _record "$cfg read" kubectl get "$cfg" -o json > "$tmp"; then _webhook_lines "$cfg" "$tmp"; else cat "$tmp"; fi
+    done
+    for comp in "${WEBHOOK_COMPONENTS[@]}"; do
+      _cert_from_secret "secret_$comp" "$(webhook_secret "$comp")" 'tls\.crt'
+    done
+  } > "$f"
+  rm -f "$tmp"
+}
+
+snap_controlplane() { # NAME: linkerd pods (UID, start, readiness) and Deployments -> controlplane/NAME.txt
+  local f="$RUN_DIR/controlplane/$1.txt" tmp d
+  mkdir -p "$RUN_DIR/controlplane"
+  tmp="$(mktemp)"
+  {
+    printf 'sampled_at_epoch=%s\n' "$(date -u +%s)"
+    if _record "linkerd pod listing" kubectl -n linkerd get pods -o json > "$tmp"; then
+      jq -r '.items[] | "pod linkerd/\(.metadata.name) uid=\(.metadata.uid) start=\(.status.startTime // "-") phase=\(.status.phase) ready=\(([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "-") restarts=\([.status.containerStatuses[]?.restartCount] | add // 0) trust=\(.metadata.annotations["linkerd.io/trust-root-sha256"] // "-")"' "$tmp"
+    else
+      cat "$tmp"
+    fi
+    if _record "linkerd deployment listing" kubectl -n linkerd get deploy -o json > "$tmp"; then
+      for d in $(jq -r '.items[].metadata.name' "$tmp"); do
+        jq -r --arg n "$d" '.items[] | select(.metadata.name == $n) | "deploy linkerd/\(.metadata.name) generation=\(.metadata.generation) observedGeneration=\(.status.observedGeneration // "-") replicas=\(.spec.replicas) readyReplicas=\(.status.readyReplicas // 0)"' "$tmp" \
+          | tr -d '\n'
+        printf ' template_sha256=%s\n' "$(jq -S -c --arg n "$d" '.items[] | select(.metadata.name == $n) | .spec.template' "$tmp" | sha256sum | cut -d' ' -f1)"
+      done
+    else
+      cat "$tmp"
+    fi
+  } > "$f"
+  rm -f "$tmp"
+}

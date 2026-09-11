@@ -22,7 +22,6 @@ write_cert trust-anchor "$certs/ca.crt"
 write_cert issuer-initial "$certs/issuer.crt"
 tick manual
 snap_secret manual
-snap_trust manual
 snap_pod_detail manual restart-target
 snap_logs manual
 snap_events manual

@@ -74,29 +74,35 @@ credential_plan_check() {
   return "$rc"
 }
 
-# The lab's application containers (lab/workloads/*.yaml). A log file of one of them
-# is how a lab pod shows up in logs/<label>/.
-LAB_APP_CONTAINERS=(probe idle http echo)
+# _pods_txt_parse LINE: one "pod=<name> proxy=<yes|no> containers=<a,b,c>" line of a
+# pods.txt file -> "<pod> <containers>" (comma-joined, unsplit). Both _missing_proxy_logs
+# here and snap_logs (collect-logs.sh) parse a pods.txt line; this is the one place.
+_pods_txt_parse() {
+  local line="$1" pod containers
+  pod="$(awk '{ print $1 }' <<< "$line")"; pod="${pod#pod=}"
+  containers="$(awk '{ print $3 }' <<< "$line")"; containers="${containers#containers=}"
+  printf '%s %s\n' "$pod" "$containers"
+}
 
-# _missing_proxy_logs RUN_DIR: the proxy-log rule. In every logs/<label>/ directory,
-# each file <pod>-<c>.txt, where <c> is in LAB_APP_CONTAINERS (never a -previous.txt
-# file), marks <pod> as a captured lab pod; <pod>-linkerd-proxy.txt must then exist,
-# non-empty, in the same directory. The proxy is a native-sidecar init container, so a
-# collector that walks only .spec.containers misses it. Prints one line per miss.
+# _missing_proxy_logs RUN_DIR: the proxy-log rule. Every logs/<label>/ directory must
+# hold pods.txt, the lab pods the snapshot captured (design section 1.4). Each listed
+# container needs its <pod>-<container>.txt; a pod with proxy=yes lists linkerd-proxy
+# (a native-sidecar init container), so its proxy log is always required. A snapshot
+# that lists no pod fails, so the rule is never vacuous. Prints one line per miss.
 _missing_proxy_logs() {
-  local run="$1" dir f base c pod
+  local run="$1" dir label line pod containers c
   for dir in "$run"/logs/*/; do
     [ -d "$dir" ] || continue
-    for f in "$dir"*.txt; do
-      [ -f "$f" ] || continue
-      base="$(basename "$f" .txt)"
-      for c in "${LAB_APP_CONTAINERS[@]}"; do
-        pod="${base%-"$c"}"
-        [ "$pod" != "$base" ] || continue
-        [ -s "$dir$pod-linkerd-proxy.txt" ] \
-          || echo "$(basename "$dir"): $pod has a $c log but no $pod-linkerd-proxy.txt"
+    label="$(basename "$dir")"
+    if [ ! -f "$dir/pods.txt" ]; then echo "$label: pods.txt missing"; continue; fi
+    if grep -q '^\[' "$dir/pods.txt"; then echo "$label: pods.txt records a failed listing"; continue; fi
+    if ! grep -q '^pod=' "$dir/pods.txt"; then echo "$label: pods.txt lists no pod"; continue; fi
+    while read -r line; do
+      read -r pod containers < <(_pods_txt_parse "$line")
+      for c in ${containers//,/ }; do
+        [ -s "$dir$pod-$c.txt" ] || echo "$label: $pod has no $pod-$c.txt"
       done
-    done
+    done < <(grep '^pod=' "$dir/pods.txt")
   done
   return 0
 }

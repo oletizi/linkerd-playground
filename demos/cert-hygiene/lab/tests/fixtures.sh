@@ -37,4 +37,6 @@ make_run() {
   for f in probe-http-1-probe probe-http-1-probe-previous probe-http-1-linkerd-proxy; do
     echo x > "$d/logs/pre-recover/$f.txt"
   done
+  printf 'pod=server-1 proxy=yes containers=linkerd-init,linkerd-proxy,http,echo\n' > "$d/logs/final/pods.txt"
+  printf 'pod=probe-http-1 proxy=yes containers=linkerd-proxy,probe\n' > "$d/logs/pre-recover/pods.txt"
 }
