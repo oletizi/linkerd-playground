@@ -44,9 +44,12 @@ _lab_pod_mesh() { # "<pod> yes|no" per lab pod: does it have a linkerd-proxy con
     | "\(.metadata.name) \(if ([.spec.initContainers[]?.name, .spec.containers[].name] | index("linkerd-proxy")) then "yes" else "no" end)"' \
     || true
 }
-_identity_pod() {
+_identity_pod() { # empty string, never a nonzero exit, when no identity pod exists
+  # (09-identity-outage scales identity to 0): jsonpath {.items[0]...} on an empty
+  # .items errors and exits 1, which would otherwise kill snap_metrics's caller under
+  # set -e at idpod="$(_identity_pod)".
   kubectl -n linkerd get pod -l linkerd.io/control-plane-component=identity \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
 }
 
 _metrics_section() { # NS POD PORT FILTER-REGEX: up to 3 attempts, 2s apart (Ruling P4)
