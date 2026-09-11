@@ -65,13 +65,16 @@ capture_rollouts() {
 }
 
 # capture_cp_rollouts FILE: capture_rollouts over every control-plane Deployment (the
-# rollout wait of R, A, S and W's recovery). A failed listing is recorded in FILE, which
-# then ends non-zero; an empty listing names no Deployment, so it ends non-zero too.
+# rollout wait of R, A, S and W's recovery). The names come from stdout only (_record), so
+# a kubectl warning on stderr never becomes a name. A failed listing is recorded in FILE in
+# capture's format, ending with its non-zero exit; an empty listing names no Deployment,
+# so FILE ends non-zero too.
 capture_cp_rollouts() {
-  local ds
-  if ! ds="$(kubectl -n linkerd get deploy -o name 2>&1)"; then
-    # shellcheck disable=SC2016
-    capture "$1" bash -c 'echo "$1"; exit 1' capture_cp_rollouts "control-plane Deployment listing failed: $ds"
+  local ds rc=0
+  ds="$(_record "control-plane Deployment listing" kubectl -n linkerd get deploy -o name)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    mkdir -p "$(dirname "$RUN_DIR/$1")"
+    printf '$ kubectl -n linkerd get deploy -o name\n%s\n[exit %s]\n' "$ds" "$rc" > "$RUN_DIR/$1"
     return 0
   fi
   # shellcheck disable=SC2086
