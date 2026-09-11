@@ -10,7 +10,7 @@ The likely result is **six high-confidence demonstrations**, **five proof-of-con
 - Create a baseline workload pair that proves meshed traffic, injection, and `linkerd check` are healthy before fault injection.
 - Capture the baseline, the induced failure, the diagnostic evidence, and the post-recovery state for every scenario.
 - Restore the original manifests/Secrets/configuration or tear down the disposable cluster. Do not demo key loss by destroying the only copy of a key outside the disposable cluster.
-- Keep product-specific procedures grounded in [the bibliography](bibliography.md); this plan records feasibility, not canonical operations.
+- Keep product-specific procedures grounded in [the bibliography](../sources.md); this plan records feasibility, not canonical operations.
 
 ## Article validation contract
 

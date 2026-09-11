@@ -13,7 +13,7 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md`](../../specs/2026-09-10-cert-hygiene-demo-lab-design.md). Executors read both the spec and this plan.
 
-**Source notes (Linkerd behavior, with permalinks):** [`docs/articles/cert-hygiene/linkerd-source-notes.md`](../../../articles/cert-hygiene/linkerd-source-notes.md)
+**Source notes (Linkerd behavior, with permalinks):** [`docs/articles/cert-hygiene/notes/linkerd-source-notes.md`](../../../articles/cert-hygiene/notes/linkerd-source-notes.md)
 
 ## Global Constraints
 
@@ -75,7 +75,7 @@
 | `demos/cert-hygiene/scenarios/05-issuer-expiry.sh` | Issuer expiry + staged recovery | 9 |
 | `demos/cert-hygiene/runs/_refactor-check/`, `runs/_discovery/` | Committed verification records (not article evidence) | 2, 3, 6 |
 | `demos/cert-hygiene/runs/<scenario>/<UTC>/` | Committed raw evidence | 8, 9 |
-| `docs/articles/cert-hygiene/evidence-05-issuer-expiry.md` | Human judgement of H1–H8 against the valid run | 10 |
+| `docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md` | Human judgement of H1–H8 against the valid run | 10 |
 
 ## Tasks
 
