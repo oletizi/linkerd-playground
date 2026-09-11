@@ -53,4 +53,19 @@ assert_fails "the control needs the second client's lines" control_criteria_chec
 make_ctl "$T/ccb2"; printf '2026-09-10T10:20:00Z probe-tcp-new-b seq=9 fail socat_rc=1\n' >> "$T/ccb2/probes/final/probe-tcp-new-b-1.log"
 assert_fails "a second-client failure after baseline breaks the control" control_criteria_check "$T/ccb2"
 
+# ---- gate_summary ----
+gate_file() { # FILE GATE A_OK A_FAIL B_OK B_FAIL STATUS
+  printf 'stage=s\nrestarted=server\nstarted_at=x\nstarted_epoch=1\ngate=%s\ngate_at=y\n' "$2" > "$1"
+  printf 'sample t pair=A client=c server=s n=1 ok\n' >> "$1"
+  printf 'cell pair=A ok=%s fail=%s status=%s\ncell pair=B ok=%s fail=%s status=%s\n' "$3" "$4" "$7" "$5" "$6" "$7" >> "$1"
+}
+gate_file "$T/g1.txt" pass 10 0 10 0 classified
+assert_eq "$(gate_summary "$T/g1.txt")" "gate=pass A=10/0/classified B=10/0/classified" "passed gate summary"
+gate_file "$T/g2.txt" timeout 3 7 0 10 unclassified
+assert_eq "$(gate_summary "$T/g2.txt")" "gate=timeout A=3/7/unclassified B=0/10/unclassified" "timed-out gate summary"
+printf 'stage=s\ncell pair=A ok=1 fail=0 status=classified\n' > "$T/g3.txt"
+assert_fails "no gate line fails" gate_summary "$T/g3.txt"
+printf 'stage=s\ngate=none\n' > "$T/g4.txt"
+assert_fails "no cell line fails" gate_summary "$T/g4.txt"
+
 finish test-control

@@ -35,3 +35,17 @@ control_criteria_check() {
   else echo "fail: $n check files carry a certificate-lifetime warning"; bad=1; fi
   return "$bad"
 }
+
+# gate_summary FILE: one line summarising a restart-stage gate record (gates/<stage>.txt):
+# "gate=<pass|timeout|none> <pair>=<ok>/<fail>/<status> ...". Returns 1 if the record
+# has no gate line or no cell line.
+gate_summary() {
+  local f="${1:?gate_summary: FILE required}" g cells
+  g="$(awk -F= '$1 == "gate" { v = $2 } END { print v }' "$f" 2>/dev/null)"
+  [ -n "$g" ] || { echo "fail: $f has no gate line"; return 1; }
+  cells="$(awk '$1 == "cell" {
+      split($2, p, "="); split($3, o, "="); split($4, x, "="); split($5, s, "=")
+      printf " %s=%s/%s/%s", p[2], o[2], x[2], s[2] }' "$f")"
+  [ -n "$cells" ] || { echo "fail: $f has no cell line"; return 1; }
+  echo "gate=$g$cells"
+}

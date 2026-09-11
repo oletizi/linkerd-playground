@@ -44,3 +44,7 @@ wait RUN TIMEOUT="3600":
 # Discovery: does the current lab serve the lab-supplied webhook certificates?
 discover-webhooks:
     bash scripts/in-lab.sh lab/discover-webhooks.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-webhooks
+
+# Discovery: how long healthy restarts take to pass the restart-stage gates
+discover-gates:
+    bash scripts/in-lab.sh lab/discover-gates.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-gates
