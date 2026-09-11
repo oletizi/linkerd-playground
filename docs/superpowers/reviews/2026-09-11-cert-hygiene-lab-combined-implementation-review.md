@@ -2,7 +2,7 @@
 
 **Status:** Implementation-facing review. Resolve the blocking items below before treating slice 2 results as article evidence.
 
-**Reviewed:** [as-built evidence review](../../articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md), [slice 2 design](../specs/2026-09-11-cert-hygiene-lab-slice-2-design.md), existing raw run artifacts, harness code, and source notes.
+**Reviewed:** [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md), [slice 2 design](../specs/2026-09-11-cert-hygiene-lab-slice-2-design.md), existing raw run artifacts, harness code, and source notes.
 
 **Purpose:** Give the implementing agent one defensible starting point. This is not a new design and it does not change the approved scenario order. It distinguishes observations already supported by the lab from source-derived expectations and specifies the evidence conditions slice 2 must meet before article claims move to “reproduced.”
 
@@ -32,7 +32,7 @@ These are **not** supported as general claims yet:
 - identity-service outage behavior; or
 - Viz/tap behavior.
 
-For the detailed artifact-level assessment, see the [as-built evidence review](../../articles/cert-hygiene/LAB-EVIDENCE-REVIEW-2026-09-11.md).
+For the detailed artifact-level assessment, see the [as-built evidence review](../../articles/cert-hygiene/notes/lab-evidence-review-2026-09-11.md).
 
 ## Required implementation corrections
 

@@ -10,8 +10,8 @@ The most important editorial rule is therefore: keep the issuer-expiry findings 
 
 ## What was reviewed
 
-- Article materials: [README](README.md), [findings](findings.md), [sources](sources.md), [issuer-expiry evidence note](notes/lab-evidence-issuer-expiry.md), [source notes](notes/linkerd-source-notes.md), and [demo feasibility](notes/demo-feasibility.md).
-- Lab harness: [`demos/cert-hygiene/`](../../../demos/cert-hygiene/), including scenario `05-issuer-expiry.sh`, evidence collectors, probes, and evidence-validity tests.
+- Article materials: [README](../README.md), [findings](../findings.md), [sources](../sources.md), [issuer-expiry evidence note](lab-evidence-issuer-expiry.md), [source notes](linkerd-source-notes.md), and [demo feasibility](demo-feasibility.md).
+- Lab harness: [`demos/cert-hygiene/`](../../../../demos/cert-hygiene/), including scenario `05-issuer-expiry.sh`, evidence collectors, probes, and evidence-validity tests.
 - Primary experimental run: `demos/cert-hygiene/runs/05-issuer-expiry/20260911T021157Z`.
 - Baseline control: `demos/cert-hygiene/runs/00-baseline-control/20260911T014417Z`.
 

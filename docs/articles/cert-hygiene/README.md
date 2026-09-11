@@ -11,6 +11,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
    - [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md) — what Linkerd's source code says about certificate behaviour, with links to the exact lines.
    - [notes/research-links.md](notes/research-links.md) — reading list and a catalogue of real-world incident reports.
    - [notes/demo-feasibility.md](notes/demo-feasibility.md) — which failure modes can be reproduced safely in a test cluster, and how.
+   - [notes/lab-evidence-review-2026-09-11.md](notes/lab-evidence-review-2026-09-11.md) — an independent review of what the lab evidence does and doesn't yet support, and which claims to narrow before publishing.
 
 ## Status
 
