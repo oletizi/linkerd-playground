@@ -24,15 +24,22 @@ assert_eq "${#LAB_SCENARIOS[@]}" 9 "nine scenarios"
 assert_fails "unknown scenario dies (rules)" scenario_rules 99-nope
 assert_fails "unknown scenario dies (plan)" credential_plan_for 99-nope
 assert_fails "unknown scenario dies (files)" scenario_required_files 99-nope
-assert_eq "$(scenario_rules 00-baseline-control)" control-criteria "control rules"
+assert_eq "$(scenario_rules 00-baseline-control | paste -sd' ' -)" "control-criteria" "control rules"
 assert_eq "$(scenario_rules 05-issuer-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "R rules"
-assert_eq "$(scenario_rules 20-check-threshold)" k-remaining "K needs no control"
-assert_contains "$(scenario_rules 08-anchor-rotation-hard)" s-hard-stage1 "S-hard stage-1 rule"
-assert_contains "$(scenario_rules 02-webhook-expiry-fail)" webhook-baseline "W baseline rule"
+assert_eq "$(scenario_rules 02-webhook-expiry-ignore | paste -sd' ' -)" "webhook-baseline w-plain-render control-at-tree" "W-ignore rules"
+assert_eq "$(scenario_rules 02-webhook-expiry-fail | paste -sd' ' -)" "webhook-baseline w-plain-render control-at-tree" "W-fail rules"
+assert_eq "$(scenario_rules 09-identity-outage | paste -sd' ' -)" "control-at-tree" "O rules"
+assert_eq "$(scenario_rules 20-check-threshold | paste -sd' ' -)" "k-remaining" "K rules"
+assert_eq "$(scenario_rules 06-anchor-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "A rules"
+assert_eq "$(scenario_rules 07-anchor-rotation-staged | paste -sd' ' -)" "control-at-tree" "S-staged rules"
+assert_eq "$(scenario_rules 08-anchor-rotation-hard | paste -sd' ' -)" "s-hard-stage1 control-at-tree" "S-hard rules"
 assert_eq "$(credential_plan_for 07-anchor-rotation-staged | grep '^plan')" "plan A/I1 A+B/I1 A+B/I2 B/I2" "S-staged plan"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^plan')" "plan A/I1/W1 A/I1/W2" "W: the webhook certificates change once across ticks"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^components')" "components trust issuer webhooks" "W components"
 assert_eq "$(credential_plan_for 09-identity-outage | grep '^plan')" "plan A/I1" "O: one state"
+assert_eq "$(credential_plan_for 06-anchor-expiry | grep '^plan')" "plan A/I1 B/I2" "A plan"
+assert_eq "$(credential_plan_for 08-anchor-rotation-hard | grep '^plan')" "plan A/I1 B/I2" "S-hard plan"
+assert_eq "$(credential_plan_for 20-check-threshold | grep '^plan')" "plan A/I1 A/I2" "K plan"
 assert_contains "$(scenario_required_files 20-check-threshold)" certs/issuer-plus.pem "K requires the +10m issuer"
 
 # ---- every scenario: a complete fixture is valid ----
@@ -119,6 +126,10 @@ assert_fails "W whose plain apply failed is invalid" evaluate_validity "$T/wa" 0
 make_run "$T/wm" 02-webhook-expiry-ignore c2 h1 false
 : > "$T/wm/recover/plain-manifest.yaml"
 assert_fails "W with an empty plain manifest is invalid" evaluate_validity "$T/wm" 02-webhook-expiry-ignore "$V" "$T/ctl"
+# w-plain-render's own manifest clause (-s recover/plain-manifest.yaml) is fully
+# redundant with the required-files check on the same path, so this proves the
+# required-files reason instead of the rule's reason text.
+assert_contains "$(reason "$T/wm")" "reason=missing recover/plain-manifest.yaml" "reason names the missing manifest via required files"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"
