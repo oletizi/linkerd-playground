@@ -203,19 +203,23 @@ mkdir -p "$T/bin"
 cat > "$T/bin/kubectl" <<'EOF'
 #!/bin/sh
 case "$3" in
-  get) [ "$STUB_GET" = ok ] || exit 1; printf '%s' "$STUB_LIST" ;;
-  rollout) exit "$STUB_ROLLOUT" ;;
+  get) [ "$STUB_GET" = ok ] || exit 1; [ -z "$STUB_WARN" ] || echo "$STUB_WARN" >&2; printf '%s' "$STUB_LIST" ;;
+  rollout) case "$5" in deploy/linkerd-*) exit "$STUB_ROLLOUT" ;; *) echo "no Deployment $5" >&2; exit 3 ;; esac ;;
 esac
 EOF
 chmod +x "$T/bin/kubectl"
-cp_last() { # RUN GET LIST ROLLOUT: the last line of capture_cp_rollouts against the stub
-  RUN_DIR="$1" STUB_GET="$2" STUB_LIST="$3" STUB_ROLLOUT="$4" PATH="$T/bin:$PATH" capture_cp_rollouts rollout.txt
+cp_last() { # RUN GET LIST ROLLOUT [WARN]: the last line of capture_cp_rollouts against the stub
+  RUN_DIR="$1" STUB_GET="$2" STUB_LIST="$3" STUB_ROLLOUT="$4" STUB_WARN="${5:-}" PATH="$T/bin:$PATH" capture_cp_rollouts rollout.txt
   tail -n 1 "$1/rollout.txt"
 }
 assert_eq "$(cp_last "$T/cp1" ok deployment.apps/linkerd-identity 0)" "[exit 0]" "every listed rollout completed"
 assert_eq "$(cp_last "$T/cp2" ok '' 0)" "[exit 1]" "no control-plane Deployment listed: non-zero"
 assert_eq "$(cp_last "$T/cp3" fail '' 0)" "[exit 1]" "the Deployment listing failed: non-zero"
 assert_eq "$(cp_last "$T/cp4" ok deployment.apps/linkerd-identity 1)" "[exit 1]" "a rollout did not complete: non-zero"
+assert_eq "$(grep -c 'control-plane Deployment listing failed' "$T/cp3/rollout.txt")" 1 "a failed listing is recorded once, not also in the command line"
+two="$(printf 'deployment.apps/linkerd-identity\ndeployment.apps/linkerd-destination')"
+assert_eq "$(cp_last "$T/cp5" ok "$two" 0 'Warning: v1 ComponentStatus is deprecated')" "[exit 0]" "a kubectl warning on stderr does not fail a healthy listing"
+assert_contains "$(cat "$T/cp5/rollout.txt")" "$(printf '; done capture_rollouts linkerd-identity linkerd-destination\n[exit 0]')" "only the real Deployment names are waited for"
 cr_last() { RUN_DIR="$1" STUB_ROLLOUT="$2" PATH="$T/bin:$PATH" capture_rollouts rollout.txt "${@:3}"; tail -n 1 "$1/rollout.txt"; } # RUN ROLLOUT DEPLOY...
 assert_eq "$(cr_last "$T/cr1" 0)" "[exit 1]" "capture_rollouts with no Deployment named: non-zero"
 assert_eq "$(cr_last "$T/cr2" 0 linkerd-destination linkerd-proxy-injector)" "[exit 0]" "capture_rollouts: every named rollout completed"
