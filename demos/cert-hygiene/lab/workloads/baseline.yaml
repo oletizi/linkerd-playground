@@ -97,6 +97,44 @@ spec:
           image: ${IMAGE_SOCAT}
           command: ["sh", "/probes/probe-tcp-new.sh"]
           env:
+            - name: PROBE_NAME
+              value: probe-tcp-new
+            - name: TARGET_HOST
+              value: server.${LAB_NS}.svc.cluster.local
+            - name: TARGET_PORT
+              value: "9000"
+            - name: PROBE_INTERVAL_S
+              value: "${PROBE_INTERVAL_S}"
+          volumeMounts:
+            - name: probes
+              mountPath: /probes
+      volumes:
+        - name: probes
+          configMap:
+            name: lab-probes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-tcp-new-b
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-tcp-new-b
+  template:
+    metadata:
+      labels:
+        app: probe-tcp-new-b
+    spec:
+      containers:
+        - name: probe
+          image: ${IMAGE_SOCAT}
+          command: ["sh", "/probes/probe-tcp-new.sh"]
+          env:
+            - name: PROBE_NAME
+              value: probe-tcp-new-b
             - name: TARGET_HOST
               value: server.${LAB_NS}.svc.cluster.local
             - name: TARGET_PORT
