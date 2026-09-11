@@ -48,3 +48,11 @@ discover-webhooks:
 # Discovery: how long healthy restarts take to pass the restart-stage gates
 discover-gates:
     bash scripts/in-lab.sh lab/discover-gates.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-gates
+
+# Launch a scenario as a discovery run (runs/_discovery/; never evidence)
+run-discovery SCENARIO:
+    bash scripts/run.sh --discovery {{SCENARIO}}
+
+# The same, with the discovery-only shortened observation windows (DISCOVERY_* settings)
+run-discovery-short SCENARIO:
+    bash scripts/run.sh --discovery --short {{SCENARIO}}
