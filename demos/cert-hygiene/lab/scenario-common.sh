@@ -96,8 +96,9 @@ _discovery_setup() {
   POST_EXPIRY_WINDOW_S="$(_min "$POST_EXPIRY_WINDOW_S" "$DISCOVERY_POST_WINDOW_S")"
   RECOVER_WINDOW_S="$(_min "$RECOVER_WINDOW_S" "$DISCOVERY_RECOVER_WINDOW_S")"
   W_POST_WINDOW_S="$(_min "$W_POST_WINDOW_S" "$DISCOVERY_W_POST_WINDOW_S")"
-  printf 'short_windows=applied\nPOST_EXPIRY_WINDOW_S=%s\nRECOVER_WINDOW_S=%s\nW_POST_WINDOW_S=%s\n' \
-    "$POST_EXPIRY_WINDOW_S" "$RECOVER_WINDOW_S" "$W_POST_WINDOW_S" > "$RUN_DIR/discovery-windows.txt"
+  W_RECONNECT_WINDOW_S="$(_min "$W_RECONNECT_WINDOW_S" "$DISCOVERY_W_RECONNECT_WINDOW_S")"
+  printf 'short_windows=applied\nPOST_EXPIRY_WINDOW_S=%s\nRECOVER_WINDOW_S=%s\nW_POST_WINDOW_S=%s\nW_RECONNECT_WINDOW_S=%s\n' \
+    "$POST_EXPIRY_WINDOW_S" "$RECOVER_WINDOW_S" "$W_POST_WINDOW_S" "$W_RECONNECT_WINDOW_S" > "$RUN_DIR/discovery-windows.txt"
   mark discovery-windows "$(paste -sd' ' "$RUN_DIR/discovery-windows.txt")"
 }
 

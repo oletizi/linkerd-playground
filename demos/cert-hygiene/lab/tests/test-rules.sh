@@ -26,8 +26,8 @@ assert_fails "unknown scenario dies (plan)" credential_plan_for 99-nope
 assert_fails "unknown scenario dies (files)" scenario_required_files 99-nope
 assert_eq "$(scenario_rules 00-baseline-control | paste -sd' ' -)" "control-criteria" "control rules"
 assert_eq "$(scenario_rules 05-issuer-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "R rules"
-assert_eq "$(scenario_rules 02-webhook-expiry-ignore | paste -sd' ' -)" "webhook-baseline w-plain-render control-at-tree" "W-ignore rules"
-assert_eq "$(scenario_rules 02-webhook-expiry-fail | paste -sd' ' -)" "webhook-baseline w-plain-render control-at-tree" "W-fail rules"
+assert_eq "$(scenario_rules 02-webhook-expiry-ignore | paste -sd' ' -)" "webhook-baseline w-reconnect w-plain-render control-at-tree" "W-ignore rules"
+assert_eq "$(scenario_rules 02-webhook-expiry-fail | paste -sd' ' -)" "webhook-baseline w-reconnect w-plain-render control-at-tree" "W-fail rules"
 assert_eq "$(scenario_rules 09-identity-outage | paste -sd' ' -)" "control-at-tree" "O rules"
 assert_eq "$(scenario_rules 20-check-threshold | paste -sd' ' -)" "k-remaining" "K rules"
 assert_eq "$(scenario_rules 06-anchor-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "A rules"
@@ -154,6 +154,25 @@ assert_fails "W with an empty plain manifest is invalid" evaluate_validity "$T/w
 # redundant with the required-files check on the same path, so this proves the
 # required-files reason instead of the rule's reason text.
 assert_contains "$(reason "$T/wm")" "reason=missing recover/plain-manifest.yaml" "reason names the missing manifest via required files"
+# w-reconnect: the forced-reconnect restart and its rollouts succeeded (design section 3)
+assert_eq "$(cat "$T/all/02-webhook-expiry-fail/validity.txt")" evidence_valid=yes "W: a complete reconnect record satisfies w-reconnect"
+for f in backing restart rollout; do
+  assert_contains "$(scenario_required_files 02-webhook-expiry-ignore)" "reconnect/$f.txt" "W requires reconnect/$f.txt"
+done
+make_run "$T/wk1" 02-webhook-expiry-fail c2 h1 false
+printf 'component=%s service=%s deployment=%s\n' proxyInjector linkerd-proxy-injector linkerd-proxy-injector \
+  policyValidator linkerd-policy-validator linkerd-destination \
+  profileValidator linkerd-sp-validator '- error=[Service linkerd-sp-validator read failed: exit 1] refused' > "$T/wk1/reconnect/backing.txt"
+assert_fails "W without a backing Deployment for one webhook is invalid" evaluate_validity "$T/wk1" 02-webhook-expiry-fail "$V" "$T/ctl"
+assert_contains "$(reason "$T/wk1")" "reason=forced reconnect: reconnect/backing.txt names no Deployment for profileValidator" "reason names the webhook"
+make_run "$T/wk2" 02-webhook-expiry-ignore c2 h1 false
+printf '$ kubectl -n linkerd rollout restart deploy/linkerd-destination\nerror: connection refused\n[exit 1]\n' > "$T/wk2/reconnect/restart.txt"
+assert_fails "W whose reconnect restart failed is invalid" evaluate_validity "$T/wk2" 02-webhook-expiry-ignore "$V" "$T/ctl"
+assert_contains "$(reason "$T/wk2")" "reason=forced reconnect: reconnect/restart.txt does not end [exit 0]" "reason names the restart"
+make_run "$T/wk3" 02-webhook-expiry-fail c2 h1 false
+printf '$ bash -c ... capture_rollouts linkerd-destination\nerror: timed out waiting for the condition\n[exit 1]\n' > "$T/wk3/reconnect/rollout.txt"
+assert_fails "W whose reconnect rollout failed is invalid" evaluate_validity "$T/wk3" 02-webhook-expiry-fail "$V" "$T/ctl"
+assert_contains "$(reason "$T/wk3")" "reason=forced reconnect: reconnect/rollout.txt does not end [exit 0]" "reason names the rollout"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"
@@ -176,5 +195,15 @@ assert_contains "$(credential_plan_check "$T/pc" 05-issuer-expiry)" "declared: p
 assert_fails "the same states break the control's single-state plan" credential_plan_check "$T/pc" 00-baseline-control
 rm "$T/pc/credentials/verify.txt"
 assert_fails "a tick without credential state fails the check" credential_plan_check "$T/pc" 05-issuer-expiry
+# W: the reconnect ticks come before recovery and change no credential, so W1 -> W2 holds.
+wst() { printf 'trust_roots_sha256=t1\nissuer_sha256=i1\nwebhooks_sha256=%s\n' "$2" > "$1"; } # FILE WEBHOOKS
+make_run "$T/wpc" 02-webhook-expiry-ignore c2 h1 false
+printf '2026-09-10T10:0%s:00Z %s\n' 1 'tick baseline' 2 'tick post-1' 3 'tick reconnect-1' 4 'tick reconnect-2' \
+  5 reconnect-end 6 recover-delete 7 'tick verify' 8 'done' > "$T/wpc/timeline.log"
+for t in baseline post-1 reconnect-1 reconnect-2; do wst "$T/wpc/credentials/$t.txt" w1; done
+wst "$T/wpc/credentials/verify.txt" w2
+assert_succeeds "W: reconnect ticks keep the supplied webhook certificates; the plan walks W1 -> W2" credential_plan_check "$T/wpc" 02-webhook-expiry-ignore
+wst "$T/wpc/credentials/reconnect-2.txt" w9
+assert_fails "W: a webhook credential change during reconnect breaks the plan" credential_plan_check "$T/wpc" 02-webhook-expiry-ignore
 
 finish test-rules

@@ -26,8 +26,13 @@ make_run() {
   printf 'result=ok\n' > "$d/control-criteria.txt"
   printf 'result=ok\n' > "$d/admission-baseline.txt"
   printf 'result=ok\n' > "$d/k-remaining.txt"
-  mkdir -p "$d/s-hard" "$d/recover"
+  mkdir -p "$d/s-hard" "$d/recover" "$d/reconnect"
   printf 'result=met\n' > "$d/s-hard/stage1-condition.txt"
+  printf 'component=%s service=%s deployment=%s\n' proxyInjector linkerd-proxy-injector linkerd-proxy-injector \
+    policyValidator linkerd-policy-validator linkerd-destination profileValidator linkerd-sp-validator linkerd-destination \
+    > "$d/reconnect/backing.txt"
+  printf '$ kubectl -n linkerd rollout restart deploy/linkerd-proxy-injector deploy/linkerd-destination\ndeployment.apps/linkerd-destination restarted\n[exit 0]\n' > "$d/reconnect/restart.txt"
+  printf '$ bash -c ... capture_rollouts linkerd-proxy-injector linkerd-destination\n[exit 0]\n' > "$d/reconnect/rollout.txt"
   printf '$ linkerd upgrade ... | kubectl apply -f -\nsecret/linkerd-identity-issuer configured\n[exit 0]\n' > "$d/recover/linkerd-upgrade.txt"
   printf '$ bash -o pipefail -c linkerd upgrade > m.yaml\n[exit 0]\n' > "$d/recover/plain-render.txt"
   printf '$ kubectl apply -f m.yaml\nsecret/linkerd-proxy-injector-k8s-tls created\n[exit 0]\n' > "$d/recover/plain-apply.txt"
