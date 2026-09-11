@@ -15,3 +15,8 @@ sh:
 # Unit tests for the lab's evidence helpers (run inside the lab machine)
 test:
     bash scripts/in-lab.sh lab/tests/run.sh
+
+# Fresh k3s + Linkerd with lab credentials, for manual poking (MODE: short | long)
+reset MODE="short":
+    bash scripts/in-lab.sh --detach .lab-logs/reset.log lab/reset.sh {{MODE}} manual-$(date -u +%Y%m%dT%H%M%SZ)
+    bash scripts/wait-log.sh .lab-logs/reset.log 1500
