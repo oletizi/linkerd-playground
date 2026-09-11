@@ -1,29 +1,31 @@
-# Certificate Hygiene for Linkerd
+# Certificate hygiene for Linkerd — article materials
 
-Working research materials for the Linkerd certificate-hygiene article.
+Research and lab results for an article on recognising, fixing and preventing certificate-expiry problems in Linkerd.
 
-## Files
+## Start here
 
-- [research.md](research.md) — a quick, source-prioritized link index for active research.
-- [bibliography.md](bibliography.md) — the canonical source and claim map, including authority level, outline mapping, research notes, and claims that need evidence or clear editorial labeling.
-- [demo-feasibility.md](demo-feasibility.md) — a safe, version-aware plan for turning article failure modes into disposable-cluster demonstrations.
-- [linkerd-source-notes.md](linkerd-source-notes.md) — Linkerd certificate behavior read from source at `edge-26.9.1` (leaf lifetime and clamping, issuer and anchor expiry, webhook certs and `failurePolicy`, `linkerd check` coverage), with permalinks. These are hypotheses for the demos to confirm, not article evidence.
-- [evidence-05-issuer-expiry.md](evidence-05-issuer-expiry.md) — hypotheses H1–H8 judged against the valid issuer-expiry run, with quoted evidence.
-- [Demo lab design](../../superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md) — how the demos are built: shared `lib/` install pieces, a one-box OrbStack + k3s lab, probe workloads, evidence capture, and the first scenario (issuer expiry).
+1. **[findings.md](findings.md)** — what we learned, in plain words, organised to match the article outline. Each finding says whether we saw it in a test cluster, read it in Linkerd's source, or don't know yet.
+2. **[sources.md](sources.md)** — what to cite for each claim, how authoritative each source is, and which claims in the draft need careful wording.
+3. **[notes/](notes/)** — the detail behind the findings. You only need these to check a specific claim:
+   - [notes/lab-evidence-issuer-expiry.md](notes/lab-evidence-issuer-expiry.md) — the full record of the issuer-expiry experiment, quoting raw logs and metrics.
+   - [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md) — what Linkerd's source code says about certificate behaviour, with links to the exact lines.
+   - [notes/research-links.md](notes/research-links.md) — reading list and a catalogue of real-world incident reports.
+   - [notes/demo-feasibility.md](notes/demo-feasibility.md) — which failure modes can be reproduced safely in a test cluster, and how.
 
-## Demo status
+## Status
 
-| Scenario | State |
-| --- | --- |
-| Lab design | Approved after [third-party review](../../superpowers/reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); [implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md) written |
-| Lab harness | Built (plan complete). Later fixes capture workload `linkerd-proxy` logs and per-pod probe history before each restart stage, record the recovery gate's inputs, and add matching validity rules |
-| Baseline control (`00-baseline-control`) | Valid run: demos/cert-hygiene/runs/00-baseline-control/20260911T014417Z |
-| #5 Issuer expiry | Observations recorded: evidence-05-issuer-expiry.md. The recorded run lacks workload proxy logs and recover-phase probe history (T+574 to T+1211); a re-run of the control and #5 at the fixed harness is pending |
-| All other scenarios in [demo-feasibility.md](demo-feasibility.md) | Not started |
+- **Identity issuer expiry:** tested. Results are in [findings.md](findings.md). A repeat with fuller logging is pending; it should answer the questions listed under "Still open" there.
+- **Trust-anchor expiry, webhook certificates, viz/tap, and the other scenarios** in [notes/demo-feasibility.md](notes/demo-feasibility.md): not tested yet. Their findings come from Linkerd's source code only.
+
+## The test lab
+
+The experiments run in [`demos/cert-hygiene/`](../../../demos/cert-hygiene/): a throwaway single-machine Kubernetes cluster with Linkerd. It makes certificates expire on purpose and records everything that happens. Raw recordings of each run are kept under `demos/cert-hygiene/runs/`.
+
+How the lab works is in its [design](../../superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md). How it was built is in its [implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md). Both use internal shorthand that the pages above avoid.
 
 ## Research conventions
 
 - Treat current Linkerd documentation as the source of truth for Linkerd behavior and operational procedures.
 - Use Kubernetes, IETF, NIST, and cert-manager material to support underlying mechanics and general operational guidance.
 - Treat GitHub issues and discussions as historical examples, not as current runbooks or universal behavior.
-- Before adding article copy, map factual claims to the bibliography and retain any necessary qualifications.
+- Before adding article copy, map factual claims to [sources.md](sources.md) and keep any qualifications it records.

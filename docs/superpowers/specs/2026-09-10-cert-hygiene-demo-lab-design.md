@@ -2,11 +2,11 @@
 
 **Status:** Approved after a third-party review ([review](../reviews/2026-09-10-cert-hygiene-demo-lab-design-review.md); dispositions in § 9). Implementation plan: [`docs/superpowers/plans/2026-09-10-cert-hygiene-demo-lab/`](../plans/2026-09-10-cert-hygiene-demo-lab/README.md).
 
-Linkerd behavior described here comes from reading source at tag `edge-26.9.1`; the details and permalinks are in [linkerd-source-notes.md](../../articles/cert-hygiene/linkerd-source-notes.md). Behavior read from source is labelled **Source** and is treated as a *hypothesis the lab run tests*, not as article evidence. Items only the lab can settle are labelled **Unverified**.
+Linkerd behavior described here comes from reading source at tag `edge-26.9.1`; the details and permalinks are in [linkerd-source-notes.md](../../articles/cert-hygiene/notes/linkerd-source-notes.md). Behavior read from source is labelled **Source** and is treated as a *hypothesis the lab run tests*, not as article evidence. Items only the lab can settle are labelled **Unverified**.
 
 The chain of evidence is **source → hypothesis → lab observation → article claim**. Scripts never grade hypotheses (§ 5).
 
-**Inputs:** [article README](../../articles/cert-hygiene/README.md), [demo-feasibility.md](../../articles/cert-hygiene/demo-feasibility.md) (scenario numbering and the article validation contract), [bibliography.md](../../articles/cert-hygiene/bibliography.md), [linkerd-source-notes.md](../../articles/cert-hygiene/linkerd-source-notes.md).
+**Inputs:** [article README](../../articles/cert-hygiene/README.md), [demo-feasibility.md](../../articles/cert-hygiene/notes/demo-feasibility.md) (scenario numbering and the article validation contract), [sources.md](../../articles/cert-hygiene/sources.md), [linkerd-source-notes.md](../../articles/cert-hygiene/notes/linkerd-source-notes.md).
 
 ## Decisions made
 
@@ -245,10 +245,10 @@ Source reading contradicts or sharpens several rows of the brief's triage table.
 
 | Brief says | Source says | Settled by |
 | --- | --- | --- |
-| Issuer expiry: "failure spreads gradually" | **Certificate expiry is simultaneous; observed traffic failure may not be.** Leaves are clamped to the issuer's `notAfter`, so every identity expires at `T_iss`, but established and pooled connections may outlive that boundary. | #5 — see docs/articles/cert-hygiene/evidence-05-issuer-expiry.md |
+| Issuer expiry: "failure spreads gradually" | **Certificate expiry is simultaneous; observed traffic failure may not be.** Leaves are clamped to the issuer's `notAfter`, so every identity expires at `T_iss`, but established and pooled connections may outlive that boundary. | #5 — see docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md |
 | Policy-validator: "a Fail policy turns an expired cert into a hard admission rejection" | Every Linkerd webhook defaults to `failurePolicy: Ignore`, so an expired validator cert lets unvalidated resources through **silently**. No rejection happens unless the operator changed `webhookFailurePolicy`. | Webhook slice |
 | Trust anchor expired: "peers can't validate each other" | Proxies don't check the anchor's own dates. Visible breakage waits until leaves expire, while identity refuses to sign immediately. | #6 |
-| "Exact `linkerd check` output for each failure" | `linkerd check` never inspects workload leaf certs or the tap-injector cert, and warns at a fixed 60 days | #5 — see docs/articles/cert-hygiene/evidence-05-issuer-expiry.md; webhook slice |
+| "Exact `linkerd check` output for each failure" | `linkerd check` never inspects workload leaf certs or the tap-injector cert, and warns at a fixed 60 days | #5 — see docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md; webhook slice |
 
 ## 9. Review dispositions
 

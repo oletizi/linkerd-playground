@@ -1,6 +1,6 @@
 # Certificate Hygiene for Linkerd — Research Links
 
-This is the working link index for the article. The companion [bibliography](bibliography.md) records claim-level mappings, authority, and editorial caveats.
+This is the working link index for the article. The companion [sources](../sources.md) records claim-level mappings, authority, and editorial caveats.
 
 ## Linkerd: core operations
 

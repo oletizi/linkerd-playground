@@ -1,4 +1,4 @@
-# Linkerd Certificate Hygiene — Research Bibliography
+# Sources: what to cite for each claim
 
 **Purpose:** a maintained source and claim map for a blog post about recognizing, recovering from, and preventing certificate-expiry failures in Linkerd.
 

@@ -5,7 +5,7 @@ Part of the [cert-hygiene demo lab plan](README.md). Read its Global Constraints
 **Goal:** Judge H1–H8 (spec § 4.2) and the unpredicted HTTP observation against the valid #5 run. Compare the control where § 4.4 says a human must. Write the result into the article folder, citing evidence by path. This is the only place hypotheses are judged (spec § 5). Nothing in `runs/` is edited.
 
 **Files:**
-- Create: `docs/articles/cert-hygiene/evidence-05-issuer-expiry.md`
+- Create: `docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md`
 - Modify: `docs/articles/cert-hygiene/README.md` (file list + status)
 - Modify: `docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md` (§ 8 "Settled by" cells for the rows #5 settles)
 
@@ -58,7 +58,7 @@ Use these commands. Each result goes into the matching section of Step 3.
   **Confound to rule out:** `linkerd upgrade` re-renders the control plane, so control-plane pods may have restarted for that reason alone. Compare the `linkerd` namespace rows (AGE, RESTARTS) across `$R/pods/post-*.txt` and `$R/pods/recover-*.txt` before attributing the recovery to a hot reload.
 - **Control comparison (§ 4.4):** list every `‼` line in `$R/checks/*.txt` that isn't a certificate-lifetime warning, and confirm the same line appears in `$C/checks/*.txt`. Explain any that don't.
 
-- [ ] **Step 3: Write `docs/articles/cert-hygiene/evidence-05-issuer-expiry.md`**
+- [ ] **Step 3: Write `docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md`**
 
 Use this structure, filling every section from Step 2:
 
@@ -90,7 +90,7 @@ Use this structure, filling every section from Step 2:
 
 - [ ] **Step 4: Update the spec and the article README**
 
-In the spec's § 8 table, set the "Settled by" cell of the issuer-expiry row, and the `#5` part of the `linkerd check` row, to `#5 — see docs/articles/cert-hygiene/evidence-05-issuer-expiry.md`.
+In the spec's § 8 table, set the "Settled by" cell of the issuer-expiry row, and the `#5` part of the `linkerd check` row, to `#5 — see docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md`.
 
 In `docs/articles/cert-hygiene/README.md`:
 - Add to the file list: `- [evidence-05-issuer-expiry.md](evidence-05-issuer-expiry.md) — hypotheses H1–H8 judged against the valid issuer-expiry run, with quoted evidence.`
@@ -100,7 +100,7 @@ In `docs/articles/cert-hygiene/README.md`:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/articles/cert-hygiene/evidence-05-issuer-expiry.md docs/articles/cert-hygiene/README.md docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md
+git add docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry.md docs/articles/cert-hygiene/README.md docs/superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md
 git commit -m "cert-hygiene record issuer-expiry observations"
 git push
 ```
