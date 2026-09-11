@@ -30,7 +30,14 @@ No branch is predicted (W6 is an observation), and no exit status counts as reco
 
 **The plain render must really run.** `_w_upgrade_cmd` builds the render command and adds arguments only when there are some. With none, a quoted empty argument would make `linkerd upgrade`, which accepts no arguments, fail and leave an empty manifest; the apply would then fail with the Secrets deleted, and the run would record a harness failure as branch iii. The `w-plain-render` validity rule (Task 3) makes such a run invalid. A run whose plain upgrade fails for Linkerd's own reasons is invalid too. It is still committed, and its write-up reports the failure as what it recorded.
 
-**Private keys.** `assert_no_keys` also decodes every base64 token that begins like a PEM header (`b64_key_hits`), so a key that escaped redaction cannot pass unnoticed.
+**Private keys.** One recursive test, `_has_key_b64`, serves both redaction and the final guard. It decodes every base64 run of 40 or more characters, and any such run inside the decoded text, up to three layers deep. It then searches the decoded bytes for `PRIVATE KEY`.
+- `redact_manifest` redacts every value that test flags, including values nested like `linkerd-config-overrides` (base64 YAML carrying a base64 PEM key).
+- `assert_no_keys` runs `b64_key_hits`, the same test over every evidence file, so a key that escaped redaction cannot pass unnoticed.
+
+The unit tests cover:
+- a directly encoded key;
+- a key whose PEM header doesn't start the encoded text;
+- a nested key, in the `linkerd-config-overrides` shape.
 
 **Files:**
 - Create: `demos/cert-hygiene/lab/scenario-webhook.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-ignore.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-fail.sh`
@@ -41,10 +48,11 @@ No branch is predicted (W6 is an observation), and no exit status counts as reco
 **Interfaces:**
 - Consumes: Task 9 hooks, Task 11 (`admission_probes`, `admission_render`, `admission_proof_check`), Task 1 (`make_webhook_certs`, `webhook_install_args`, `webhook_secret`, `WEBHOOK_COMPONENTS`), Task 5 (`WEBHOOK_CONFIGS`, `snap_webhooks`, `snap_controlplane`), `cert_facts`, `cert_not_after_epoch`.
 - Produces:
-  - `redact_manifest FILE` (pure) → FILE on stdout with every base64 value that decodes to a private key replaced by `<redacted sha256=<hash of the value>>`, and every literal PEM private-key block replaced by one `<redacted private key block>` line. Everything else is byte-identical.
+  - `_has_key_b64 DEPTH TEXT` (pure) → 0 when TEXT contains `PRIVATE KEY`, directly or inside up to DEPTH layers of base64 runs of 40 or more characters (all-hex runs, which are digests, are skipped).
+  - `redact_manifest FILE` (pure) → FILE on stdout. Every `key: value` whose base64 value hides a private key at any depth (`_has_key_b64 3`) becomes `<redacted sha256=<hash of the value>>`. Every literal PEM private-key block becomes one `<redacted private key block>` line. Everything else is byte-identical.
   - `w_branch_classify FACTS_FILE` (pure) → `branch=i|ii|iii` by the rule above. Facts contract: exactly three lines `component=<c> secret_sha256=<hex|-> supplied_sha256=<hex> equals_supplied=<yes|no> not_after_epoch=<epoch|-> valid_now=<yes|no> cabundle_verifies=<yes|no>` and one `admission=<healthy|unhealthy>` line. Dies on any other count.
   - Evidence: `admission-baseline.txt`; `admission/{baseline,pre-expiry,post-NNNN,recovered}/`; timeline markers `webhook-expired`, `admission-probes`, `recover-delete`, `recover-plain`, `propagated`, `recover-branch`, `recover-supplied`; `recover/delete-secrets.txt`; per label (`plain`, and `supplied` for ii/iii): `recover/<label>-render.txt`, `recover/<label>-manifest.yaml` (redacted), `recover/<label>-apply.txt`, `recover/<label>-rollout.txt`, `recover/<label>-propagation.txt`, `recover/<label>-check.txt`, `recover/<label>-facts.txt`, `controlplane/recover-<label>.txt`, `webhooks/recover-<label>.txt`, `admission/recovered/*-recover-<label>.*`; `recover/branch.txt` (first line `branch=…`); `certs/webhook-fresh-*.{pem,txt}` for ii/iii.
-  - `b64_key_hits DIR` (pure) → one line per file under DIR holding a base64 token (starting `LS0tLS1CRUdJTi`, the encoding of `-----BEGIN`) that decodes to a PEM private key; nothing otherwise.
+  - `b64_key_hits DIR` (pure) → one line per file under DIR for which `_has_key_b64 3` holds on the file's text: a base64 run of 40 or more characters that decodes, directly or through nested base64, to text containing `PRIVATE KEY`. Nothing otherwise.
   - `_w_upgrade_cmd OUT [ARGS...]` → the shell command rendering `linkerd upgrade ARGS` into OUT, with no argument text at all when ARGS is empty.
   - W's `scenario_post_window_end` → T3 + `W_POST_WINDOW_S`.
   - Config: `W_PROPAGATION_TIMEOUT_S=180`, `W_FRESH_WEBHOOK_LIFETIME=8760h` (and `W_POST_WINDOW_S=600` from Task 9).
@@ -77,6 +85,19 @@ printf 'data:\n  tls.crt: %s\n' "$crt_b64" > "$T/ev/b/cert.yaml"
 printf '%s\n' "$red" > "$T/ev/b/redacted.yaml"
 assert_eq "$(b64_key_hits "$T/ev")" "$T/ev/a/leak.yaml" "only the file holding a base64 private key is reported"
 assert_eq "$(b64_key_hits "$T/ev/b")" "" "certificates and redacted manifests pass"
+# A key whose PEM header does not start the encoded text (so the encoding never begins
+# with the encoding of "-----BEGIN"): found only by decoding every long run.
+mkdir -p "$T/ev/c" "$T/ev/d"
+shifted="$(printf 'prefix text; -----BEGIN EC PRIVATE KEY-----\nAAAAShiftedFake\n-----END EC PRIVATE KEY-----\n' | base64 -w0)"
+printf 'data:\n  blob: %s\n' "$shifted" > "$T/ev/c/shifted.yaml"
+assert_eq "$(b64_key_hits "$T/ev/c")" "$T/ev/c/shifted.yaml" "a key not at the start of the encoded text is reported"
+# The linkerd-config-overrides shape: base64 YAML whose text carries a base64 PEM key.
+outer="$(printf 'identity:\n  issuer:\n    tls:\n      keyPEM: %s\n' "$key_b64" | base64 -w0)"
+printf 'data:\n  linkerd-config-overrides: %s\n' "$outer" > "$T/ev/d/overrides.yaml"
+assert_eq "$(b64_key_hits "$T/ev/d")" "$T/ev/d/overrides.yaml" "a base64 PEM key nested inside a base64 value is reported"
+red2="$(redact_manifest "$T/ev/d/overrides.yaml")"
+assert_eq "$(grep -cF "$outer" <<< "$red2")" 0 "the nested key's outer value is redacted"
+assert_contains "$red2" "linkerd-config-overrides: <redacted sha256=" "the redaction keeps the key name"
 
 # ---- w_branch_classify ----
 facts() { # FILE EQ1 EQ2 EQ3 VALID VERIFIES ADMISSION
@@ -111,12 +132,28 @@ Expected: `test-scenarios` fails with `redact_manifest: command not found`.
 - [ ] **Step 2: Implement both in `demos/cert-hygiene/lab/lib-evidence-scenarios.sh`**
 
 ```bash
+# _has_key_b64 DEPTH TEXT: does TEXT contain "PRIVATE KEY", directly or inside up to DEPTH
+# layers of base64 (runs of 40+ characters)? All-hex runs are digests, never base64 text,
+# and are skipped. Used by redact_manifest and b64_key_hits.
+_has_key_b64() {
+  local depth="$1" text="$2" run dec
+  [[ "$text" != *"PRIVATE KEY"* ]] || return 0
+  [ "$depth" -gt 0 ] || return 1
+  while IFS= read -r run; do
+    [[ ! "$run" =~ ^[0-9a-f]+$ ]] || continue
+    dec="$(printf '%s' "$run" | base64 -d 2>/dev/null | tr -d '\0' || true)"
+    [ -n "$dec" ] || continue
+    if _has_key_b64 $(( depth - 1 )) "$dec"; then return 0; fi
+  done < <(printf '%s\n' "$text" | grep -oE '[A-Za-z0-9+/]{40,}={0,2}' || true)
+  return 1
+}
+
 # redact_manifest FILE: FILE with every private key replaced, for recording rendered
-# manifests in evidence (private keys never enter the repo). A base64 value that decodes
-# to a private key becomes "<redacted sha256=...>"; a literal PEM private-key block
-# becomes one "<redacted private key block>" line. Every other line is kept as is.
+# manifests in evidence (private keys never enter the repo). A base64 value hiding a
+# private key at any depth becomes "<redacted sha256=...>"; a literal PEM private-key
+# block becomes one "<redacted private key block>" line. Every other line is kept as is.
 redact_manifest() {
-  local f="${1:?redact_manifest: FILE required}" line in_block=no dec
+  local f="${1:?redact_manifest: FILE required}" line in_block=no
   [ -f "$f" ] || die "redact_manifest: no file $f"
   while IFS= read -r line || [ -n "$line" ]; do
     if [ "$in_block" = yes ]; then
@@ -129,9 +166,9 @@ redact_manifest() {
       continue
     fi
     if [[ "$line" =~ ^([[:space:]]*[A-Za-z0-9._-]+:[[:space:]]+)([A-Za-z0-9+/=]{40,})$ ]]; then
-      dec="$(printf '%s' "${BASH_REMATCH[2]}" | base64 -d 2>/dev/null | tr -d '\0' || true)"
-      if [[ "$dec" == *"PRIVATE KEY"* ]]; then
-        printf '%s<redacted sha256=%s>\n' "${BASH_REMATCH[1]}" "$(printf '%s' "${BASH_REMATCH[2]}" | sha256sum | cut -d' ' -f1)"
+      local prefix="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
+      if _has_key_b64 3 "$value"; then
+        printf '%s<redacted sha256=%s>\n' "$prefix" "$(printf '%s' "$value" | sha256sum | cut -d' ' -f1)"
         continue
       fi
     fi
@@ -157,17 +194,14 @@ w_branch_classify() {
   echo branch=iii
 }
 
-# b64_key_hits DIR: files under DIR holding a base64 token that decodes to a PEM private
-# key. Base64 of "-----BEGIN" starts "LS0tLS1CRUdJTi"; each such token is decoded and
-# checked. assert_no_keys runs it next to its literal "PRIVATE KEY" search.
+# b64_key_hits DIR: files under DIR holding a base64 run (40+ characters) that decodes,
+# directly or through nested base64 up to three layers, to text containing "PRIVATE KEY".
+# assert_no_keys runs it next to its literal "PRIVATE KEY" search.
 b64_key_hits() {
-  local d="${1:?b64_key_hits: DIR required}" f tok dec
+  local d="${1:?b64_key_hits: DIR required}" f
   while IFS= read -r f; do
-    while IFS= read -r tok; do
-      dec="$(printf '%s' "$tok" | base64 -d 2>/dev/null | tr -d '\0' || true)"
-      if [[ "$dec" == *"PRIVATE KEY"* ]]; then echo "$f"; break; fi
-    done < <(grep -oE 'LS0tLS1CRUdJTi[A-Za-z0-9+/=]+' "$f" 2>/dev/null || true)
-  done < <(grep -rlE 'LS0tLS1CRUdJTi' "$d" 2>/dev/null || true)
+    if _has_key_b64 3 "$(cat "$f")"; then echo "$f"; fi
+  done < <(grep -rlE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
 }
 ```
 
@@ -205,8 +239,8 @@ W_FRESH_WEBHOOK_LIFETIME=8760h
 # section 3). Lab-supplied webhook serving certificates expire 10 minutes apart:
 # proxy-injector at T1 (= T_mark), policy-validator at T2, sp-validator at T3. Admission
 # probes run at baseline and on every tick; each reaches exactly one webhook. Recovery
-# starts at T1 + POST_EXPIRY_WINDOW_S and is observed as it branches. Source after
-# lab/scenario-common.sh; do not execute.
+# starts at T3 + W_POST_WINDOW_S (scenario_post_window_end) and is observed as it
+# branches. Source after lab/scenario-common.sh; do not execute.
 # shellcheck source=/dev/null
 . "$LAB_DIR/admission.sh"
 
