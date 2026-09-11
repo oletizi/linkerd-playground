@@ -87,6 +87,10 @@ snap_metrics() { # NAME: identity and connection series for every lab proxy + th
 
 tick() { # NAME: the seven files every tick must have (see evaluate_validity)
   local name="$1"
+  # Read only by scenario_tick_extra implementations in later scenario files, not by
+  # this file itself.
+  # shellcheck disable=SC2034
+  TICK_START_EPOCH="$(date -u +%s)"   # when this tick's checks begin; hooks compare against it
   mark tick "$name"
   capture "checks/$name-check.txt" linkerd check --wait 20s &
   capture "checks/$name-check-proxy.txt" linkerd check --proxy --wait 20s &
@@ -97,6 +101,7 @@ tick() { # NAME: the seven files every tick must have (see evaluate_validity)
   snap_webhooks "$name"
   snap_controlplane "$name"
   wait
+  if declare -F scenario_tick_extra > /dev/null; then scenario_tick_extra "$name"; fi
 }
 
 snap_pod_detail() { # NAME APP
