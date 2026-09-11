@@ -11,7 +11,7 @@ control_criteria_check() {
   local pdir="$run/probes/final"
   t="$(awk '$2 == "tick" && $3 == "baseline" { print $1; exit }' "$run/timeline.log" 2>/dev/null)"
   [ -n "$t" ] || { echo "fail: no baseline tick in timeline.log"; return 1; }
-  for p in probe-http probe-tcp-new probe-tcp-stream; do
+  for p in probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream; do
     lines="$(_probe_lines "$pdir" "$p")"
     if [ -z "$lines" ]; then echo "fail: no $p lines in $pdir"; bad=1; continue; fi
     n="$(printf '%s\n' "$lines" | awk -v t="$t" '$1 >= t && / (fail|closed) /' | wc -l | tr -d ' ')"

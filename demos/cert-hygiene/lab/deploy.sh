@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs INSIDE the lab VM. Renders and applies the lab workloads.
 # Usage: deploy.sh <baseline|probe-new>
-#   baseline:  namespace, probe-script ConfigMap, server, the three probes and
+#   baseline:  namespace, probe-script ConfigMap, server, the four probes and
 #              restart-target; waits for every rollout.
 #   probe-new: the workload first created after T_iss. Applied WITHOUT waiting: after
 #              issuer expiry it is expected never to become Ready.
@@ -23,7 +23,7 @@ case "$what" in
     kubectl -n "$LAB_NS" create configmap lab-probes --from-file="$LAB_DIR/probes" \
       --dry-run=client -o yaml | kubectl apply -f -
     render baseline | kubectl apply -f -
-    for d in server probe-http probe-tcp-new probe-tcp-stream restart-target; do
+    for d in server probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream restart-target; do
       kubectl -n "$LAB_NS" rollout status "deploy/$d" --timeout=5m
     done
     ;;

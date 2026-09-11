@@ -35,7 +35,7 @@ snap_journal() { # NAME SINCE_EPOCH: API-server side of the run window
 snap_probes() { # LABEL: probe output from EVERY pod of each probe -- Terminating pods
   # included -- current and previous container, into probes/LABEL/<pod>[-previous].log.
   # Per pod, because a restart replaces the pod that deploy/<probe> would read.
-  local label="$1" sel='app in (probe-http,probe-tcp-new,probe-tcp-stream)' pod
+  local label="$1" sel='app in (probe-http,probe-tcp-new,probe-tcp-new-b,probe-tcp-stream)' pod
   capture "probes/$label/pods.txt" kubectl -n "$LAB_NS" get pods -l "$sel" -o wide
   for pod in $(kubectl -n "$LAB_NS" get pods -l "$sel" \
       -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do

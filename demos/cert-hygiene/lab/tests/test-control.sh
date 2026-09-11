@@ -23,6 +23,7 @@ make_ctl() { # dir: a control run that meets every criterion (probes/final/, one
   printf '$ kubectl -n lab logs probe-http-1 -c probe\n2026-09-10T10:04:58Z probe-http seq=1 fail curl_rc=7 http=000 err=refused\n2026-09-10T10:05:01Z probe-http seq=2 ok http=200\n[exit 0]\n' > "$p/probe-http-1.log"
   printf '$ kubectl -n lab logs probe-http-1 -c probe --previous\nError from server (BadRequest): previous terminated container "probe" in pod "probe-http-1" not found\n[exit 1]\n' > "$p/probe-http-1-previous.log"
   printf '2026-09-10T10:05:01Z probe-tcp-new seq=2 ok\n' > "$p/probe-tcp-new-1.log"
+  printf '2026-09-10T10:05:01Z probe-tcp-new-b seq=2 ok\n' > "$p/probe-tcp-new-b-1.log"
   printf '2026-09-10T10:04:59Z probe-tcp-stream seq=0 conn=ab-1 connect target=s:9000\n2026-09-10T10:05:01Z probe-tcp-stream seq=2 conn=ab-1 ok\n' > "$p/probe-tcp-stream-1.log"
   printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-restart-target.txt"
   printf '$ kubectl rollout status\n[exit 0]\n' > "$d/pods/verify-rollout-probe-new.txt"
@@ -46,5 +47,10 @@ make_ctl "$T/cc4"; printf '× issuer cert is within its validity period\n' >> "$
 assert_fails "a fatal check result breaks the control" control_criteria_check "$T/cc4"
 make_ctl "$T/cc5"; printf '‼ issuer cert is valid for at least 60 days\n' >> "$T/cc5/checks/verify-check.txt"
 assert_fails "a certificate-lifetime warning breaks the control" control_criteria_check "$T/cc5"
+
+make_ctl "$T/ccb"; rm "$T/ccb/probes/final/probe-tcp-new-b-1.log"
+assert_fails "the control needs the second client's lines" control_criteria_check "$T/ccb"
+make_ctl "$T/ccb2"; printf '2026-09-10T10:20:00Z probe-tcp-new-b seq=9 fail socat_rc=1\n' >> "$T/ccb2/probes/final/probe-tcp-new-b-1.log"
+assert_fails "a second-client failure after baseline breaks the control" control_criteria_check "$T/ccb2"
 
 finish test-control

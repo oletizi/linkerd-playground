@@ -10,7 +10,7 @@
 . "$LAB_DIR/collect.sh"
 
 CONTROL_RUNS="$DEMO/runs/00-baseline-control"
-PROBES=(probe-http probe-tcp-new probe-tcp-stream)
+PROBES=(probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream)
 
 sleep_until() { # EPOCH
   local now

@@ -9,7 +9,7 @@ set -euo pipefail
 out="${1:?usage: discover.sh <out-dir>}"
 [ ! -e "$out" ] || die "$out exists; refusing to overwrite"
 mkdir -p "$out"
-apps=(probe-http probe-tcp-new probe-tcp-stream server restart-target)
+apps=(probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream server restart-target)
 
 pod_of() { kubectl -n "$LAB_NS" get pod -l "app=$1" -o jsonpath='{.items[0].metadata.name}'; }
 metrics() { kubectl get --raw "/api/v1/namespaces/$1/pods/$2:$3/proxy/metrics"; }
@@ -17,6 +17,7 @@ idpod="$(kubectl -n linkerd get pod -l linkerd.io/control-plane-component=identi
 
 snap() { # label
   local app
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$out/$1.utc"
   for app in "${apps[@]}"; do metrics "$LAB_NS" "$(pod_of "$app")" 4191 > "$out/$app-$1.txt"; done
   metrics linkerd "$idpod" 9990 > "$out/identity-$1.txt"
 }
@@ -24,7 +25,7 @@ snap() { # label
 snap t0
 sleep 30
 snap t1
-for app in probe-http probe-tcp-new probe-tcp-stream; do
+for app in probe-http probe-tcp-new probe-tcp-new-b probe-tcp-stream; do
   kubectl -n "$LAB_NS" logs "deploy/$app" -c probe --since=40s > "$out/$app.log"
 done
 
