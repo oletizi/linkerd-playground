@@ -13,7 +13,7 @@ scenario_rules() {
   case "${1:?scenario_rules: SCENARIO required}" in
     00-baseline-control) echo control-criteria ;;
     05-issuer-expiry|06-anchor-expiry) printf '%s\n' recovery-apply control-at-tree ;;
-    02-webhook-expiry-ignore|02-webhook-expiry-fail) printf '%s\n' webhook-baseline w-plain-render control-at-tree ;;
+    02-webhook-expiry-ignore|02-webhook-expiry-fail) printf '%s\n' webhook-baseline w-reconnect w-plain-render control-at-tree ;;
     09-identity-outage|07-anchor-rotation-staged) echo control-at-tree ;;
     20-check-threshold) echo k-remaining ;;
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
@@ -34,7 +34,8 @@ scenario_required_files() {
     05-issuer-expiry) _certs issuer-replacement; echo recover/linkerd-upgrade.txt ;;
     02-webhook-expiry-*)
       _certs webhook-ca webhook-proxyInjector webhook-policyValidator webhook-profileValidator
-      printf '%s\n' admission-baseline.txt recover/branch.txt recover/plain-render.txt recover/plain-apply.txt recover/plain-manifest.yaml ;;
+      printf '%s\n' admission-baseline.txt recover/branch.txt recover/plain-render.txt recover/plain-apply.txt recover/plain-manifest.yaml \
+        reconnect/backing.txt reconnect/restart.txt reconnect/rollout.txt ;;
     09-identity-outage) ;;
     20-check-threshold) _certs issuer-plus; echo k-remaining.txt ;;
     06-anchor-expiry) _certs trust-anchor-new issuer-replacement; echo recover/linkerd-upgrade.txt ;;
@@ -113,7 +114,7 @@ _first_is() { [ "$(head -n 1 "$1" 2>/dev/null)" = "$2" ]; } # FILE LINE
 # decide mechanically whether a run is valid evidence and write RUN_DIR/validity.txt.
 evaluate_validity() {
   local run="${1:?}" scenario="${2:?}" expected="${3:?}" control_dir="${4:-}"
-  local reasons=() f tick rule tree rules
+  local reasons=() f tick rule tree rules comp
   rules="$(scenario_rules "$scenario")" || die "evaluate_validity: unknown scenario '$scenario'"
   [ "$(_kv demo_repo_dirty "$run/git-state.txt")" = false ] || reasons+=("dirty harness tree, or git-state.txt missing")
   [ ! -e "$run/discovery.txt" ] || reasons+=("discovery run: never evidence")
@@ -151,6 +152,15 @@ evaluate_validity() {
             || [ ! -s "$run/recover/plain-manifest.yaml" ]; then
           reasons+=("plain linkerd upgrade render or apply did not succeed: recover/plain-render.txt or plain-apply.txt does not end [exit 0], or plain-manifest.yaml is empty")
         fi ;;
+      w-reconnect)   # the components are lib-webhook.sh's WEBHOOK_COMPONENTS, which this pure library does not source
+        for comp in proxyInjector policyValidator profileValidator; do
+          awk -v c="component=$comp" '$1 == c && $3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' \
+            "$run/reconnect/backing.txt" 2>/dev/null || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment for $comp")
+        done
+        for f in restart rollout; do
+          [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
+            || reasons+=("forced reconnect: reconnect/$f.txt does not end [exit 0]")
+        done ;;
       k-remaining)
         _first_is "$run/k-remaining.txt" result=ok || reasons+=("K measurements are not on opposite sides of 60 days at check time") ;;
       s-hard-stage1)

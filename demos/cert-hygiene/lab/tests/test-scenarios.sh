@@ -213,6 +213,28 @@ assert_eq "$(cp_last "$T/cp1" ok deployment.apps/linkerd-identity 0)" "[exit 0]"
 assert_eq "$(cp_last "$T/cp2" ok '' 0)" "[exit 1]" "no control-plane Deployment listed: non-zero"
 assert_eq "$(cp_last "$T/cp3" fail '' 0)" "[exit 1]" "the Deployment listing failed: non-zero"
 assert_eq "$(cp_last "$T/cp4" ok deployment.apps/linkerd-identity 1)" "[exit 1]" "a rollout did not complete: non-zero"
+cr_last() { RUN_DIR="$1" STUB_ROLLOUT="$2" PATH="$T/bin:$PATH" capture_rollouts rollout.txt "${@:3}"; tail -n 1 "$1/rollout.txt"; } # RUN ROLLOUT DEPLOY...
+assert_eq "$(cr_last "$T/cr1" 0)" "[exit 1]" "capture_rollouts with no Deployment named: non-zero"
+assert_eq "$(cr_last "$T/cr2" 0 linkerd-destination linkerd-proxy-injector)" "[exit 0]" "capture_rollouts: every named rollout completed"
+
+# ---- w_backing_line, w_backing_deployments: reconnect/backing.txt ----
+dep() { printf '{"metadata":{"name":"%s"},"spec":{"template":{"metadata":{"labels":%s}}}}' "$1" "$2"; } # NAME LABELS
+printf '{"items":[%s,%s,%s]}\n' "$(dep linkerd-destination '{"c":"destination","ns":"linkerd"}')" \
+  "$(dep linkerd-proxy-injector '{"c":"proxy-injector","ns":"linkerd"}')" "$(dep other '{"ns":"linkerd"}')" > "$T/deps.json"
+svcj() { printf '{"spec":%s}\n' "$2" > "$T/svc-$1.json"; echo "$T/svc-$1.json"; } # NAME SPEC: prints the path
+bl() { w_backing_line policyValidator linkerd-policy-validator "$@"; } # SVC_JSON DEPLOYS_JSON [READ_ERROR]
+assert_eq "$(bl "$(svcj two '{"selector":{"c":"destination","ns":"linkerd"}}')" "$T/deps.json")" \
+  "component=policyValidator service=linkerd-policy-validator deployment=linkerd-destination" "the one Deployment whose pod template carries every selector label"
+assert_eq "$(bl "$(svcj ns '{"selector":{"ns":"linkerd"}}')" "$T/deps.json")" \
+  "component=policyValidator service=linkerd-policy-validator deployment=linkerd-destination,linkerd-proxy-injector,other" "several matching Deployments are comma-joined"
+assert_contains "$(bl "$(svcj none '{"selector":{"c":"nothing"}}')" "$T/deps.json")" " deployment=- error=no Deployment pod template matches the selector" "no match: recorded, not fatal"
+assert_contains "$(bl "$(svcj nosel '{}')" "$T/deps.json")" " deployment=- error=" "a Service without a selector backs nothing"
+printf 'not json\n' > "$T/bad.json"
+assert_contains "$(bl "$T/bad.json" "$T/deps.json")" " deployment=- error=unreadable Service or Deployment JSON: " "unreadable JSON: recorded, not fatal"
+assert_eq "$(bl "$T/bad.json" "$T/bad.json" '[Service read failed: exit 1] refused')" \
+  "component=policyValidator service=linkerd-policy-validator deployment=- error=[Service read failed: exit 1] refused" "a failed read is recorded with its error"
+printf 'component=a service=s1 deployment=d2\ncomponent=b service=s2 deployment=d1,d2\ncomponent=c service=s3 deployment=- error=x deployment=d9\n' > "$T/backing.txt"
+assert_eq "$(w_backing_deployments "$T/backing.txt" | paste -sd' ' -)" "d2 d1" "each distinct backing Deployment once; - and error text are not Deployments"
 
 # ---- w_branch_classify: valid_now alone; w_fact_line ----
 facts "$T/b8" no no no no yes healthy

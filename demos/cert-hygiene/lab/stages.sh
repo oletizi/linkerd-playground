@@ -52,14 +52,28 @@ matrix_restart_stages() {
   tick stage4-all
 }
 
-# capture_cp_rollouts FILE: wait for every control-plane Deployment's rollout,
-# recorded to FILE with capture. The one control-plane rollout-status loop; this task,
-# and Tasks 15, 16 and 17, each called it verbatim before this helper existed. FILE
-# ends [exit 0] only when the listing succeeded, listed at least one Deployment, and
-# every rollout completed: a failed or empty listing would otherwise wait for nothing.
-capture_cp_rollouts() {
+# capture_rollouts FILE DEPLOY...: wait for each named linkerd-namespace Deployment's
+# rollout, recorded to FILE with capture. The one rollout-status loop. FILE ends [exit 0]
+# only when at least one Deployment was named and every rollout completed: an empty list
+# would otherwise wait for nothing.
+capture_rollouts() {
+  local f="${1:?capture_rollouts: FILE required}"
+  shift
   # shellcheck disable=SC2016
-  capture "$1" bash -c 'ds="$(kubectl -n linkerd get deploy -o name)" || exit 1
-    [ -n "$ds" ] || { echo "no control-plane Deployments listed"; exit 1; }
-    for d in $ds; do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  capture "$f" bash -c '[ $# -ge 1 ] || { echo "no Deployment named"; exit 1; }
+    for d in "$@"; do kubectl -n linkerd rollout status "deploy/$d" --timeout=300s || exit 1; done' capture_rollouts "$@"
+}
+
+# capture_cp_rollouts FILE: capture_rollouts over every control-plane Deployment (the
+# rollout wait of R, A, S and W's recovery). A failed listing is recorded in FILE, which
+# then ends non-zero; an empty listing names no Deployment, so it ends non-zero too.
+capture_cp_rollouts() {
+  local ds
+  if ! ds="$(kubectl -n linkerd get deploy -o name 2>&1)"; then
+    # shellcheck disable=SC2016
+    capture "$1" bash -c 'echo "$1"; exit 1' capture_cp_rollouts "control-plane Deployment listing failed: $ds"
+    return 0
+  fi
+  # shellcheck disable=SC2086
+  capture_rollouts "$1" ${ds//deployment.apps\//}
 }

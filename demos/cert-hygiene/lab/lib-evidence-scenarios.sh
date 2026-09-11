@@ -129,6 +129,33 @@ w_fact_line() {
     "$comp" "$fp" "$sfp" "$eq" "$exp" "$valid" "$ver"
 }
 
+# w_backing_line COMPONENT SERVICE SVC_JSON DEPLOYS_JSON [READ_ERROR]: one line of W's
+# reconnect/backing.txt, "component=<c> service=<svc> deployment=<d[,d...]|->". A Deployment
+# backs SERVICE when its pod template carries every key/value of the Service's
+# .spec.selector (several are comma-joined). A failed read (READ_ERROR), unreadable JSON,
+# an empty selector or no match record "deployment=- error=<why>": recorded, never fatal.
+w_backing_line() {
+  local comp="${1:?}" svc="${2:?}" sj="${3:?}" dj="${4:?}" err="${5:-}" out
+  # shellcheck disable=SC2016
+  if [ -z "$err" ] && ! out="$(jq -rn --slurpfile s "$sj" --slurpfile d "$dj" '($s[0].spec.selector // {}) as $sel
+      | [$d[0].items[] | select((.spec.template.metadata.labels // {}) as $l
+          | ($sel | length) > 0 and all($sel | to_entries[]; $l[.key] == .value)) | .metadata.name] as $m
+      | if ($m | length) > 0 then "deployment=\($m | join(","))"
+        else "deployment=- error=no Deployment pod template matches the selector \($sel | tojson)" end' 2>&1)"; then
+    err="unreadable Service or Deployment JSON: $out"
+  fi
+  if [ -n "$err" ]; then out="deployment=- error=${err//$'\n'/ }"; fi
+  printf 'component=%s service=%s %s\n' "$comp" "$svc" "$out"
+}
+
+# w_backing_deployments BACKING_FILE: each distinct Deployment that backing.txt's
+# deployment= fields name (the third field), once, in first-seen order; "-" is none.
+w_backing_deployments() {
+  awk '$3 ~ /^deployment=/ { n = split(substr($3, 12), a, ",")
+    for (j = 1; j <= n; j++) if (a[j] != "-" && a[j] != "" && !seen[a[j]]++) print a[j] }' \
+    "${1:?w_backing_deployments: BACKING_FILE required}"
+}
+
 # b64_key_hits DIR: files under DIR (or DIR itself, if a file) holding a base64 run (40+
 # characters) that decodes, directly or through nested base64 up to three layers, to text
 # containing "PRIVATE KEY". Byte-safe: LC_ALL=C grep -a, so no byte hides a match.

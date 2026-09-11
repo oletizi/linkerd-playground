@@ -2,13 +2,15 @@
 # Scenario W, shared by 02-webhook-expiry-ignore and 02-webhook-expiry-fail (design
 # section 3). Lab-supplied webhook serving certificates expire 10 minutes apart:
 # proxy-injector at T1 (= T_mark), policy-validator at T2, sp-validator at T3. Admission
-# probes run at baseline and on every tick; each reaches exactly one webhook. Recovery
-# starts at T3 + W_POST_WINDOW_S (scenario_post_window_end) and is observed as it
-# branches. Source after lab/scenario-common.sh; do not execute.
+# probes run at baseline and on every tick; each reaches exactly one webhook. At T3 +
+# W_POST_WINDOW_S (scenario_post_window_end) the forced-reconnect phase restarts the
+# Deployments behind the webhooks and probes for W_RECONNECT_WINDOW_S; recovery then
+# starts and is observed as it branches. Source after lab/scenario-common.sh; do not execute.
 # shellcheck source=/dev/null
 . "$LAB_DIR/admission.sh"
 
 W_EXPIRED_MARKED=""
+W_RECONNECT_EPOCH=""   # when the reconnect rollouts finished; reconnect-NNNN counts from it
 
 _w_not_after() { cert_not_after_epoch "$CERTS/webhooks/$1.crt"; } # COMPONENT
 
@@ -26,6 +28,7 @@ _w_phase() { # TICK: the admission phase for a probe set taken now
   case "$1" in
     baseline) echo baseline ;;
     verify|recover-*) echo recovered ;;
+    reconnect-*) printf 'reconnect-%04d\n' $(( now - W_RECONNECT_EPOCH )) ;;
     *) if [ "$now" -lt "$T_MARK" ]; then echo pre-expiry; else printf 'post-%04d\n' $(( now - T_MARK )); fi ;;
   esac
 }
@@ -130,8 +133,49 @@ _w_facts() { # LABEL SUPPLIED_DIR: recover/LABEL-facts.txt, the inputs of w_bran
   fi
 }
 
-scenario_recover() {
+_w_backing() { # reconnect/backing.txt: each webhook Service's backing Deployment(s), derived
+  # now from its selector (w_backing_line); a failed read is recorded, never fatal
+  local f="$RUN_DIR/reconnect/backing.txt" tmp comp svc derr=""
+  tmp="$(mktemp -d)"
+  mkdir -p "$RUN_DIR/reconnect"
+  : > "$f"
+  _record "linkerd Deployment listing" kubectl -n linkerd get deploy -o json > "$tmp/d.json" || derr="$(cat "$tmp/d.json")"
+  for comp in "${WEBHOOK_COMPONENTS[@]}"; do
+    svc="$(webhook_service "$comp")"
+    if [ -n "$derr" ]; then w_backing_line "$comp" "$svc" "$tmp/d.json" "$tmp/d.json" "$derr" >> "$f"
+    elif _record "Service $svc read" kubectl -n linkerd get svc "$svc" -o json > "$tmp/s.json"; then
+      w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" >> "$f"
+    else w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/s.json")" >> "$f"; fi
+  done
+  rm -rf "$tmp"
+}
+
+_w_reconnect() { # the forced-reconnect phase (design section 3): restart each Deployment behind
+  # the webhooks once, so the API server must open new connections, then probe. No lab
+  # workload is restarted and no credential changes: the pods still mount the expired certs.
+  local ds=()
+  snap_controlplane reconnect-before
+  _w_backing
+  mark reconnect-backing "$(paste -sd';' "$RUN_DIR/reconnect/backing.txt")"
+  mapfile -t ds < <(w_backing_deployments "$RUN_DIR/reconnect/backing.txt")
+  mark reconnect-restart "kubectl rollout restart: ${ds[*]:-no backing Deployment}"
+  if [ "${#ds[@]}" -gt 0 ]; then
+    capture reconnect/restart.txt kubectl -n linkerd rollout restart "${ds[@]/#/deploy/}"
+  else
+    capture reconnect/restart.txt bash -c 'echo "no backing Deployment derived; see reconnect/backing.txt"; exit 1'
+  fi
+  capture_rollouts reconnect/rollout.txt "${ds[@]}"
+  W_RECONNECT_EPOCH="$(date -u +%s)"
+  mark reconnect-rolled-out "rollout.txt $(tail -n 1 "$RUN_DIR/reconnect/rollout.txt")"
+  snap_controlplane reconnect-after
+  admission_probes reconnect-0000 reconnect-0
+  observe_until $(( W_RECONNECT_EPOCH + W_RECONNECT_WINDOW_S )) reconnect
+  mark reconnect-end "after ${W_RECONNECT_WINDOW_S}s of reconnect probes; recovery follows"
+}
+
+scenario_recover() { # the forced-reconnect phase, then recovery
   local branch comp args=()
+  _w_reconnect
   snap_controlplane recover-before
   snap_webhooks recover-before
   mark recover-delete "delete the three webhook Secrets (Linkerd's rotating-webhooks guide)"
