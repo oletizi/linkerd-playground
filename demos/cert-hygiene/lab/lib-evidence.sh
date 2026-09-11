@@ -232,3 +232,8 @@ evaluate_validity() {
   { echo evidence_valid=no; printf 'reason=%s\n' "${reasons[@]}"; } > "$run/validity.txt"
   return 1
 }
+
+# The rest of the evidence library, split by concern to keep each file short.
+_EVIDENCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$_EVIDENCE_DIR/lib-evidence-plan.sh"
