@@ -59,3 +59,15 @@ records each item's disposition.
 **What they produced:** the slice 2 design's § 12.2 (dispositions), § 13 (acceptance
 conditions) and § 14 (guardrails), and narrowed claims in
 `docs/articles/cert-hygiene/findings.md`.
+
+## 2026-09-11 — cert-hygiene lab, slice 2 implementation plan
+
+- [`2026-09-11-cert-hygiene-lab-slice-2-plan-review.md`](2026-09-11-cert-hygiene-lab-slice-2-plan-review.md)
+  — independent review of the draft plan at commit `00dcb69`, before execution: a quoting
+  bug that would have made W's "plain `linkerd upgrade`" observation a harness artefact;
+  no discovery smoke runs of the new scenarios; hidden S-staged gate records; a weak
+  private-key guard; an injector hole in A's canary; collector reads that could abort a
+  run; plus 15 minor fixes. Ends with the controller's rulings.
+
+**What it produced:** the fixed plan in
+`docs/superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/`.
