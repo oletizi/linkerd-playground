@@ -166,10 +166,12 @@ write_cert() { # NAME PEM_FILE: the certificate and its inspection -- never a ke
   { step certificate inspect "$pem"; echo; cert_meta < "$pem"; } > "$RUN_DIR/certs/$name.txt"
 }
 
-assert_no_keys() {
+assert_no_keys() { # no private key in evidence, as PEM text or base64-encoded
   local hits
   hits="$(grep -rl 'PRIVATE KEY' "$RUN_DIR" 2>/dev/null || true)"
   [ -z "$hits" ] || die "private key material found in evidence: $hits"
+  hits="$(b64_key_hits "$RUN_DIR")"
+  [ -z "$hits" ] || die "base64-encoded private key material found in evidence: $hits"
 }
 
 # The rest of the collector, split by concern to keep each file short.
