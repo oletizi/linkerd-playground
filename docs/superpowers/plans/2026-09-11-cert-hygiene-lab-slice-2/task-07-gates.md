@@ -26,7 +26,8 @@ A discovery run measures how long healthy restarts take to pass the gate, and se
 - Produces:
   - `GATE_PAIRS=("A probe-tcp-new server" "B probe-tcp-new-b server")`.
   - `lab_deployments` → lab Deployment names, one per line.
-  - `restart_and_gate STAGE DEPLOY...`: records pre-restart pods, restarts the Deployments (`gates/STAGE-restart.txt`), polls the gate, then calls `stage_samples STAGE`. Timeline markers `restart <STAGE>: <deploys>` and `gate <STAGE> pass|timeout …`.
+  - `restart_and_gate STAGE DEPLOY...`: records pre-restart pods, restarts the Deployments (the command's capture goes to `restarts/STAGE.txt`), polls the gate, then calls `stage_samples STAGE`. Timeline markers `restart <STAGE>: <deploys>` and `gate <STAGE> pass|timeout …`. `gates/` holds only gate records, so readers never select files by name. A stage may itself be named `…-restart`, as S-staged's are (Task 16).
+  - Every cluster read in `gates.sh` tolerates failure. An unreadable ConfigMap, pod list or EndpointSlice yields `-` or nothing, which leaves a gate condition unmet and is recorded on the next `check` line. It never ends the run: the most likely moment for such a failure is a control-plane rollout, an hour into a run.
   - `stage_samples STAGE`: samples every pair and records cells. On a stage with no restarts it first writes a header with `gate=none` (marker `stage <STAGE>: samples, no restarts`).
   - `gates/<STAGE>.txt` contract, in order:
     - `stage=`, `restarted=<d1,d2|->`, `started_at=<UTC>`, `started_epoch=`
@@ -126,12 +127,24 @@ _gate_file() { echo "$RUN_DIR/gates/$1.txt"; }
 _yn() { if [ "$1" = "$2" ]; then echo yes; else echo no; fi; } # A B: yes when equal
 _csv_or_dash() { if [ $# -eq 0 ]; then echo -; else (IFS=,; echo "$*"); fi; } # ITEM...
 
-_trust_now() { # the trust-roots ConfigMap hash, as pods' trust-root-sha256 annotations carry it
-  kubectl -n linkerd get cm linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | sha256sum | cut -d' ' -f1
+_trust_now() { # the trust-roots ConfigMap hash, as pods' trust-root-sha256 annotations
+  # carry it (hashed from a file: a command substitution would strip the final newline);
+  # "-" when unreadable, which leaves the trust condition unmet
+  local tmp
+  tmp="$(mktemp)"
+  if kubectl -n linkerd get cm linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' > "$tmp" 2>/dev/null; then
+    sha256sum < "$tmp" | cut -d' ' -f1
+  else
+    echo -
+  fi
+  rm -f "$tmp"
 }
 
-_deploy_pods() { # DEPLOY: "name uid start_epoch deleting ready trust app_ready" per pod
-  kubectl -n "$LAB_NS" get pods -l "app=$1" -o json | jq -r '.items[] | [
+_deploy_pods() { # DEPLOY: "name uid start_epoch deleting ready trust app_ready" per pod;
+  # nothing when the pod list is unreadable
+  local js
+  js="$(kubectl -n "$LAB_NS" get pods -l "app=$1" -o json 2>/dev/null)" || return 0
+  jq -r '.items[] | [
       .metadata.name, .metadata.uid,
       ((.status.startTime // "") | if . == "" then "0" else (fromdateiso8601 | tostring) end),
       (if .metadata.deletionTimestamp then "yes" else "no" end),
@@ -139,7 +152,7 @@ _deploy_pods() { # DEPLOY: "name uid start_epoch deleting ready trust app_ready"
       (.metadata.annotations["linkerd.io/trust-root-sha256"] // "-"),
       (if ([.status.containerStatuses[]?.ready] | length) > 0 and ([.status.containerStatuses[]?.ready] | all)
        then "yes" else "no" end)
-    ] | join(" ")'
+    ] | join(" ")' <<< "$js"
 }
 
 _current_pod() { _deploy_pods "$1" | awk '$4 == "no" { p = $1 } END { print p }'; } # DEPLOY
@@ -157,9 +170,11 @@ _leaf_state() { # POD: "refresh expiry ok err" from its proxy's metrics; "- - - 
 }
 
 _serving() { # DEPLOY POD: yes|no when a Service named DEPLOY exists, n/a otherwise
+  local n
   kubectl -n "$LAB_NS" get svc "$1" >/dev/null 2>&1 || { echo n/a; return 0; }
-  if [ "$(kubectl -n "$LAB_NS" get endpointslices -l "kubernetes.io/service-name=$1" -o json \
-      | jq --arg p "$2" '[.items[].endpoints[]? | select(.targetRef.name == $p and .conditions.ready == true)] | length')" -gt 0 ]; then
+  n="$(kubectl -n "$LAB_NS" get endpointslices -l "kubernetes.io/service-name=$1" -o json 2>/dev/null \
+    | jq --arg p "$2" '[.items[].endpoints[]? | select(.targetRef.name == $p and .conditions.ready == true)] | length' || true)"
+  if [ "${n:-0}" -gt 0 ]; then
     echo yes
   else
     echo no
@@ -207,7 +222,7 @@ restart_and_gate() {
   } > "$f"
   for d in "$@"; do args+=("deploy/$d"); done
   mark restart "$stage: $*"
-  capture "gates/$stage-restart.txt" kubectl -n "$LAB_NS" rollout restart "${args[@]}"
+  capture "restarts/$stage.txt" kubectl -n "$LAB_NS" rollout restart "${args[@]}"
   deadline=$(( $(date -u +%s) + GATE_TIMEOUT_S ))
   while :; do
     trust="$(_trust_now)"
@@ -311,6 +326,7 @@ for s in g1-client-a g2-server g3-all; do
   printf 'stage=%s gate=%s seconds_to_gate=%s summary=%s\n' "$s" "$(_kv gate "$f")" \
     "$(( $(_kv gate_epoch "$f") - $(_kv started_epoch "$f") ))" "$(gate_summary "$f")"
 done > "$RUN_DIR/durations.txt"
+# shellcheck disable=SC1010
 mark discover-gates done
 cat "$RUN_DIR/durations.txt"
 ```

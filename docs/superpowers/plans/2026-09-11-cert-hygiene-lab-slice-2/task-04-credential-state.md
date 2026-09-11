@@ -79,7 +79,7 @@ snap_credentials() {
   } > "$f"
   rm -f "$tmp"
   for comp in "${WEBHOOK_COMPONENTS[@]}"; do
-    fp="$(grep -m1 "^webhook_${comp}_sha256=" "$f" | cut -d= -f2)"
+    fp="$(awk -F= -v k="webhook_${comp}_sha256" '$1 == k { print $2; exit }' "$f")"
     if [ -z "$fp" ]; then
       printf '[webhooks_sha256 not computed: no webhook_%s_sha256 in this snapshot]\n' "$comp" >> "$f"
       return 0
@@ -89,6 +89,8 @@ snap_credentials() {
   printf 'webhooks_sha256=%s\n' "$(printf '%s' "$joined" | sha256sum | cut -d' ' -f1)" >> "$f"
 }
 ```
+
+The fingerprint lookup uses `awk`, which exits 0 when the key is missing. A `grep | cut` pipeline would fail under `set -e` and `pipefail` and end an hour-long run on one failed Secret read, instead of recording it.
 
 `trust_roots_sha256` is computed exactly as `snap_trust`'s `configmap_sha256`, which equals the pods' `linkerd.io/trust-root-sha256` annotation (slice-1 run `runs/05-issuer-expiry/20260911T021157Z/trust/baseline.txt`).
 

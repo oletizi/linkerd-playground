@@ -8,6 +8,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 - Create: `demos/cert-hygiene/scripts/probe-lines.sh`, `demos/cert-hygiene/scripts/pod-series.sh`, `demos/cert-hygiene/scripts/gate-table.sh`
 - Create: `demos/cert-hygiene/lab/tests/test-read.sh`
 - Create: `docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md`
+- Create (discovery, committed): `demos/cert-hygiene/runs/_discovery/<stamp>-timestamps/FINDINGS.md` (the time zone of container log timestamps)
 - Modify: `docs/articles/cert-hygiene/README.md` (list the guide)
 
 **Interfaces:**
@@ -54,11 +55,12 @@ assert_eq "$(wc -l <<< "$out" | tr -d ' ')" 2 "one line per tick for the matchin
 assert_contains "$out" 'pre-1 2026-09-11T10:00:30Z probe-http-x tcp_open_total{direction="outbound",peer="dst"} 1' "tick, time, pod, series, value"
 
 printf 'stage=stage2-client-a\nrestarted=probe-tcp-new\ngate=pass\ncell pair=A ok=10 fail=0 status=classified\nleaf t role=clientA pod=p refresh=1 expiry=2 ok=1 err=0\n' > "$R/gates/stage2-client-a.txt"
-printf '$ kubectl rollout restart\n[exit 0]\n' > "$R/gates/stage2-client-a-restart.txt"
+printf 'stage=s04-restart\nrestarted=server\ngate=pass\ncell pair=A ok=10 fail=0 status=classified\n' > "$R/gates/s04-restart.txt"
 out="$(bash "$DEMO/scripts/gate-table.sh" "$R")"
 assert_contains "$out" "stage=stage2-client-a restarted=probe-tcp-new gate=pass unmet=-" "gate header"
 assert_contains "$out" "cell pair=A ok=10 fail=0 status=classified" "cells"
 assert_contains "$out" "leaf t role=clientA" "leaf lines"
+assert_contains "$out" "stage=s04-restart restarted=server gate=pass unmet=-" "a stage named -restart is listed too"
 
 finish test-read
 ```
@@ -130,7 +132,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 run="${1:?usage: gate-table.sh <run-dir>}"
 [ -d "$run/gates" ] || die "$run has no gates/ directory"
 for f in "$run"/gates/*.txt; do
-  case "$f" in *-restart.txt) continue ;; esac
   awk -F= '
     $1 == "stage" { s = $2 } $1 == "restarted" { r = $2 } $1 == "gate" { g = $2 } $1 == "unmet" { u = $2 }
     END { printf "stage=%s restarted=%s gate=%s unmet=%s\n", s, r, g, (u == "" ? "-" : u) }' "$f"
@@ -141,6 +142,18 @@ done
 Run: `just demo cert-hygiene test`
 Expected: six `PASS:` lines, including `PASS: test-read`.
 
+- [ ] **Step 4b: Discovery — which time zone do container log timestamps carry?**
+
+The first issuer write-up read the `--timestamps` prefixes as the VM's local time (−07:00). Kubernetes documents `kubectl logs --timestamps` as RFC3339, which the kubelet usually writes in UTC. The guide states neither reading until it is recorded.
+
+With a lab up (if none is, `just demo cert-hygiene reset long`, then `just demo cert-hygiene deploy baseline`), run:
+`bash demos/cert-hygiene/scripts/in-lab.sh lab/shell.sh -c 'date -u +%Y-%m-%dT%H:%M:%SZ; date +%z; kubectl -n lab logs deploy/probe-http -c probe --timestamps --tail=1; kubectl -n lab logs deploy/probe-http -c linkerd-proxy --timestamps --tail=1'`
+Expected: four lines: the UTC time, the VM's offset, and two log lines, each starting with a timestamp prefix, then the container's own text. The probe's own text starts with its UTC time, so the prefix's zone is visible by comparison.
+
+Write `demos/cert-hygiene/runs/_discovery/<stamp>-timestamps/FINDINGS.md` with the Write tool: the four lines quoted, and one sentence saying which zone the prefix carries (UTC with a `Z` suffix, or a stated offset). Also say whether the first issuer run's −07:00 reading still holds for that run. Check it against one `logs/pre-recover/` line in `runs/05-issuer-expiry/20260911T021157Z` and that run's `timeline.log`.
+
+In the guide (Step 5), replace `<ZONE SENTENCE FROM STEP 4b>` with that finding in plain words. For example, "the prefix is UTC, with a `Z` suffix (recorded in `demos/cert-hygiene/runs/_discovery/<stamp>-timestamps/FINDINGS.md`)", or the recorded offset. Add the note about the first issuer run if it differs.
+
 - [ ] **Step 5: Write `docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md`**
 
 ````markdown
@@ -150,10 +163,11 @@ How to read a run directory under `demos/cert-hygiene/runs/<scenario>/<UTC>/` wh
 
 ## Before anything else
 
-- Read `validity.txt`. A run that says `evidence_valid=no` is never evidence for a hypothesis. It can be described as a failed attempt, with its reasons.
+- Read `validity.txt`. A run that says `evidence_valid=no` is never evidence for a hypothesis. It can be described as a failed attempt, with its reasons. A run holding `discovery.txt` (under `runs/_discovery/`) is a discovery run and never evidence, whatever else it shows.
+- For a fault the harness performs, use the recorded action time, not T_mark: the `fault-identity-down` marker in the identity outage, and the `s-hard-swap` marker (and `swap_epoch` in `s-hard/stage1-condition.txt`) in the one-step anchor replacement. `tick fault-minus10` can take more than 10 s, so the action can fire after T_mark.
 - Read `git-state.txt` in both the run and its control. The `harness_tree_sha256` values must match.
 - Take T_mark from the `t_mark` line of `timeline.log`. Write times as `T+N` seconds. Step-driven runs (the `linkerd check` threshold and staged-rotation scenarios) have no T_mark: use the step markers.
-- Container log lines (`--timestamps` in `logs/`) carry the VM's local time. Compare a line's timestamp with the matching `timeline.log` marker to find the offset before converting (the first issuer run was at −07:00).
+- Container log lines (`--timestamps` in `logs/`): <ZONE SENTENCE FROM STEP 4b>. Either way, check one line against the matching `timeline.log` marker before converting times.
 
 ## What a run directory holds
 
@@ -171,6 +185,8 @@ How to read a run directory under `demos/cert-hygiene/runs/<scenario>/<UTC>/` wh
 | `probes/<label>/<pod>.log`, `<pod>-previous.log`, `pods.txt` | Probe history per pod, captured at each snapshot label |
 | `logs/<label>/<pod>-<container>.txt`, `pods.txt` | Container logs, including every `linkerd-proxy`, at each snapshot label; `identity.txt`, `identity-proxy.txt`; `logs/final/k3s-journal.txt` (supplementary only) |
 | `gates/<stage>.txt` | A restart stage: the five gate conditions per poll, then fresh-connection samples per pair and the pairs' leaf state |
+| `restarts/<stage>.txt` | The `kubectl rollout restart` command a stage ran, and its output |
+| `discovery.txt`, `discovery-windows.txt` | Present only in discovery runs (never evidence): the discovery marker, and any shortened windows applied |
 | `events/<label>.txt` | Kubernetes events |
 | `recover/`, `fault/`, `swap/`, `steps/`, `k/`, `s-hard/`, `admission/` | Scenario-specific records, named in each scenario's plan task |
 
@@ -230,7 +246,7 @@ Run: `cd demos/cert-hygiene && bash scripts/in-lab.sh lab/shell.sh -c 'shellchec
 Expected: no findings.
 
 ```bash
-git add demos/cert-hygiene/scripts demos/cert-hygiene/lab/tests/test-read.sh docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md docs/articles/cert-hygiene/README.md
+git add demos/cert-hygiene/scripts demos/cert-hygiene/lab/tests/test-read.sh demos/cert-hygiene/runs/_discovery docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md docs/articles/cert-hygiene/README.md
 git commit -m "cert-hygiene add evidence-reading helpers and a reading guide for the per-pod layout"
 git push
 ```

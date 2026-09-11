@@ -77,7 +77,7 @@ The issuer lives 15 minutes from certificate generation. `reset.sh` pulls images
 
 - [ ] **Step 4: Commit**
 
-The scenario is not run here: R's evidence runs are Task 20, after the harness freeze.
+The scenario is not run here: R's evidence runs are Task 21, after the harness freeze.
 
 ```bash
 git add demos/cert-hygiene/scenarios/05-issuer-expiry.sh

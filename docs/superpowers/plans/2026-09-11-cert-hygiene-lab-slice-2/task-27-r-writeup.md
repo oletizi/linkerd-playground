@@ -1,4 +1,4 @@
-# Task 26: R write-up
+# Task 27: R write-up
 
 Part of the [slice 2 plan](README.md). Read its Global Constraints first, then [`docs/articles/cert-hygiene/notes/lab-evidence-reading-guide.md`](../../../articles/cert-hygiene/notes/lab-evidence-reading-guide.md) (Task 18). This is where R's hypotheses are judged; nothing in `runs/` is edited.
 
@@ -9,17 +9,17 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first, then [
 - Modify: `docs/articles/cert-hygiene/README.md` ("Start here" list; status)
 
 **Interfaces:**
-- Consumes: runs `RA`, `RB` (Task 20), control `C` (Task 19), the helpers `probe-lines.sh`, `pod-series.sh`, `gate-table.sh` (Task 18), the first issuer write-up `notes/lab-evidence-issuer-expiry.md`.
-- Produces: the evidence note, which Task 32 cites. Its last section, "What this means for the article", lists per claim: supported / narrowed / not supported, with the artifact paths.
+- Consumes: runs `RA`, `RB` (Task 21), control `C` (Task 20), the helpers `probe-lines.sh`, `pod-series.sh`, `gate-table.sh` (Task 18), the first issuer write-up `notes/lab-evidence-issuer-expiry.md`.
+- Produces: the evidence note, which Task 33 cites. Its last section, "What this means for the article", lists per claim: supported / narrowed / not supported, with the artifact paths.
 
-**Judgement rules:** confirmed (quoted evidence shows the prediction directly), falsified (quoted evidence shows something else), inconclusive (say which observation would decide it). Quote exact lines with paths relative to the run directory; times as T+N from `t_mark`; label anything from the source notes as source-derived. Where the two runs disagree, give both, and give no single verdict unless both support it.
+**Judgement rules:** confirmed (quoted evidence shows the prediction directly), falsified (quoted evidence shows something else), inconclusive (say which observation would decide it). Quote exact lines with paths relative to the run directory; times as T+N from `t_mark` (R's fault is the issuer's own expiry, so T_mark is exact); label anything from the source notes as source-derived. Where the two runs disagree, give both, and give no single verdict unless both support it.
 
 - [ ] **Step 1: Facts every section needs**
 
-Let `RA`, `RB`, `C` be the run directories (run labels, not hypothesis IDs) and `S=demos/cert-hygiene/scripts`. Every command below is shown for `RA`; run it for `RB` too. For each of `RA` and `RB`:
+Let `RA`, `RB`, `C` be the run directories (run labels, not hypothesis IDs) and `S=demos/cert-hygiene/scripts`. Every command below is shown for `RA`; run it for `RB` too.
 
 Run: `cat $RA/validity.txt; grep harness_tree $RA/git-state.txt $C/git-state.txt; grep -E ' (t_mark|recover|recover-apply|issuer-updated|stage|restart|gate|done)' $RA/timeline.log; grep -E '^(linkerd_cli_version|linkerd_controller_image|kubernetes_version|config_PROFILE|config_POST_EXPIRY_WINDOW_S)=' $RA/versions.txt`
-Expected: `evidence_valid=yes`; the same `harness_tree_sha256` in both runs and the control. If not, stop: Task 20 isn't done.
+Expected: `evidence_valid=yes`; the same `harness_tree_sha256` in both runs and the control. If not, stop: Task 21 isn't done.
 
 - [ ] **Step 2: R's acceptance condition (design § 13), for each run**
 
@@ -75,6 +75,8 @@ In `docs/articles/cert-hygiene/README.md`, under "Start here" item 3, add after 
 ```markdown
    - [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) — two repeats of the issuer-expiry experiment with fuller recording, and which open questions they answer.
 ```
+
+In the "Second round of lab experiments" status bullet, set the sentence after "every experiment has been run." to: `Written up so far: the repeat of the issuer experiment. The other write-ups are in progress; until each is done, its results are not findings.`
 
 ```bash
 git add docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry-rerun.md docs/articles/cert-hygiene/README.md

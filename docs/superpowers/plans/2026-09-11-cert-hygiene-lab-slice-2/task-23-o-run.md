@@ -1,4 +1,4 @@
-# Task 22: O
+# Task 23: O
 
 Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phase 2: no harness changes** except under the Phase 2 rule in the README.
 
@@ -9,12 +9,12 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phas
 - Modify: `docs/articles/cert-hygiene/README.md` (status)
 
 **Interfaces:**
-- Consumes: Task 19's run procedure and valid control at tree `H`.
-- Produces: run `O`, `evidence_valid=yes` at `H`. Task 28 reads it.
+- Consumes: Task 20's run procedure and valid control at tree `H`.
+- Produces: run `O`, `evidence_valid=yes` at `H`. Task 29 reads it.
 
 - [ ] **Step 1: Run it**
 
-Follow Task 19 Step 1 with `S=09-identity-outage`. It takes about an hour: a 10-minute lead, the 15-minute outage, then the stages.
+Follow Task 20 Step 1 with `S=09-identity-outage`. It takes about an hour: a 10-minute lead, the 15-minute outage, then the stages.
 
 Sanity checks before committing:
 - `grep -E ' (fault-identity-down|applied|recover-identity-up|identity-pod|stage|restart|done)' runs/09-identity-outage/<stamp>/timeline.log` shows the outage, `applied probe-new` during it, `recover-identity-up`, an `identity-pod … uid=…` line, `stage stage1-norestart …` before `restart stage2-client-a …`, and `done`.

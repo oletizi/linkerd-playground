@@ -8,11 +8,12 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 
 | Rule id | Reads | Applies to |
 | --- | --- | --- |
-| common | `git-state.txt`, required files, `timeline.log` ends `done`, per-tick files, proxy logs, `leaf-lifetime.txt`, `versions.txt` | every scenario |
+| common | `git-state.txt`, no `discovery.txt` (a discovery run is never evidence; `scripts/run.sh --discovery` writes it, Task 8), required files, `timeline.log` ends `done`, per-tick files, proxy logs, `leaf-lifetime.txt`, `versions.txt` | every scenario |
 | plan | `credential-plan.txt` starts `result=ok` | every scenario |
 | `control-criteria` | `control-criteria.txt` starts `result=ok` | `00-baseline-control` |
 | `recovery-apply` | `recover/linkerd-upgrade.txt` ends `[exit 0]` | R, A |
 | `webhook-baseline` | `admission-baseline.txt` starts `result=ok` (Task 11 writes it) | both W |
+| `w-plain-render` | `recover/plain-render.txt` and `recover/plain-apply.txt` end `[exit 0]`, and `recover/plain-manifest.yaml` is non-empty (Task 12 writes them): the plain `linkerd upgrade` really rendered and applied, so W6 never records a harness failure as Linkerd behaviour | both W |
 | `k-remaining` | `k-remaining.txt` starts `result=ok` (Task 14 writes it) | K |
 | `s-hard-stage1` | `s-hard/stage1-condition.txt` starts `result=met` (Task 17 writes it) | S-hard |
 | `control-at-tree` | a valid control run with the same `harness_tree_sha256` | every timed scenario: all except K and the control itself |
@@ -34,7 +35,7 @@ A restart-stage gate that times out is **not** a rule: it yields an unclassified
   - `scenario_required_files SCENARIO` → run-relative paths, one per line. Common: `versions.txt git-state.txt timeline.log leaf-lifetime.txt credential-plan.txt certs/trust-anchor.{pem,txt} certs/issuer-initial.{pem,txt}`. Per scenario, in addition:
     - control: `control-criteria.txt`
     - R: `certs/issuer-replacement.{pem,txt}`, `recover/linkerd-upgrade.txt`
-    - W: `certs/webhook-ca.{pem,txt}`, `certs/webhook-<component>.{pem,txt}` for the three components, `admission-baseline.txt`, `recover/branch.txt`
+    - W: `certs/webhook-ca.{pem,txt}`, `certs/webhook-<component>.{pem,txt}` for the three components, `admission-baseline.txt`, `recover/branch.txt`, `recover/plain-render.txt`, `recover/plain-apply.txt`, `recover/plain-manifest.yaml`
     - O: nothing more
     - K: `certs/issuer-plus.{pem,txt}`, `k-remaining.txt`
     - A: `certs/trust-anchor-new.{pem,txt}`, `certs/issuer-replacement.{pem,txt}`, `recover/linkerd-upgrade.txt`
@@ -78,6 +79,8 @@ make_run() {
   mkdir -p "$d/s-hard" "$d/recover"
   printf 'result=met\n' > "$d/s-hard/stage1-condition.txt"
   printf '$ linkerd upgrade ... | kubectl apply -f -\nsecret/linkerd-identity-issuer configured\n[exit 0]\n' > "$d/recover/linkerd-upgrade.txt"
+  printf '$ bash -o pipefail -c linkerd upgrade > m.yaml\n[exit 0]\n' > "$d/recover/plain-render.txt"
+  printf '$ kubectl apply -f m.yaml\nsecret/linkerd-proxy-injector-k8s-tls created\n[exit 0]\n' > "$d/recover/plain-apply.txt"
   for f in identity identity-proxy k3s-journal server-1-http server-1-echo server-1-linkerd-proxy server-1-linkerd-init; do
     echo x > "$d/logs/final/$f.txt"
   done
@@ -234,6 +237,20 @@ make_run "$T/wb" 02-webhook-expiry-ignore c2 h1 false
 printf 'result=fail\nfail: policy-invalid-baseline was not rejected by the policy validator\n' > "$T/wb/admission-baseline.txt"
 assert_fails "W without a proving baseline is invalid" evaluate_validity "$T/wb" 02-webhook-expiry-ignore "$V" "$T/ctl"
 assert_contains "$(reason "$T/wb")" "reason=webhook baseline did not prove every admission probe" "reason names the baseline"
+make_run "$T/wr" 02-webhook-expiry-fail c2 h1 false
+printf '$ bash -o pipefail -c linkerd upgrade  > m.yaml\nError: unknown command "" for "linkerd upgrade"\n[exit 1]\n' > "$T/wr/recover/plain-render.txt"
+assert_fails "W whose plain upgrade did not render is invalid" evaluate_validity "$T/wr" 02-webhook-expiry-fail "$V" "$T/ctl"
+assert_contains "$(reason "$T/wr")" "reason=plain linkerd upgrade render or apply did not succeed" "reason names the plain render"
+make_run "$T/wa" 02-webhook-expiry-ignore c2 h1 false
+printf '$ kubectl apply -f m.yaml\nerror: no objects passed to apply\n[exit 1]\n' > "$T/wa/recover/plain-apply.txt"
+assert_fails "W whose plain apply failed is invalid" evaluate_validity "$T/wa" 02-webhook-expiry-ignore "$V" "$T/ctl"
+make_run "$T/wm" 02-webhook-expiry-ignore c2 h1 false
+: > "$T/wm/recover/plain-manifest.yaml"
+assert_fails "W with an empty plain manifest is invalid" evaluate_validity "$T/wm" 02-webhook-expiry-ignore "$V" "$T/ctl"
+make_run "$T/disc" 00-baseline-control c1 h1 false
+printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
+assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"
+assert_contains "$(reason "$T/disc")" "reason=discovery run: never evidence" "reason marks it as a discovery run"
 make_run "$T/kb" 20-check-threshold c2 h1 false
 printf 'result=fail\n' > "$T/kb/k-remaining.txt"
 assert_fails "K with a measurement on the wrong side is invalid" evaluate_validity "$T/kb" 20-check-threshold "$V"
@@ -287,7 +304,7 @@ scenario_rules() {
   case "${1:?scenario_rules: SCENARIO required}" in
     00-baseline-control) echo control-criteria ;;
     05-issuer-expiry|06-anchor-expiry) printf '%s\n' recovery-apply control-at-tree ;;
-    02-webhook-expiry-ignore|02-webhook-expiry-fail) printf '%s\n' webhook-baseline control-at-tree ;;
+    02-webhook-expiry-ignore|02-webhook-expiry-fail) printf '%s\n' webhook-baseline w-plain-render control-at-tree ;;
     09-identity-outage|07-anchor-rotation-staged) echo control-at-tree ;;
     20-check-threshold) echo k-remaining ;;
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
@@ -308,7 +325,7 @@ scenario_required_files() {
     05-issuer-expiry) _certs issuer-replacement; echo recover/linkerd-upgrade.txt ;;
     02-webhook-expiry-*)
       _certs webhook-ca webhook-proxyInjector webhook-policyValidator webhook-profileValidator
-      printf '%s\n' admission-baseline.txt recover/branch.txt ;;
+      printf '%s\n' admission-baseline.txt recover/branch.txt recover/plain-render.txt recover/plain-apply.txt recover/plain-manifest.yaml ;;
     09-identity-outage) ;;
     20-check-threshold) _certs issuer-plus; echo k-remaining.txt ;;
     06-anchor-expiry) _certs trust-anchor-new issuer-replacement; echo recover/linkerd-upgrade.txt ;;
@@ -359,6 +376,7 @@ evaluate_validity() {
   local reasons=() f tick rule tree rules
   rules="$(scenario_rules "$scenario")" || die "evaluate_validity: unknown scenario '$scenario'"
   [ "$(_kv demo_repo_dirty "$run/git-state.txt")" = false ] || reasons+=("dirty harness tree, or git-state.txt missing")
+  [ ! -e "$run/discovery.txt" ] || reasons+=("discovery run: never evidence")
   while read -r f; do
     [ -s "$run/$f" ] || reasons+=("missing $f")
   done < <(scenario_required_files "$scenario")
@@ -387,6 +405,12 @@ evaluate_validity() {
           || reasons+=("recovery apply did not succeed: recover/linkerd-upgrade.txt missing or not ending [exit 0]") ;;
       webhook-baseline)
         _first_is "$run/admission-baseline.txt" result=ok || reasons+=("webhook baseline did not prove every admission probe") ;;
+      w-plain-render)
+        if [ "$(tail -n 1 "$run/recover/plain-render.txt" 2>/dev/null)" != "[exit 0]" ] \
+            || [ "$(tail -n 1 "$run/recover/plain-apply.txt" 2>/dev/null)" != "[exit 0]" ] \
+            || [ ! -s "$run/recover/plain-manifest.yaml" ]; then
+          reasons+=("plain linkerd upgrade render or apply did not succeed: recover/plain-render.txt or plain-apply.txt does not end [exit 0], or plain-manifest.yaml is empty")
+        fi ;;
       k-remaining)
         _first_is "$run/k-remaining.txt" result=ok || reasons+=("K measurements are not on opposite sides of 60 days at check time") ;;
       s-hard-stage1)

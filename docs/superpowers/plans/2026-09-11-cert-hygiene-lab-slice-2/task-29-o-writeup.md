@@ -1,34 +1,42 @@
-# Task 28: O write-up
+# Task 29: O write-up
 
 Part of the [slice 2 plan](README.md). Read its Global Constraints first, then [`notes/lab-evidence-reading-guide.md`](../../../articles/cert-hygiene/notes/lab-evidence-reading-guide.md). This is where O's hypotheses are judged; nothing in `runs/` is edited.
 
-**Goal:** Judge O1–O3 (design § 4) against the valid O run and the control, check O's acceptance condition (design § 13), and record the facts Task 32's R/O/A comparison needs. Write `docs/articles/cert-hygiene/notes/lab-evidence-identity-outage.md`.
+**Goal:** Judge O1–O3 (design § 4) against the valid O run and the control, check O's acceptance condition (design § 13), and record the facts Task 33's R/O/A comparison needs. Write `docs/articles/cert-hygiene/notes/lab-evidence-identity-outage.md`.
 
 **Files:**
 - Create: `docs/articles/cert-hygiene/notes/lab-evidence-identity-outage.md`
-- Modify: `docs/articles/cert-hygiene/README.md` ("Start here" list)
+- Modify: `docs/articles/cert-hygiene/README.md` ("Start here" list; status)
 
 **Interfaces:**
-- Consumes: run `O` (Task 22), control `C`, Task 18 helpers (`S=demos/cert-hygiene/scripts`).
-- Produces: the evidence note, including a "For the comparison" section with the rows Task 32 needs.
+- Consumes: run `O` (Task 23), control `C` (Task 20), Task 18 helpers (`S=demos/cert-hygiene/scripts`).
+- Produces: the evidence note, including a "For the comparison" section with the rows Task 33 needs.
 
-**Judgement rules:** as in the reading guide. O2 is marked **open** in the design; judge it from the no-restart window only, before any restart stage.
+**Judgement rules:** as in the reading guide. O2 is marked **open** in the design; judge it from the no-restart window only, before any restart stage. **Time the outage from the `fault-identity-down` marker, not T_mark:** the scale-down runs after `tick fault-minus10`, which can take more than 10 s, so it can fire after T_mark. Write times as T+N from that marker, and give its offset from T_mark once.
 
 - [ ] **Step 1: Facts**
 
 Run: `cat $O/validity.txt; grep harness_tree $O/git-state.txt $C/git-state.txt; grep -E ' (t_mark|fault|fault-identity-down|applied|rolled|recover-identity-up|identity-pod|stage|restart|gate|done)' $O/timeline.log`
-Expected: valid at the control's tree.
+Expected: valid at the control's tree. Note the `fault-identity-down` time `F` and the `recover-identity-up` time.
 
 - [ ] **Step 2: O's acceptance condition (design § 13)**
 
 - **The credential and configuration invariant holds:** `head -n 3 $O/credential-plan.txt` (`result=ok`, one observed state), and `grep -h 'deploy linkerd/linkerd-identity' $O/controlplane/*.txt | awk '{print $NF}' | sort | uniq -c` prints **one** `template_sha256=` value (the replica count changes; the template must not).
-- **The outage outlasts the leaf window:** the time from `fault-identity-down` to `recover-identity-up` exceeds 320 s (5-minute leaf plus 20 s skew); quote both markers.
+- **The outage outlasts the leaf window:** the time from `fault-identity-down` to `recover-identity-up` exceeds 320 s (a 5-minute leaf plus 20 s skew). Quote both markers.
 - **The no-restart recovery window is evaluated before any restart stage:** `stage stage1-norestart` precedes `restart stage2-client-a` in `timeline.log`, and `gates/stage1-norestart.txt` has its samples.
 
 - [ ] **Step 3: Evidence per hypothesis**
 
-- **O1 (proxies keep working until their current leaf expires; then new connections fail):** each proxy's leaf expiry during the outage: `bash $S/pod-series.sh $O probe-tcp-new control_identity_cert_expiration_timestamp_seconds` (and `probe-tcp-new-b`, `server`), read at the last tick before `fault` and during `post-N`. The first failure per pair: `bash $S/probe-lines.sh $O probe-tcp-new <fault UTC> <recover-identity-up UTC> | grep -m1 ' fail '` (and `probe-tcp-new-b`). Compare each first failure with the later of the pair's two leaf expiries; the bound is leaf lifetime plus skew after the outage start.
-- **O2 (after identity returns, expired proxies re-certify with no restart):** over the `stage1-N` ticks, `bash $S/pod-series.sh $O probe-tcp-new control_identity_cert_refresh_timestamp_seconds` and the `{result="ok"}` refresh counter, for the proxies whose leaves expired during the outage; the `stage1-norestart` samples (`bash $S/gate-table.sh $O`); and those proxies' logs in `logs/pre-stage2/*-linkerd-proxy.txt` after `recover-identity-up`. Confirmed if refresh times move past `recover-identity-up` and the no-restart samples succeed; falsified if they stay expired through the window.
+- **O1 (proxies keep working until their current leaf expires; then new connections fail):**
+  - Each proxy's leaf expiry during the outage: `bash $S/pod-series.sh $O probe-tcp-new control_identity_cert_expiration_timestamp_seconds` (and the same for `probe-tcp-new-b` and `server`), read at the last tick before `F` and during `post-N`.
+  - The first failure per pair: `bash $S/probe-lines.sh $O probe-tcp-new <F UTC> <recover-identity-up UTC> | grep -m1 ' fail '` (and the same for `probe-tcp-new-b`).
+  - Compare each first failure with the later of the pair's two leaf expiries. The bound is the leaf lifetime plus skew after `F`.
+- **O2 (after identity returns, expired proxies re-certify with no restart):**
+  - Over the `stage1-N` ticks: `bash $S/pod-series.sh $O probe-tcp-new control_identity_cert_refresh_timestamp_seconds` and the `{result="ok"}` refresh counter, for the proxies whose leaves expired during the outage.
+  - The `stage1-norestart` samples: `bash $S/gate-table.sh $O`.
+  - Those proxies' logs in `logs/pre-stage2/*-linkerd-proxy.txt` after `recover-identity-up`.
+
+  Confirmed if refresh times move past `recover-identity-up` and the no-restart samples succeed; falsified if the leaves stay expired through the window.
 - **O3 (pods created during the outage never become Ready until identity returns):** the Ready condition and container statuses in `pods/post-*-probe-new-*.yaml` and `pods/post-*-restart-target-*.yaml`, the `Events:` in the matching `-describe.txt`, and the first `pods/stage1-*` snapshot where they are Ready, if any.
 - **Control-plane identity:** from `controlplane/fault-before.txt`, `fault-after.txt` and `recover-identity-up.txt`, quote the identity pod's UID before and after: recovery ran in a new identity process while the credentials stayed the same.
 
@@ -41,7 +49,7 @@ Expected: valid at the control's tree.
 - **Control:** `demos/cert-hygiene/runs/00-baseline-control/<C>`, same harness tree
 - **Versions:** <from versions.txt>
 - **Lifetimes:** long-lived anchor and issuer, leaf 5m; outage 900 s
-- **T_mark (identity scaled to zero):** <UTC>
+- **Outage start (`fault-identity-down`):** <UTC>, <N> s after T_mark
 
 ## Acceptance conditions (design § 13)
 | Condition | Met? | Evidence |
@@ -75,6 +83,8 @@ Under "Start here" item 3 of `docs/articles/cert-hygiene/README.md`, add:
 ```markdown
    - [notes/lab-evidence-identity-outage.md](notes/lab-evidence-identity-outage.md) — what happened while the identity service was down, and after it came back.
 ```
+
+In the status bullet, set the "Written up so far" sentence to: `Written up so far: the repeat of the issuer experiment, the webhook experiment and the identity-outage experiment.`
 
 ```bash
 git add docs/articles/cert-hygiene/notes/lab-evidence-identity-outage.md docs/articles/cert-hygiene/README.md

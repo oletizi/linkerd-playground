@@ -20,7 +20,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 
 Every restart step restarts **all** lab Deployments, as the guide says. Holding one back would leave it trusting only the old anchor when step 7 introduces certificates chained to the new one, which is the very failure the procedure exists to avoid. After each upgrade, the control-plane rollouts are waited for and recorded (`steps/sNN-rollout.txt`). Every tick records `linkerd check` and `linkerd check --proxy` (S2 reads tick `s03-upgrade-bundle`), per-pod trust hashes, credential state and probe metrics. The credential plan is `A/I1 → A+B/I1 → A+B/I2 → B/I2` (Task 3).
 
-S1 attributes a failure to TLS only through proxy logs, and only for gated samples: the pods each restart replaces have their logs and probe history captured just before it (`logs/pre-sNN/`, `probes/pre-sNN/`). S1-obs compares every application-visible failure with the control's restart disruption (Task 31).
+S1 attributes a failure to TLS only through proxy logs, and only for gated samples: the pods each restart replaces have their logs and probe history captured just before it (`logs/pre-sNN/`, `probes/pre-sNN/`). S1-obs compares every application-visible failure with the control's restart disruption (Task 32).
 
 **Files:**
 - Create: `demos/cert-hygiene/scenarios/07-anchor-rotation-staged.sh`
@@ -45,6 +45,7 @@ _s_upgrade() { # NN ARGS...: linkerd upgrade ARGS | kubectl apply -f -, then con
   local nn="$1"
   shift
   capture "steps/s$nn-upgrade.txt" bash -o pipefail -c "linkerd upgrade $(printf '%q ' "$@") | kubectl apply -f -"
+  # shellcheck disable=SC2016
   capture "steps/s$nn-rollout.txt" bash -c \
     'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
 }
@@ -129,7 +130,7 @@ Expected: `2`.
 
 - [ ] **Step 4: Commit**
 
-S-staged's evidence run is Task 25.
+S-staged's evidence run is Task 26.
 
 ```bash
 git add demos/cert-hygiene/scenarios/07-anchor-rotation-staged.sh

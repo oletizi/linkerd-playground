@@ -19,7 +19,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 
 **Interfaces:**
 - Consumes: Task 9 hooks and `run_scenario`, Task 8 `restart_stages`, Task 5 `snap_controlplane`.
-- Produces (evidence names Task 28 reads): `fault/scale-down.txt`, `fault/identity-gone.txt`, `controlplane/fault-before.txt`, `controlplane/fault-after.txt`, `recover/scale-up.txt`, `recover/rollout-up.txt`, `controlplane/recover-identity-up.txt`; timeline markers `fault-identity-down`, `recover-identity-up`, `identity-pod <name> uid=<uid> start=<time>`; the four `gates/stage*.txt`.
+- Produces (evidence names Task 29 reads): `fault/scale-down.txt`, `fault/identity-gone.txt`, `controlplane/fault-before.txt`, `controlplane/fault-after.txt`, `recover/scale-up.txt`, `recover/rollout-up.txt`, `controlplane/recover-identity-up.txt`; timeline markers `fault-identity-down`, `recover-identity-up`, `identity-pod <name> uid=<uid> start=<time>`; the four `gates/stage*.txt`.
 - Config: `OUTAGE_S=900`, `FAULT_LEAD_S=600` (S-staged and S-hard reuse `FAULT_LEAD_S`).
 
 - [ ] **Step 1: Settings in `demos/cert-hygiene/config.example.env`**
@@ -82,7 +82,7 @@ Expected: no output.
 
 - [ ] **Step 4: Commit**
 
-O's evidence run is Task 22.
+O's evidence run is Task 23.
 
 ```bash
 git add demos/cert-hygiene/scenarios/09-identity-outage.sh demos/cert-hygiene/config.example.env

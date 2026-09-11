@@ -6,13 +6,13 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 1. The profile installs an issuer valid for 1440h − 10m. Run `linkerd check` and `linkerd check --proxy`, recording each command's start and end time and the issuer's `notAfter`.
 2. Sign an issuer valid for 1440h + 10m from the same anchor, apply it with the issuer-only `linkerd upgrade`, wait for `IssuerUpdated`, and repeat the checks and the recording.
 
-The 15-minute case already recorded in R completes the comparison (Task 29 reads it from R's runs).
+The 15-minute case already recorded in R completes the comparison (Task 30 reads it from R's runs).
 
 **Validity** (the `k-remaining` rule, design § 5), computed conservatively for each of the four check commands:
 - the −10m measurement counts only if `notAfter − start` is under 5 184 000 s;
 - the +10m measurement counts only if `notAfter − end` is over 5 184 000 s.
 
-**Design point resolved here: "that step is repeated".** Repeating the +10m step inside the run would sign a third issuer, an undeclared credential state that the plan walk (`A/I1 → A/I2`) rejects. So a +10m measurement that falls on the wrong side makes the run invalid, and Task 23 repeats the step by launching a fresh K run. With a 10-minute margin and checks that take seconds, this should not arise.
+**Design point resolved here: "that step is repeated".** Repeating the +10m step inside the run would sign a third issuer, an undeclared credential state that the plan walk (`A/I1 → A/I2`) rejects. So a +10m measurement that falls on the wrong side makes the run invalid, and Task 24 repeats the step by launching a fresh K run. With a 10-minute margin and checks that take seconds, this should not arise.
 
 No control is needed, because no probe outcome is judged (the rule table omits `control-at-tree` for K).
 
@@ -160,7 +160,7 @@ Expected: no output.
 
 - [ ] **Step 6: Commit**
 
-K's evidence run is Task 23.
+K's evidence run is Task 24.
 
 ```bash
 git add demos/cert-hygiene/scenarios/20-check-threshold.sh demos/cert-hygiene/lab demos/cert-hygiene/config.example.env

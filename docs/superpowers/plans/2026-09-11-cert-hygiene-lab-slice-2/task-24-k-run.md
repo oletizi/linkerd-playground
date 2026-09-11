@@ -1,4 +1,4 @@
-# Task 23: K
+# Task 24: K
 
 Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phase 2: no harness changes** except under the Phase 2 rule in the README.
 
@@ -9,12 +9,12 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phas
 - Modify: `docs/articles/cert-hygiene/README.md` (status)
 
 **Interfaces:**
-- Consumes: Task 19's run procedure.
-- Produces: run `K`, `evidence_valid=yes` at `H`. Task 29 reads it.
+- Consumes: Task 20's run procedure.
+- Produces: run `K`, `evidence_valid=yes` at `H`. Task 30 reads it.
 
 - [ ] **Step 1: Run it**
 
-Follow Task 19 Step 1 with `S=20-check-threshold`. It takes about 10 minutes: the reset, then two measurements.
+Follow Task 20 Step 1 with `S=20-check-threshold`. It takes about 10 minutes: the reset, then two measurements.
 
 Sanity checks before committing:
 - `cat runs/20-check-threshold/<stamp>/k-remaining.txt` starts `result=ok`, with four `ok:` lines (minus and plus, `check` and `check_proxy`).
@@ -25,4 +25,4 @@ README status: replace the bullet's last two sentences with: `The issuer experim
 
 - [ ] **Step 2: Only if `k-remaining.txt` says `result=fail`**
 
-That is "that step is repeated" (design § 5; Task 14 explains why the repeat is a fresh run). Commit the invalid run (Step 1.5 of Task 19), then follow Task 19 Step 1 once more with the same scenario. If the second run also fails its `k-remaining` rule, stop and report both runs' `k/*-calc.txt` to the user.
+That is "that step is repeated" (design § 5; Task 14 explains why the repeat is a fresh run). Commit the invalid run (Task 20 Step 1.5), then follow Task 20 Step 1 once more with the same scenario. If the second run also fails its `k-remaining` rule, stop and report both runs' `k/*-calc.txt` to the user.

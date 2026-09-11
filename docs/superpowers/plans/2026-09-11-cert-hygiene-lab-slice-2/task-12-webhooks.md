@@ -10,7 +10,11 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 - at T_mark + 60 s (`scenario_post_actions`) and on every later tick, phase `post-NNNN`, where NNNN is the seconds since T1, zero-padded;
 - after recovery, phase `recovered`.
 
-The first tick after each certificate's `notAfter` marks that webhook's expiry phase (`webhook-expired <component> …`). Every tick already records the webhook configurations, `failurePolicy`, caBundle hashes, serving-certificate identities (`webhooks/<tick>.txt`) and the `linkerd check` transcripts, so each phase has them. Recovery starts at T1 + `POST_EXPIRY_WINDOW_S` (1800 s), which is T3 + 10 minutes with these profiles; `scenario_mark_epoch` refuses a window that leaves under 5 minutes after T3.
+The first tick that *starts* after each certificate's `notAfter` marks that webhook's expiry phase (`webhook-expired <component> …`, naming the tick and its start time). It compares against `TICK_START_EPOCH` (Task 9), so the phase's first `linkerd check` transcript was always taken after the expiry. Every tick already records the webhook configurations, `failurePolicy`, caBundle hashes, serving-certificate identities (`webhooks/<tick>.txt`) and the `linkerd check` transcripts, so each phase has them.
+
+**Recovery starts after T3 plus W's own post-expiry window**, `W_POST_WINDOW_S=600` (design § 3; Task 9's config). W overrides `scenario_post_window_end` to return T3 + 600 s. Webhook effects are immediate on each admission call, so about 20 per-tick probe rounds after the last expiry are enough, and the run stays bounded.
+
+The phase directories are named `post-NNNN` where the design writes `post-NNN`. This is deliberate and harmless: the seconds after T1 exceed 999 before recovery.
 
 **Recovery, observed as it branches** (design § 3):
 1. Delete the three `…-k8s-tls` Secrets.
@@ -24,9 +28,14 @@ The first tick after each certificate's `notAfter` marks that webhook's expiry p
 
 No branch is predicted (W6 is an observation), and no exit status counts as recovery by itself. The state between steps 2 and 5 is recorded in non-tick artifacts, so the credential plan sees exactly one webhook change (`A/I1/W1 → A/I1/W2`, Task 3).
 
+**The plain render must really run.** `_w_upgrade_cmd` builds the render command and adds arguments only when there are some. With none, a quoted empty argument would make `linkerd upgrade`, which accepts no arguments, fail and leave an empty manifest; the apply would then fail with the Secrets deleted, and the run would record a harness failure as branch iii. The `w-plain-render` validity rule (Task 3) makes such a run invalid. A run whose plain upgrade fails for Linkerd's own reasons is invalid too. It is still committed, and its write-up reports the failure as what it recorded.
+
+**Private keys.** `assert_no_keys` also decodes every base64 token that begins like a PEM header (`b64_key_hits`), so a key that escaped redaction cannot pass unnoticed.
+
 **Files:**
 - Create: `demos/cert-hygiene/lab/scenario-webhook.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-ignore.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-fail.sh`
-- Modify: `demos/cert-hygiene/lab/lib-evidence-scenarios.sh` (add `redact_manifest`, `w_branch_classify`), `demos/cert-hygiene/lab/tests/test-scenarios.sh`
+- Modify: `demos/cert-hygiene/lab/lib-evidence-scenarios.sh` (add `redact_manifest`, `w_branch_classify`, `b64_key_hits`), `demos/cert-hygiene/lab/tests/test-scenarios.sh`
+- Modify: `demos/cert-hygiene/lab/collect.sh` (`assert_no_keys` also runs `b64_key_hits`)
 - Modify: `demos/cert-hygiene/config.example.env` (`W_PROPAGATION_TIMEOUT_S`, `W_FRESH_WEBHOOK_LIFETIME`)
 
 **Interfaces:**
@@ -35,7 +44,10 @@ No branch is predicted (W6 is an observation), and no exit status counts as reco
   - `redact_manifest FILE` (pure) → FILE on stdout with every base64 value that decodes to a private key replaced by `<redacted sha256=<hash of the value>>`, and every literal PEM private-key block replaced by one `<redacted private key block>` line. Everything else is byte-identical.
   - `w_branch_classify FACTS_FILE` (pure) → `branch=i|ii|iii` by the rule above. Facts contract: exactly three lines `component=<c> secret_sha256=<hex|-> supplied_sha256=<hex> equals_supplied=<yes|no> not_after_epoch=<epoch|-> valid_now=<yes|no> cabundle_verifies=<yes|no>` and one `admission=<healthy|unhealthy>` line. Dies on any other count.
   - Evidence: `admission-baseline.txt`; `admission/{baseline,pre-expiry,post-NNNN,recovered}/`; timeline markers `webhook-expired`, `admission-probes`, `recover-delete`, `recover-plain`, `propagated`, `recover-branch`, `recover-supplied`; `recover/delete-secrets.txt`; per label (`plain`, and `supplied` for ii/iii): `recover/<label>-render.txt`, `recover/<label>-manifest.yaml` (redacted), `recover/<label>-apply.txt`, `recover/<label>-rollout.txt`, `recover/<label>-propagation.txt`, `recover/<label>-check.txt`, `recover/<label>-facts.txt`, `controlplane/recover-<label>.txt`, `webhooks/recover-<label>.txt`, `admission/recovered/*-recover-<label>.*`; `recover/branch.txt` (first line `branch=…`); `certs/webhook-fresh-*.{pem,txt}` for ii/iii.
-  - Config: `W_PROPAGATION_TIMEOUT_S=180`, `W_FRESH_WEBHOOK_LIFETIME=8760h`.
+  - `b64_key_hits DIR` (pure) → one line per file under DIR holding a base64 token (starting `LS0tLS1CRUdJTi`, the encoding of `-----BEGIN`) that decodes to a PEM private key; nothing otherwise.
+  - `_w_upgrade_cmd OUT [ARGS...]` → the shell command rendering `linkerd upgrade ARGS` into OUT, with no argument text at all when ARGS is empty.
+  - W's `scenario_post_window_end` → T3 + `W_POST_WINDOW_S`.
+  - Config: `W_PROPAGATION_TIMEOUT_S=180`, `W_FRESH_WEBHOOK_LIFETIME=8760h` (and `W_POST_WINDOW_S=600` from Task 9).
 
 - [ ] **Step 1: Failing tests (append to `demos/cert-hygiene/lab/tests/test-scenarios.sh`, before `finish test-scenarios`)**
 
@@ -57,6 +69,14 @@ assert_contains "$red" "tls.crt: $crt_b64" "certificates are kept"
 assert_contains "$red" "tls.key: <redacted sha256=$(printf '%s' "$key_b64" | sha256sum | cut -d' ' -f1)>" "a base64 key becomes a hash marker"
 assert_contains "$red" "      <redacted private key block>" "a PEM key block becomes one marker, indentation kept"
 assert_contains "$red" "    other: kept" "lines after a block are kept"
+
+# ---- b64_key_hits ----
+mkdir -p "$T/ev/a" "$T/ev/b"
+printf 'data:\n  tls.key: %s\n' "$key_b64" > "$T/ev/a/leak.yaml"
+printf 'data:\n  tls.crt: %s\n' "$crt_b64" > "$T/ev/b/cert.yaml"
+printf '%s\n' "$red" > "$T/ev/b/redacted.yaml"
+assert_eq "$(b64_key_hits "$T/ev")" "$T/ev/a/leak.yaml" "only the file holding a base64 private key is reported"
+assert_eq "$(b64_key_hits "$T/ev/b")" "" "certificates and redacted manifests pass"
 
 # ---- w_branch_classify ----
 facts() { # FILE EQ1 EQ2 EQ3 VALID VERIFIES ADMISSION
@@ -136,10 +156,35 @@ w_branch_classify() {
   fi
   echo branch=iii
 }
+
+# b64_key_hits DIR: files under DIR holding a base64 token that decodes to a PEM private
+# key. Base64 of "-----BEGIN" starts "LS0tLS1CRUdJTi"; each such token is decoded and
+# checked. assert_no_keys runs it next to its literal "PRIVATE KEY" search.
+b64_key_hits() {
+  local d="${1:?b64_key_hits: DIR required}" f tok dec
+  while IFS= read -r f; do
+    while IFS= read -r tok; do
+      dec="$(printf '%s' "$tok" | base64 -d 2>/dev/null | tr -d '\0' || true)"
+      if [[ "$dec" == *"PRIVATE KEY"* ]]; then echo "$f"; break; fi
+    done < <(grep -oE 'LS0tLS1CRUdJTi[A-Za-z0-9+/=]+' "$f" 2>/dev/null || true)
+  done < <(grep -rlE 'LS0tLS1CRUdJTi' "$d" 2>/dev/null || true)
+}
 ```
 
 Run: `just demo cert-hygiene test`
 Expected: five `PASS:` lines.
+
+Then replace `assert_no_keys` in `demos/cert-hygiene/lab/collect.sh` with:
+
+```bash
+assert_no_keys() { # no private key in evidence, as PEM text or base64-encoded
+  local hits
+  hits="$(grep -rl 'PRIVATE KEY' "$RUN_DIR" 2>/dev/null || true)"
+  [ -z "$hits" ] || die "private key material found in evidence: $hits"
+  hits="$(b64_key_hits "$RUN_DIR")"
+  [ -z "$hits" ] || die "base64-encoded private key material found in evidence: $hits"
+}
+```
 
 - [ ] **Step 3: Settings in `demos/cert-hygiene/config.example.env`**
 
@@ -170,12 +215,11 @@ W_EXPIRED_MARKED=""
 _w_not_after() { cert_not_after_epoch "$CERTS/webhooks/$1.crt"; } # COMPONENT
 
 scenario_mark_epoch() { # T1: the proxy-injector certificate's notAfter
-  local t1 t3
-  t1="$(_w_not_after proxyInjector)"
-  t3="$(_w_not_after profileValidator)"
-  [ $(( t1 + POST_EXPIRY_WINDOW_S )) -ge $(( t3 + 300 )) ] \
-    || die "POST_EXPIRY_WINDOW_S=$POST_EXPIRY_WINDOW_S leaves under 5 minutes after the last webhook expiry"
-  echo "$t1"
+  _w_not_after proxyInjector
+}
+
+scenario_post_window_end() { # T3 + W's own post-expiry window (design section 3)
+  echo $(( $(_w_not_after profileValidator) + W_POST_WINDOW_S ))
 }
 
 _w_phase() { # TICK: the admission phase for a probe set taken now
@@ -188,13 +232,13 @@ _w_phase() { # TICK: the admission phase for a probe set taken now
   esac
 }
 
-_w_mark_expiries() { # TICK: mark each webhook's expiry phase at the first tick after it
-  local comp exp now
-  now="$(date -u +%s)"
+_w_mark_expiries() { # TICK: mark each webhook's expiry phase at the first tick that STARTED
+  # after it (TICK_START_EPOCH), so that tick's linkerd check ran after the expiry
+  local comp exp
   for comp in "${WEBHOOK_COMPONENTS[@]}"; do
     exp="$(_w_not_after "$comp")"
-    if [ "$now" -ge "$exp" ] && [[ " $W_EXPIRED_MARKED " != *" $comp "* ]]; then
-      mark webhook-expired "$comp notAfter=$(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ); first tick after it: $1"
+    if [ "$TICK_START_EPOCH" -ge "$exp" ] && [[ " $W_EXPIRED_MARKED " != *" $comp "* ]]; then
+      mark webhook-expired "$comp notAfter=$(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ); first tick starting after it: $1, started $(date -u -d "@$TICK_START_EPOCH" +%Y-%m-%dT%H:%M:%SZ)"
       W_EXPIRED_MARKED="$W_EXPIRED_MARKED $comp"
     fi
   done
@@ -215,11 +259,20 @@ scenario_post_actions() { # T_mark + 60s: admission probes instead of new worklo
   mark admission-probes post-actions
 }
 
+_w_upgrade_cmd() { # OUT [ARGS...]: the shell command rendering `linkerd upgrade ARGS` into
+  # OUT. ARGS are quoted only when there are some: an empty quoted argument would make
+  # linkerd upgrade (which accepts none) fail and leave an empty manifest.
+  local out="$1" q=""
+  shift
+  [ $# -eq 0 ] || q="$(printf ' %q' "$@")"
+  printf 'linkerd upgrade%s > %q\n' "$q" "$out"
+}
+
 _w_render_apply() { # LABEL [linkerd upgrade args...]: render into the VM-only cert set,
   # record a redacted copy of the complete manifest, then apply it
   local label="$1" m="$CERTS/recover-$1.yaml"
   shift
-  capture "recover/$label-render.txt" bash -o pipefail -c "linkerd upgrade $(printf '%q ' "$@") > $(printf '%q' "$m")"
+  capture "recover/$label-render.txt" bash -o pipefail -c "$(_w_upgrade_cmd "$m" "$@")"
   redact_manifest "$m" > "$RUN_DIR/recover/$label-manifest.yaml" || die "_w_render_apply: cannot redact $m"
   capture "recover/$label-apply.txt" kubectl apply -f "$m"
 }
@@ -239,6 +292,7 @@ _w_serving_now() { # one line: whether each webhook serves correctly (server-sid
 
 _w_settle() { # LABEL: control-plane rollouts, webhook propagation, then the state
   local f="$RUN_DIR/recover/$1-propagation.txt" deadline s
+  # shellcheck disable=SC2016
   capture "recover/$1-rollout.txt" bash -c 'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
   deadline=$(( $(date -u +%s) + W_PROPAGATION_TIMEOUT_S ))
   while :; do
@@ -342,20 +396,50 @@ run_scenario 02-webhook-expiry-fail webhook-short-fail "${1:?usage: 02-webhook-e
 
 - [ ] **Step 6: Syntax, shellcheck, tests, line counts**
 
-Run: `cd demos/cert-hygiene && for f in lab/*.sh scenarios/*.sh; do bash -n "$f" || echo "SYNTAX ERROR: $f"; done && wc -l lab/scenario-webhook.sh lab/lib-evidence-scenarios.sh && bash scripts/in-lab.sh lab/shell.sh -c 'shellcheck -x lab/*.sh lab/tests/*.sh scenarios/*.sh'`
-Expected: no errors; both files under 300 lines; no findings.
+Run: `cd demos/cert-hygiene && for f in lab/*.sh scenarios/*.sh; do bash -n "$f" || echo "SYNTAX ERROR: $f"; done && wc -l lab/scenario-webhook.sh lab/lib-evidence-scenarios.sh lab/collect.sh && bash scripts/in-lab.sh lab/shell.sh -c 'shellcheck -x lab/*.sh lab/tests/*.sh scenarios/*.sh'`
+Expected: no errors; both files, and `lab/collect.sh`, under 300 lines; no findings.
 
 Run: `just demo cert-hygiene test`
 Expected: five `PASS:` lines.
 
-- [ ] **Step 7: Check the redaction against a real render, without applying anything**
+- [ ] **Step 7: Check the render command, the redaction and the decode scan against a real render, without applying anything**
 
-Run: `bash demos/cert-hygiene/scripts/in-lab.sh lab/shell.sh -c '. lab/lib-lab.sh && linkerd upgrade > /tmp/w-render.yaml && redact_manifest /tmp/w-render.yaml > /tmp/w-redacted.yaml && grep -c "redacted" /tmp/w-redacted.yaml; grep -c "PRIVATE KEY" /tmp/w-redacted.yaml; rm -f /tmp/w-render.yaml /tmp/w-redacted.yaml'`
-(against any lab left up by an earlier task). Expected: a first count of at least 1 (the issuer key, and the webhook keys) and a second count of `0`. `/tmp` in the VM is outside the repo.
+With the Write tool, create `demos/cert-hygiene/.lab-logs/redaction-check.sh` (`.lab-logs/` is git-ignored and never evidence):
+
+```bash
+#!/usr/bin/env bash
+# One-off check (plan Task 12 Step 7): the render command with and without arguments,
+# the redaction, and the base64 key scan, against a real render. Nothing is applied, and
+# the unredacted render never leaves the VM's /tmp; the trap removes it on any exit.
+set -euo pipefail
+# shellcheck source=/dev/null
+. lab/scenario-common.sh
+# shellcheck source=/dev/null
+. lab/scenario-webhook.sh
+trap 'rm -rf /tmp/w-render.yaml /tmp/w-red' EXIT
+echo "no args:   $(_w_upgrade_cmd /tmp/w-render.yaml)"
+echo "with args: $(_w_upgrade_cmd /tmp/w-render.yaml --set-file x=a)"
+linkerd upgrade > /tmp/w-render.yaml
+mkdir -p /tmp/w-red
+redact_manifest /tmp/w-render.yaml > /tmp/w-red/m.yaml
+echo "redactions=$(grep -c 'redacted' /tmp/w-red/m.yaml || true)"
+echo "private_key_lines=$(grep -c 'PRIVATE KEY' /tmp/w-red/m.yaml || true)"
+echo "b64_key_hits=$(b64_key_hits /tmp/w-red | wc -l | tr -d ' ')"
+```
+
+Run: `cd demos/cert-hygiene && bash scripts/in-lab.sh .lab-logs/redaction-check.sh`, against any lab left up by an earlier task (if none, `just demo cert-hygiene reset long` first).
+Expected:
+- `no args:   linkerd upgrade > /tmp/w-render.yaml`, with no `''` between `upgrade` and `>`;
+- `with args: linkerd upgrade --set-file x=a > /tmp/w-render.yaml`;
+- `redactions=` at least `4`: the issuer's `key.pem` and the three webhook `tls.key` values;
+- `private_key_lines=0`;
+- `b64_key_hits=0`.
+
+If any line differs, fix `scenario-webhook.sh` or `lib-evidence-scenarios.sh` and repeat.
 
 - [ ] **Step 8: Commit**
 
-W's evidence runs are Task 21.
+W's evidence runs are Task 22, after W's discovery runs (Task 19).
 
 ```bash
 git add demos/cert-hygiene/lab demos/cert-hygiene/scenarios demos/cert-hygiene/config.example.env

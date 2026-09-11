@@ -1,4 +1,4 @@
-# Task 24: A
+# Task 25: A
 
 Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phase 2: no harness changes** except under the Phase 2 rule in the README.
 
@@ -9,15 +9,15 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phas
 - Modify: `docs/articles/cert-hygiene/README.md` (status)
 
 **Interfaces:**
-- Consumes: Task 19's run procedure and valid control at tree `H`.
-- Produces: run `A`, `evidence_valid=yes` at `H`. Task 30 reads it.
+- Consumes: Task 20's run procedure and valid control at tree `H`.
+- Produces: run `A`, `evidence_valid=yes` at `H`. Task 31 reads it.
 
 - [ ] **Step 1: Run it**
 
-Follow Task 19 Step 1 with `S=06-anchor-expiry`. It takes about an hour and a half: 20 minutes to the anchor's expiry, the 30-minute window, then the named stages (stage 3 only if needed).
+Follow Task 20 Step 1 with `S=06-anchor-expiry`. It takes about an hour and a half: 20 minutes to the anchor's expiry, the 30-minute window, then the named stages (stage 3 only if needed).
 
 Sanity checks before committing:
-- `grep -E ' (t_mark|a-stage[0-9]|a-canary|restart|gate|done)' runs/06-anchor-expiry/<stamp>/timeline.log` shows `a-stage1-apply`, `a-stage2`, one or two `a-canary` lines, an `a-stage3 …` line (run or "not needed"), `restart a-stage4 …`, `gate a-stage4 …`, `a-stage5`, and `done`.
+- `grep -E ' (t_mark|a-stage[0-9]|a-canary|restart|gate|done)' runs/06-anchor-expiry/<stamp>/timeline.log` shows `a-stage1-apply`, `a-stage2`, `a-canary` lines, an `a-stage3 …` line (run or "not needed"), `restart a-stage4 …`, `gate a-stage4 …`, `a-stage5`, and `done`.
 - `tail -n 1 runs/06-anchor-expiry/<stamp>/recover/linkerd-upgrade.txt` prints `[exit 0]`.
 - `head -n 4 runs/06-anchor-expiry/<stamp>/credential-plan.txt` shows `result=ok`, `declared: plan A/I1 B/I2` and two observed states.
 

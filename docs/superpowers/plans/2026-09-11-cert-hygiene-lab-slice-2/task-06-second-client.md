@@ -143,7 +143,7 @@ Expected: `[discover.sh] discovery data in runs/_discovery/<stamp>`.
 
 Let `D=demos/cert-hygiene/runs/_discovery/<stamp>`. Check:
 1. **Line contract.** Every line of `$D/probe-tcp-new-b.log` matches `^[0-9-]+T[0-9:]+Z probe-tcp-new-b seq=[0-9]+ ok$`: `grep -cvE '^[0-9-]+T[0-9:]+Z probe-tcp-new-b seq=[0-9]+ ok$' $D/probe-tcp-new-b.log` prints `0`, and `wc -l < $D/probe-tcp-new-b.log` is at least 10. `$D/probe-tcp-new.log` still names `probe-tcp-new` in field 2.
-2. **One connection per attempt.** Count the attempts inside the snapshot window: `awk -v a="$(cat $D/t0.utc)" -v b="$(cat $D/t1.utc)" '$1 >= a && $1 <= b && / ok$/' $D/probe-tcp-new-b.log | wc -l`. In `$D/probe-tcp-new-b-delta.txt`, the line starting `tcp_open_total{direction="outbound",peer="dst",authority="server.lab.svc.cluster.local:9000"` and containing `tls="true"` must show a delta within 1 of that count (an attempt can straddle a snapshot boundary), as the slice-1 FINDINGS showed for `probe-tcp-new`.
+2. **One connection per attempt.** Count the attempts inside the snapshot window: `awk -v a="$(cat $D/t0.utc)" -v b="$(cat $D/t1.utc)" '$1 >= a && $1 <= b && / ok$/' $D/probe-tcp-new-b.log | wc -l`. `$D/probe-tcp-new-b-delta.txt` holds lines of the form `<delta> <series>`. Take the line whose second field starts `tcp_open_total{direction="outbound",peer="dst",authority="server.lab.svc.cluster.local:9000"` and contains `tls="true"`: its first field, the delta, must be within 1 of that count (an attempt can straddle a snapshot boundary), as the slice-1 FINDINGS showed for `probe-tcp-new`.
 
 Write `$D/FINDINGS.md` with the Write tool: one heading per check, the quoted lines, and one-sentence answers.
 
