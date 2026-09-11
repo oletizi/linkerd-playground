@@ -4,7 +4,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 ## Start here
 
-1. **[findings.md](findings.md)** — what we learned, in plain words, organised to match the article outline. It opens with an updated [triage table](findings.md#triage-table), where each row links to its details. Each finding says whether we saw it in a test cluster, read it in Linkerd's source, or don't know yet.
+1. **[findings.md](findings.md)** — what we learned, in plain words, organised to match the article outline. Its [triage table](findings.md#triage-table) comes in two parts: what we reproduced in a test cluster, and what Linkerd's code predicts but we haven't tested yet. Each row links to its details. Every statement on the page says which kind it is.
 2. **[sources.md](sources.md)** — what to cite for each claim, how authoritative each source is, and which claims in the draft need careful wording.
 3. **[notes/](notes/)** — the detail behind the findings. You only need these to check a specific claim:
    - [notes/lab-evidence-issuer-expiry.md](notes/lab-evidence-issuer-expiry.md) — the full record of the issuer-expiry experiment, quoting raw logs and metrics.
