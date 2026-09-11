@@ -153,6 +153,8 @@ Write `demos/cert-hygiene/runs/_discovery/<stamp>-scenario-smoke/FINDINGS.md` wi
 - every declared rule that failed because of Linkerd's own behaviour, and the result of the repeat;
 - the final harness commit (`git log -1 --format=%H`).
 
+The `02-webhook-expiry-ignore` not-scraped check (Step 4) is best-effort: by construction it may find zero proxy-less pod sections (`N` in `proxy-less pod sections checked: N` can legitimately be `0`, since an `inject-probe` pod only lands in a tick's metrics if that tick happened to run before the pod's deletion). Record `check-not-scraped.sh`'s output whatever `N` is; treat `N=0` as "the check found nothing to exercise it", never as proof the rule holds.
+
 Behaviour the checks reveal about Linkerd (for example the W branch, or whether the canary needed stage 3) is recorded as seen and never judged: these runs are not evidence.
 
 ```bash

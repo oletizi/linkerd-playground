@@ -14,8 +14,10 @@ Gate records (`gates/<stage>.txt`) come in Task 7. The k3s journal keeps being c
 - Modify: `demos/cert-hygiene/lab/collect.sh` (`PROXY_METRIC_FILTER`; `tick`)
 - Modify: `demos/cert-hygiene/lab/collect-state.sh` (add `snap_webhooks`, `snap_controlplane`)
 - Modify: `demos/cert-hygiene/lab/collect-logs.sh` (`snap_logs` writes and follows `pods.txt`)
-- Modify: `demos/cert-hygiene/lab/lib-evidence-rules.sh` (proxy-log rule reads `pods.txt`; drop `LAB_APP_CONTAINERS`)
+- Modify: `demos/cert-hygiene/lab/lib-evidence-rules.sh` (proxy-log rule reads `pods.txt`; drop `LAB_APP_CONTAINERS`; add `_pods_txt_parse`)
 - Modify: `demos/cert-hygiene/lab/tests/fixtures.sh`, `demos/cert-hygiene/lab/tests/test-rules.sh`
+- Modify: `demos/cert-hygiene/lab/scenario-common.sh` (drop the duplicate `snap_trust` calls in `run_scenario`)
+- Modify: `demos/cert-hygiene/lab/snapshot-once.sh` (drop the now-duplicate `snap_trust manual` call)
 
 **Interfaces:**
 - Consumes: Task 4 (`_cert_from_secret`, `WEBHOOK_COMPONENTS`, `webhook_secret`), `_record`, `capture`.
@@ -23,6 +25,7 @@ Gate records (`gates/<stage>.txt`) come in Task 7. The k3s journal keeps being c
   - `webhooks/<tick>.txt`: `sampled_at_epoch=`; one line per webhook in each configuration: `config <kind>/<name> webhook=<webhook name> failurePolicy=<Ignore|Fail> caBundle_sha256=<sha256 of the decoded caBundle, or ->`; then `secret_<component>_{sha256,serial,not_after_epoch,not_after,sans}=` per component.
   - `controlplane/<tick>.txt`: `sampled_at_epoch=`; `pod linkerd/<name> uid=<uid> start=<RFC3339|-> phase=<phase> ready=<True|False|-> restarts=<n> trust=<annotation|->` per pod; `deploy linkerd/<name> generation=<n> observedGeneration=<n|-> replicas=<n> readyReplicas=<n> template_sha256=<sha256 of the key-sorted .spec.template JSON>` per Deployment.
   - `logs/<label>/pods.txt`: one line per lab pod, `pod=<name> proxy=<yes|no> containers=<init and regular container names, comma-joined>`, or a `[lab pod listing failed: exit N] …` line. `snap_logs` captures exactly the pods and containers it lists.
+  - `_pods_txt_parse LINE` (pure) → `<pod> <containers>`, parsed from one `pod=… containers=…` line of `pods.txt`. Both `_missing_proxy_logs` and `snap_logs` parse a `pods.txt` line the same way, so this helper lives once and each calls it.
   - `PROXY_METRIC_FILTER='^(identity_|control_identity_|tcp_open_total|tcp_close_total|tcp_open_connections|outbound_tcp_route_open_total|outbound_tcp_route_close_total)'` (design § 1.4; all five connection series are in `runs/_discovery/20260911T004528Z`).
   - `tick NAME` also writes `webhooks/NAME.txt` and `controlplane/NAME.txt`.
   - Proxy-log rule (in `_missing_proxy_logs RUN_DIR`), one reason per miss: `<label>: pods.txt missing`, `<label>: pods.txt records a failed listing`, `<label>: pods.txt lists no pod`, `<label>: <pod> has no <pod>-<container>.txt`. A pod listed `proxy=yes` therefore always needs `<pod>-linkerd-proxy.txt`; a pod listed `proxy=no` (W's un-injected pods) needs only its own containers' logs.
@@ -80,6 +83,16 @@ Expected: `test-rules` fails (the new reasons are not produced yet); exit non-ze
 Delete `LAB_APP_CONTAINERS` and the old `_missing_proxy_logs` (with their comments). Put in their place:
 
 ```bash
+# _pods_txt_parse LINE: one "pod=<name> proxy=<yes|no> containers=<a,b,c>" line of a
+# pods.txt file -> "<pod> <containers>" (comma-joined, unsplit). Both _missing_proxy_logs
+# here and snap_logs (collect-logs.sh) parse a pods.txt line; this is the one place.
+_pods_txt_parse() {
+  local line="$1" pod containers
+  pod="$(awk '{ print $1 }' <<< "$line")"; pod="${pod#pod=}"
+  containers="$(awk '{ print $3 }' <<< "$line")"; containers="${containers#containers=}"
+  printf '%s %s\n' "$pod" "$containers"
+}
+
 # _missing_proxy_logs RUN_DIR: the proxy-log rule. Every logs/<label>/ directory must
 # hold pods.txt, the lab pods the snapshot captured (design section 1.4). Each listed
 # container needs its <pod>-<container>.txt; a pod with proxy=yes lists linkerd-proxy
@@ -94,8 +107,7 @@ _missing_proxy_logs() {
     if grep -q '^\[' "$dir/pods.txt"; then echo "$label: pods.txt records a failed listing"; continue; fi
     if ! grep -q '^pod=' "$dir/pods.txt"; then echo "$label: pods.txt lists no pod"; continue; fi
     while read -r line; do
-      pod="$(awk '{ print $1 }' <<< "$line")"; pod="${pod#pod=}"
-      containers="$(awk '{ print $3 }' <<< "$line")"; containers="${containers#containers=}"
+      read -r pod containers < <(_pods_txt_parse "$line")
       for c in ${containers//,/ }; do
         [ -s "$dir$pod-$c.txt" ] || echo "$label: $pod has no $pod-$c.txt"
       done
@@ -151,6 +163,8 @@ In `tick`, after `snap_credentials "$name"`, add:
 ```
 
 Each pod's trust-bundle hash is now recorded on every tick (design § 1.3, § 7), not only at three moments. In `demos/cert-hygiene/lab/scenario-common.sh`, `run_scenario`, delete the lines `snap_trust baseline` and `snap_trust verify`: the `baseline` and `verify` ticks now write those files, and evidence is written once. Keep `snap_trust pre-recover` (it is not a tick).
+
+The same duplication exists in `demos/cert-hygiene/lab/snapshot-once.sh`: its `tick manual` call now writes `trust/manual.txt` (via `tick`'s new `snap_trust "$name"` line, above), so the explicit `snap_trust manual` line right after it would write the same file a second time. Delete that line from `snapshot-once.sh`.
 
 - [ ] **Step 4: Add `snap_webhooks` and `snap_controlplane` to `demos/cert-hygiene/lab/collect-state.sh`**
 
@@ -231,8 +245,7 @@ snap_logs() { # NAME: identity logs, then every container of every lab pod liste
   fi
   rm -f "$tmp"
   while read -r line; do
-    pod="$(awk '{ print $1 }' <<< "$line")"; pod="${pod#pod=}"
-    containers="$(awk '{ print $3 }' <<< "$line")"; containers="${containers#containers=}"
+    read -r pod containers < <(_pods_txt_parse "$line")
     for c in ${containers//,/ }; do
       capture "$dir/$pod-$c.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps
       capture "$dir/$pod-$c-previous.txt" kubectl -n "$LAB_NS" logs "$pod" -c "$c" --timestamps --previous
@@ -240,6 +253,8 @@ snap_logs() { # NAME: identity logs, then every container of every lab pod liste
   done < <(grep '^pod=' "$RUN_DIR/$dir/pods.txt" || true)
 }
 ```
+
+`_pods_txt_parse` (`lib-evidence-rules.sh`, defined in this task above) is in scope here because `lib-lab.sh` sources `lib-evidence.sh` before `collect.sh` (which pulls in `collect-logs.sh`) is sourced.
 
 - [ ] **Step 6: Syntax, shellcheck, tests, line counts**
 

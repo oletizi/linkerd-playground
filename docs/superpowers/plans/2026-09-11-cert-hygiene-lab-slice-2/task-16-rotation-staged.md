@@ -26,7 +26,7 @@ S1 attributes a failure to TLS only through proxy logs, and only for gated sampl
 - Create: `demos/cert-hygiene/scenarios/07-anchor-rotation-staged.sh`
 
 **Interfaces:**
-- Consumes: Task 9 `run_steps_scenario`, `observe_until`, Task 7 `restart_and_gate`, `lab_deployments`, Task 8 `snap_before_restart`, `wait_issuer_updated`, `make_trust_anchor`, `make_issuer`, `write_cert`, `NEW_ANCHOR_LIFETIME`, `REPLACEMENT_ISSUER_LIFETIME`, `FAULT_LEAD_S`.
+- Consumes: Task 9 `run_steps_scenario`, `observe_until`, Task 7 `restart_and_gate`, `lab_deployments`, Task 8 `snap_before_restart`, `wait_issuer_updated`, `make_trust_anchor`, `make_issuer`, `write_cert`, `NEW_ANCHOR_LIFETIME`, `REPLACEMENT_ISSUER_LIFETIME`, `FAULT_LEAD_S`, Task 12 `capture_cp_rollouts` (`lab/stages.sh`).
 - Produces: the ticks and gate records in the table; `certs/trust-anchor-new.{pem,txt}`, `certs/trust-bundle.{pem,txt}`, `certs/issuer-new.{pem,txt}`; `steps/s03-upgrade.txt`, `steps/s07-upgrade.txt`, `steps/s10-upgrade.txt`, `steps/sNN-rollout.txt`, `steps/s05-check-proxy.txt`, `steps/s09-check-proxy.txt`, `steps/s11-check-proxy.txt`; timeline markers `s01` … `s11` with the guide step's text.
 
 - [ ] **Step 1: Write `demos/cert-hygiene/scenarios/07-anchor-rotation-staged.sh`**
@@ -42,12 +42,11 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lab" && pwd)/scenario-common.sh"
 
 _s_upgrade() { # NN ARGS...: linkerd upgrade ARGS | kubectl apply -f -, then control-plane rollouts
-  local nn="$1"
+  local nn="$1" q=""
   shift
-  capture "steps/s$nn-upgrade.txt" bash -o pipefail -c "linkerd upgrade $(printf '%q ' "$@") | kubectl apply -f -"
-  # shellcheck disable=SC2016
-  capture "steps/s$nn-rollout.txt" bash -c \
-    'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  [ $# -eq 0 ] || q="$(printf ' %q' "$@")"
+  capture "steps/s$nn-upgrade.txt" bash -o pipefail -c "linkerd upgrade$q | kubectl apply -f -"
+  capture_cp_rollouts "steps/s$nn-rollout.txt"
 }
 
 _s_restart() { # NN: restart every meshed lab workload, gated and sampled
@@ -117,6 +116,8 @@ run_steps_scenario 07-anchor-rotation-staged long "${1:?usage: 07-anchor-rotatio
 ```
 
 `write_cert trust-bundle` stores both anchors in `certs/trust-bundle.pem`; its `.txt` inspects the first. `make_issuer`'s `ANCHOR_DIR` argument is the new anchor's directory, so the new issuer chains to B.
+
+`_s_upgrade` quotes ARGS only when there are some, the same guard Task 12's `_w_upgrade_cmd` uses (C1's fix): S-staged always passes arguments here, but an empty quoted argument would still make `linkerd upgrade` fail were that ever not true.
 
 - [ ] **Step 2: Syntax and shellcheck**
 

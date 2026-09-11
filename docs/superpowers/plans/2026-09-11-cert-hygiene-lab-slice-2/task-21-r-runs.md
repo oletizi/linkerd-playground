@@ -27,4 +27,4 @@ README status: in the "Second round of lab experiments" bullet, replace its last
 
 Follow Task 20 Step 1 again with `S=05-issuer-expiry`. Apply the same sanity checks.
 
-README status: replace that sentence with: `The issuer experiment has been repeated twice; its write-up is pending. The other experiment runs are next.` Commit with the run.
+README status: replace those two sentences with: `The issuer experiment has been repeated twice; its write-up is pending. The other experiment runs are next.` Commit with the run.

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task lives in its own file in this directory; read this README first, then only your task file.
 
-**Status:** revised after the [plan review](../../reviews/2026-09-11-cert-hygiene-lab-slice-2-plan-review.md). Every finding in it (C1, I1–I7, M1–M15) and the controller's rulings are applied.
+**Status:** revised after the [plan review](../../reviews/2026-09-11-cert-hygiene-lab-slice-2-plan-review.md). Every finding in it (C1, I1–I7, M1–M15) and the controller's rulings are applied. The plan also went through a pre-flight conflict scan against the current harness, and the controller's rulings on that scan have been applied to the task files.
 
 **Goal:** Generalise the slice-1 lab harness and use it to record evidence, in three phases.
 - Generalise the harness: credential profiles, planned credential transitions, richer collection, a second client, gated restart stages, and scenario hooks.

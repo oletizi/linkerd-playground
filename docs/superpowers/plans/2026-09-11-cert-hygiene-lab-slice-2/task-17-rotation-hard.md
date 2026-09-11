@@ -25,7 +25,7 @@ Stages 2–4 are `matrix_restart_stages` (Task 8). Each pod's trust hash is on e
 - Modify: `demos/cert-hygiene/config.example.env` (`S_HARD_STAGE1_TIMEOUT_S`)
 
 **Interfaces:**
-- Consumes: Task 9 hooks and `run_scenario`, Task 8 `matrix_restart_stages`, Task 7 `stage_samples`, `_current_pod`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`.
+- Consumes: Task 9 hooks and `run_scenario`, Task 8 `matrix_restart_stages`, Task 7 `stage_samples`, `_current_pod`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`, Task 12 `capture_cp_rollouts` (`lab/stages.sh`).
 - Produces:
   - `pod_section METRICS_FILE POD` (pure) → the lines of POD's section (`== lab/POD :4191` up to the next `==`) in a tick's metrics file; nothing if absent.
   - `s_hard_endpoint_state SWAP_EPOCH NOW_EPOCH BEFORE_SECTION NOW_SECTION LINES_FILE` (pure) → one line starting `state=expired-failed|renewed|pending` with the recorded values; returns 0 for the first two, 1 for pending.
@@ -152,9 +152,7 @@ scenario_fault() { # the hard swap
   mark s-hard-swap "linkerd upgrade with a new anchor and issuer in one step, --force, no bundle"
   capture swap/linkerd-upgrade.txt bash -o pipefail -c \
     "linkerd upgrade --identity-trust-anchors-file='$new/ca.crt' --identity-issuer-certificate-file='$new/issuer.crt' --identity-issuer-key-file='$new/issuer.key' --force | kubectl apply -f -"
-  # shellcheck disable=SC2016
-  capture swap/rollout.txt bash -c \
-    'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  capture_cp_rollouts swap/rollout.txt
   snap_controlplane swap-after
 }
 

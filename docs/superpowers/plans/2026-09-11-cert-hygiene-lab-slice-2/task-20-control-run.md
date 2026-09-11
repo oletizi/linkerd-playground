@@ -14,18 +14,18 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first. **Phas
 
 - [ ] **Step 1: The run procedure (every Phase 2 task uses it)**
 
-For a scenario `S`, from the repo root:
+For a scenario `S`. Each step below says which directory its commands run from; steps 2-4 run from `demos/cert-hygiene/`, not the repo root.
 
-1. **Clean tree.** `git status --porcelain -- lib demos/cert-hygiene ':(exclude)demos/cert-hygiene/runs'` prints nothing, and `demos/cert-hygiene/config.local.env` does not exist. If either fails, stop: never launch an evidence run from a dirty tree.
-2. **Launch detached, as an evidence run.** `cd demos/cert-hygiene && bash scripts/run.sh S`. Never pass `--discovery` or `--short` in Phase 2. The last line is `runs/S/<stamp>`.
-3. **Wait in bounded foreground waits.** `bash scripts/wait-run.sh runs/S/<stamp> 540`, repeated while it exits 124. The run is detached and survives the tool's time limit.
-4. **Check it.**
-   - Read `validity.txt`.
+1. **Clean tree** (repo root). `git status --porcelain -- lib demos/cert-hygiene ':(exclude)demos/cert-hygiene/runs'` prints nothing, and `demos/cert-hygiene/config.local.env` does not exist. If either fails, stop: never launch an evidence run from a dirty tree.
+2. **Launch detached, as an evidence run** (`demos/cert-hygiene/`). `bash scripts/run.sh S`. Never pass `--discovery` or `--short` in Phase 2. The last line is `runs/S/<stamp>`, relative to `demos/cert-hygiene/`.
+3. **Wait in bounded foreground waits** (`demos/cert-hygiene/`). `bash scripts/wait-run.sh runs/S/<stamp> 540`, repeated while it exits 124. The run is detached and survives the tool's time limit.
+4. **Check it** (`demos/cert-hygiene/`; every path below is relative to it).
+   - Read `runs/S/<stamp>/validity.txt`.
    - `ls runs/S/<stamp>/discovery.txt` must fail: an evidence run has none.
    - `(grep -rl 'PRIVATE KEY' runs || echo none)` must print `none`.
    - `du -sh runs/S/<stamp>`: if it exceeds 20M, report its largest files (`du -a runs/S/<stamp> | sort -n | tail`) to the user before committing.
    - Its `git-state.txt` must have `demo_repo_dirty=false` and `harness_tree_sha256=H`.
-5. **Commit immediately**, valid or not, together with the README status change the task names:
+5. **Commit immediately** (repo root), valid or not, together with the README status change the task names:
    - `git add demos/cert-hygiene/runs/S docs/articles/cert-hygiene/README.md`
    - `git commit -m "cert-hygiene record S run <stamp>"`, adding `; not valid evidence` to the message when `validity.txt` says `no`
    - `git push`
@@ -58,6 +58,13 @@ In `docs/articles/cert-hygiene/README.md`, replace the "Second round of lab expe
 
 ```markdown
 - **Second round of lab experiments** (webhook certificates, identity outage, `linkerd check` threshold, trust-anchor expiry and rotation, and a repeat of the issuer experiment): the lab is built, and a matching run where nothing expires has been recorded. The experiment runs are next; nothing from this round is a finding yet.
+```
+
+Evidence runs are about to start, so the two older bullets above it would otherwise contradict this one: they still say the issuer repeat is pending and the other scenarios are untested. Replace them too, in the same commit:
+
+```markdown
+- **Identity issuer expiry:** tested. Results are in [findings.md](findings.md). Its repeat, with fuller logging, is part of the second round of lab experiments below; its open questions are answered once that write-up lands.
+- **Trust-anchor expiry and rotation, webhook certificates, an identity-service outage, and the `linkerd check` threshold** are part of the second round of lab experiments below; their results are not findings until each is written up. **Viz/tap and the other scenarios** in [notes/demo-feasibility.md](notes/demo-feasibility.md) remain untested; their findings still come from Linkerd's source code only.
 ```
 
 Commit with the run (Step 1.5).

@@ -41,19 +41,21 @@ The unit tests cover:
 
 **Files:**
 - Create: `demos/cert-hygiene/lab/scenario-webhook.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-ignore.sh`, `demos/cert-hygiene/scenarios/02-webhook-expiry-fail.sh`
-- Modify: `demos/cert-hygiene/lab/lib-evidence-scenarios.sh` (add `redact_manifest`, `w_branch_classify`, `b64_key_hits`), `demos/cert-hygiene/lab/tests/test-scenarios.sh`
+- Modify: `demos/cert-hygiene/lab/lib-evidence-scenarios.sh` (add `redact_manifest`, `w_branch_classify`, `b64_key_hits`, `_w_upgrade_cmd`), `demos/cert-hygiene/lab/tests/test-scenarios.sh`
 - Modify: `demos/cert-hygiene/lab/collect.sh` (`assert_no_keys` also runs `b64_key_hits`)
+- Modify: `demos/cert-hygiene/lab/stages.sh` (add `capture_cp_rollouts`, the control-plane rollout-status loop shared with Tasks 15–17)
 - Modify: `demos/cert-hygiene/config.example.env` (`W_PROPAGATION_TIMEOUT_S`, `W_FRESH_WEBHOOK_LIFETIME`)
 
 **Interfaces:**
-- Consumes: Task 9 hooks, Task 11 (`admission_probes`, `admission_render`, `admission_proof_check`), Task 1 (`make_webhook_certs`, `webhook_install_args`, `webhook_secret`, `WEBHOOK_COMPONENTS`), Task 5 (`WEBHOOK_CONFIGS`, `snap_webhooks`, `snap_controlplane`), `cert_facts`, `cert_not_after_epoch`.
+- Consumes: Task 9 hooks, Task 11 (`admission_probes`, `admission_render`, `admission_proof_check`, `admission_denied_by`), Task 1 (`make_webhook_certs`, `webhook_install_args`, `webhook_secret`, `WEBHOOK_COMPONENTS`), Task 5 (`WEBHOOK_CONFIGS`, `snap_webhooks`, `snap_controlplane`), `cert_facts`, `cert_not_after_epoch`.
 - Produces:
   - `_has_key_b64 DEPTH TEXT` (pure) → 0 when TEXT contains `PRIVATE KEY`, directly or inside up to DEPTH layers of base64 runs of 40 or more characters (all-hex runs, which are digests, are skipped).
   - `redact_manifest FILE` (pure) → FILE on stdout. Every `key: value` whose base64 value hides a private key at any depth (`_has_key_b64 3`) becomes `<redacted sha256=<hash of the value>>`. Every literal PEM private-key block becomes one `<redacted private key block>` line. Everything else is byte-identical.
-  - `w_branch_classify FACTS_FILE` (pure) → `branch=i|ii|iii` by the rule above. Facts contract: exactly three lines `component=<c> secret_sha256=<hex|-> supplied_sha256=<hex> equals_supplied=<yes|no> not_after_epoch=<epoch|-> valid_now=<yes|no> cabundle_verifies=<yes|no>` and one `admission=<healthy|unhealthy>` line. Dies on any other count.
+  - `capture_cp_rollouts FILE` (`lab/stages.sh`, this task) → the control-plane rollout-status loop (`for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done`), captured to FILE with `capture`. Replaces the same loop written verbatim in this task's `_w_settle` and in Tasks 15, 16 and 17, which call it too.
+  - `w_branch_classify FACTS_FILE` (pure) → `branch=i|ii|iii` by the rule above. Facts contract: `FACTS_FILE` holds exactly three `component=<c> secret_sha256=<hex|-> supplied_sha256=<hex> equals_supplied=<yes|no> not_after_epoch=<epoch|-> valid_now=<yes|no> cabundle_verifies=<yes|no>` lines and one `admission=<healthy|unhealthy>` line; `_w_facts` also appends `admission_proof_check`'s `ok:`/`fail:` lines to the same file, which `w_branch_classify` ignores (it counts only the `component=` and `admission=` lines). Dies on any `component=` count other than three.
   - Evidence: `admission-baseline.txt`; `admission/{baseline,pre-expiry,post-NNNN,recovered}/`; timeline markers `webhook-expired`, `admission-probes`, `recover-delete`, `recover-plain`, `propagated`, `recover-branch`, `recover-supplied`; `recover/delete-secrets.txt`; per label (`plain`, and `supplied` for ii/iii): `recover/<label>-render.txt`, `recover/<label>-manifest.yaml` (redacted), `recover/<label>-apply.txt`, `recover/<label>-rollout.txt`, `recover/<label>-propagation.txt`, `recover/<label>-check.txt`, `recover/<label>-facts.txt`, `controlplane/recover-<label>.txt`, `webhooks/recover-<label>.txt`, `admission/recovered/*-recover-<label>.*`; `recover/branch.txt` (first line `branch=…`); `certs/webhook-fresh-*.{pem,txt}` for ii/iii.
   - `b64_key_hits DIR` (pure) → one line per file under DIR for which `_has_key_b64 3` holds on the file's text: a base64 run of 40 or more characters that decodes, directly or through nested base64, to text containing `PRIVATE KEY`. Nothing otherwise.
-  - `_w_upgrade_cmd OUT [ARGS...]` → the shell command rendering `linkerd upgrade ARGS` into OUT, with no argument text at all when ARGS is empty.
+  - `_w_upgrade_cmd OUT [ARGS...]` (pure; `lib-evidence-scenarios.sh`, so the unit tests can reach it) → the shell command rendering `linkerd upgrade ARGS` into OUT, with no argument text at all when ARGS is empty.
   - W's `scenario_post_window_end` → T3 + `W_POST_WINDOW_S`.
   - Config: `W_PROPAGATION_TIMEOUT_S=180`, `W_FRESH_WEBHOOK_LIFETIME=8760h` (and `W_POST_WINDOW_S=600` from Task 9).
 
@@ -124,6 +126,12 @@ head -n 2 "$T/b1" > "$T/b6"; echo admission=healthy >> "$T/b6"
 assert_fails "two component lines die" w_branch_classify "$T/b6"
 grep -v '^admission=' "$T/b1" > "$T/b7"
 assert_fails "no admission line dies" w_branch_classify "$T/b7"
+
+# ---- _w_upgrade_cmd (C1's fix: arguments only when there are some) ----
+assert_eq "$(_w_upgrade_cmd /tmp/w-render.yaml)" "linkerd upgrade > /tmp/w-render.yaml" \
+  "no arguments: exactly \"linkerd upgrade\", no trailing empty argument"
+assert_eq "$(_w_upgrade_cmd /tmp/w-render.yaml --set-file x=a)" "linkerd upgrade --set-file x=a > /tmp/w-render.yaml" \
+  "arguments are present and quoted"
 ```
 
 Run: `just demo cert-hygiene test`
@@ -203,6 +211,18 @@ b64_key_hits() {
     if _has_key_b64 3 "$(cat "$f")"; then echo "$f"; fi
   done < <(grep -rlE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
 }
+
+# _w_upgrade_cmd OUT [ARGS...]: the shell command rendering `linkerd upgrade ARGS` into
+# OUT. ARGS are quoted only when there are some: an empty quoted argument would make
+# linkerd upgrade (which accepts none) fail and leave an empty manifest (C1's fix).
+# Pure string-building, so it lives here rather than in scenario-webhook.sh: this file
+# is what the unit tests source, and scenario-webhook.sh is not.
+_w_upgrade_cmd() {
+  local out="$1" q=""
+  shift
+  [ $# -eq 0 ] || q="$(printf ' %q' "$@")"
+  printf 'linkerd upgrade%s > %q\n' "$q" "$out"
+}
 ```
 
 Run: `just demo cert-hygiene test`
@@ -231,7 +251,22 @@ W_PROPAGATION_TIMEOUT_S=180
 W_FRESH_WEBHOOK_LIFETIME=8760h
 ```
 
-- [ ] **Step 4: Write `demos/cert-hygiene/lab/scenario-webhook.sh`**
+- [ ] **Step 4: Add `capture_cp_rollouts` to `demos/cert-hygiene/lab/stages.sh` (Task 8)**
+
+Append:
+
+```bash
+
+# capture_cp_rollouts FILE: wait for every control-plane Deployment's rollout,
+# recorded to FILE with capture. The one control-plane rollout-status loop; this task,
+# and Tasks 15, 16 and 17, each called it verbatim before this helper existed.
+capture_cp_rollouts() {
+  # shellcheck disable=SC2016
+  capture "$1" bash -c 'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+}
+```
+
+- [ ] **Step 5: Write `demos/cert-hygiene/lab/scenario-webhook.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -293,15 +328,6 @@ scenario_post_actions() { # T_mark + 60s: admission probes instead of new worklo
   mark admission-probes post-actions
 }
 
-_w_upgrade_cmd() { # OUT [ARGS...]: the shell command rendering `linkerd upgrade ARGS` into
-  # OUT. ARGS are quoted only when there are some: an empty quoted argument would make
-  # linkerd upgrade (which accepts none) fail and leave an empty manifest.
-  local out="$1" q=""
-  shift
-  [ $# -eq 0 ] || q="$(printf ' %q' "$@")"
-  printf 'linkerd upgrade%s > %q\n' "$q" "$out"
-}
-
 _w_render_apply() { # LABEL [linkerd upgrade args...]: render into the VM-only cert set,
   # record a redacted copy of the complete manifest, then apply it
   local label="$1" m="$CERTS/recover-$1.yaml"
@@ -312,22 +338,25 @@ _w_render_apply() { # LABEL [linkerd upgrade args...]: render into the VM-only c
 }
 
 _w_serving_now() { # one line: whether each webhook serves correctly (server-side dry runs)
-  local tmp inj=no pol=no sp=no
+  local tmp inj=no pol=no sp=no rc
   tmp="$(mktemp -d)"
   admission_render inject-probe propagation-probe > "$tmp/pod.yaml"
   admission_render policy-invalid propagation-probe > "$tmp/pol.yaml"
   admission_render serviceprofile-invalid propagation-probe > "$tmp/sp.yaml"
   if kubectl create --dry-run=server -o yaml -f "$tmp/pod.yaml" 2>&1 | grep -qE 'name: linkerd-proxy$'; then inj=yes; fi
-  if kubectl create --dry-run=server -f "$tmp/pol.yaml" 2>&1 | grep -qF "admission webhook \"$POLICY_VALIDATOR_WEBHOOK_NAME\" denied the request"; then pol=yes; fi
-  if kubectl create --dry-run=server -f "$tmp/sp.yaml" 2>&1 | grep -qF "admission webhook \"$SP_VALIDATOR_WEBHOOK_NAME\" denied the request"; then sp=yes; fi
+  rc=0; kubectl create --dry-run=server -f "$tmp/pol.yaml" > "$tmp/pol.resp" 2>&1 || rc=$?
+  printf '[exit %s]\n' "$rc" >> "$tmp/pol.resp"
+  if admission_denied_by "$POLICY_VALIDATOR_WEBHOOK_NAME" "$tmp/pol.resp"; then pol=yes; fi
+  rc=0; kubectl create --dry-run=server -f "$tmp/sp.yaml" > "$tmp/sp.resp" 2>&1 || rc=$?
+  printf '[exit %s]\n' "$rc" >> "$tmp/sp.resp"
+  if admission_denied_by "$SP_VALIDATOR_WEBHOOK_NAME" "$tmp/sp.resp"; then sp=yes; fi
   rm -rf "$tmp"
   echo "injection=$inj policy_denied=$pol sp_denied=$sp"
 }
 
 _w_settle() { # LABEL: control-plane rollouts, webhook propagation, then the state
   local f="$RUN_DIR/recover/$1-propagation.txt" deadline s
-  # shellcheck disable=SC2016
-  capture "recover/$1-rollout.txt" bash -c 'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+  capture_cp_rollouts "recover/$1-rollout.txt"
   deadline=$(( $(date -u +%s) + W_PROPAGATION_TIMEOUT_S ))
   while :; do
     s="$(_w_serving_now)"
@@ -405,7 +434,7 @@ scenario_recover() {
 
 `_yn` comes from `gates.sh` (Task 7), which `scenario-common.sh` sources.
 
-- [ ] **Step 5: Write the two scenario files**
+- [ ] **Step 6: Write the two scenario files**
 
 `demos/cert-hygiene/scenarios/02-webhook-expiry-ignore.sh`:
 
@@ -428,15 +457,15 @@ run_scenario 02-webhook-expiry-ignore webhook-short "${1:?usage: 02-webhook-expi
 run_scenario 02-webhook-expiry-fail webhook-short-fail "${1:?usage: 02-webhook-expiry-fail.sh <run-dir>}"
 ```
 
-- [ ] **Step 6: Syntax, shellcheck, tests, line counts**
+- [ ] **Step 7: Syntax, shellcheck, tests, line counts**
 
-Run: `cd demos/cert-hygiene && for f in lab/*.sh scenarios/*.sh; do bash -n "$f" || echo "SYNTAX ERROR: $f"; done && wc -l lab/scenario-webhook.sh lab/lib-evidence-scenarios.sh lab/collect.sh && bash scripts/in-lab.sh lab/shell.sh -c 'shellcheck -x lab/*.sh lab/tests/*.sh scenarios/*.sh'`
-Expected: no errors; both files, and `lab/collect.sh`, under 300 lines; no findings.
+Run: `cd demos/cert-hygiene && for f in lab/*.sh scenarios/*.sh; do bash -n "$f" || echo "SYNTAX ERROR: $f"; done && wc -l lab/scenario-webhook.sh lab/lib-evidence-scenarios.sh lab/collect.sh lab/stages.sh && bash scripts/in-lab.sh lab/shell.sh -c 'shellcheck -x lab/*.sh lab/tests/*.sh scenarios/*.sh'`
+Expected: no errors; all four files under 300 lines; no findings.
 
 Run: `just demo cert-hygiene test`
 Expected: five `PASS:` lines.
 
-- [ ] **Step 7: Check the render command, the redaction and the decode scan against a real render, without applying anything**
+- [ ] **Step 8: Check the render command, the redaction and the decode scan against a real render, without applying anything**
 
 With the Write tool, create `demos/cert-hygiene/.lab-logs/redaction-check.sh` (`.lab-logs/` is git-ignored and never evidence):
 
@@ -471,7 +500,7 @@ Expected:
 
 If any line differs, fix `scenario-webhook.sh` or `lib-evidence-scenarios.sh` and repeat.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 W's evidence runs are Task 22, after W's discovery runs (Task 19).
 

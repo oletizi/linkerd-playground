@@ -10,7 +10,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first, then [
 
 **Interfaces:**
 - Consumes: runs `RA`, `RB` (Task 21), control `C` (Task 20), the helpers `probe-lines.sh`, `pod-series.sh`, `gate-table.sh` (Task 18), the first issuer write-up `notes/lab-evidence-issuer-expiry.md`.
-- Produces: the evidence note, which Task 33 cites. Its last section, "What this means for the article", lists per claim: supported / narrowed / not supported, with the artifact paths.
+- Produces: the evidence note, which Task 33 cites. It includes a "For the comparison with the identity outage and anchor expiry" section, shaped like Tasks 29's and 31's own comparison sections, so Task 33 builds its comparison table from all three. Its last section, "What this means for the article", lists per claim: supported / narrowed / not supported, with the artifact paths.
 
 **Judgement rules:** confirmed (quoted evidence shows the prediction directly), falsified (quoted evidence shows something else), inconclusive (say which observation would decide it). Quote exact lines with paths relative to the run directory; times as T+N from `t_mark` (R's fault is the issuer's own expiry, so T_mark is exact); label anything from the source notes as source-derived. Where the two runs disagree, give both, and give no single verdict unless both support it.
 
@@ -64,6 +64,14 @@ Use this structure, filling every section from Steps 1–3:
 ## What the re-run answers from the first issuer run's open questions
 <one bullet per "Still open" item in findings.md that this evidence bears on: answered / narrowed / still open>
 
+## For the comparison with the identity outage and anchor expiry
+- Fault: …
+- Was the signer valid? …
+- Could workloads reach the identity service? …
+- How failure spread: …
+- What recovery took: …
+- What linkerd check showed: …
+
 ## What this means for the article
 <one bullet per claim, with artifact paths; state that R's § 13 condition is or isn't met>
 ```
@@ -76,7 +84,7 @@ In `docs/articles/cert-hygiene/README.md`, under "Start here" item 3, add after 
    - [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) — two repeats of the issuer-expiry experiment with fuller recording, and which open questions they answer.
 ```
 
-In the "Second round of lab experiments" status bullet, set the sentence after "every experiment has been run." to: `Written up so far: the repeat of the issuer experiment. The other write-ups are in progress; until each is done, its results are not findings.`
+In the "Second round of lab experiments" status bullet, set the two sentences after "every experiment has been run." to: `Written up so far: the repeat of the issuer experiment. The other write-ups are in progress; until each is done, its results are not findings.`
 
 ```bash
 git add docs/articles/cert-hygiene/notes/lab-evidence-issuer-expiry-rerun.md docs/articles/cert-hygiene/README.md
