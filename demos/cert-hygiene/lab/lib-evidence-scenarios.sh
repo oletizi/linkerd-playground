@@ -155,6 +155,36 @@ key_scan() {
   return 1
 }
 
+# k_remaining_check RUN_DIR: do K's two measurements fall on opposite sides of 60 days
+# (5184000 s) at the moment each check ran (design section 5)? Conservative: the -10m
+# step is judged at each command's start, the +10m step at each command's end.
+k_remaining_check() {
+  local run="${1:?k_remaining_check: RUN_DIR required}" bad=0 step f na th c s e rem t
+  for step in minus plus; do
+    f="$run/k/$step-calc.txt"
+    if [ ! -s "$f" ]; then echo "fail: $f missing"; bad=1; continue; fi
+    na="$(_kv issuer_not_after_epoch "$f")"
+    th="$(_kv threshold_s "$f")"
+    [ "$th" = 5184000 ] || { echo "fail: $f threshold_s=$th, want 5184000"; bad=1; continue; }
+    for c in check check_proxy; do
+      t="$run/k/$step-${c//_/-}.txt"
+      if [ ! -s "$t" ]; then echo "fail: transcript $t missing"; bad=1; continue; fi
+      s="$(_kv "${c}_started_epoch" "$f")"; e="$(_kv "${c}_ended_epoch" "$f")"
+      if [ -z "$na" ] || [ -z "$s" ] || [ -z "$e" ]; then echo "fail: $f lacks $c times or notAfter"; bad=1; continue; fi
+      if [ "$step" = minus ]; then
+        rem=$(( na - s ))
+        if [ "$rem" -lt "$th" ]; then echo "ok: minus $c had ${rem}s left at its start (< ${th}s)"
+        else echo "fail: minus $c had ${rem}s left at its start (not < ${th}s)"; bad=1; fi
+      else
+        rem=$(( na - e ))
+        if [ "$rem" -gt "$th" ]; then echo "ok: plus $c had ${rem}s left at its end (> ${th}s)"
+        else echo "fail: plus $c had ${rem}s left at its end (not > ${th}s); repeat K in a fresh run"; bad=1; fi
+      fi
+    done
+  done
+  return "$bad"
+}
+
 # _w_upgrade_cmd OUT [ARGS...]: the shell command rendering `linkerd upgrade ARGS` into
 # OUT. ARGS are quoted only when there are some: an empty quoted argument would make
 # linkerd upgrade (which accepts none) fail and leave an empty manifest (C1's fix).

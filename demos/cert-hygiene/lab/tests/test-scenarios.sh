@@ -237,4 +237,31 @@ wline="$(w_fact_line profileValidator "$wsha" "$T/wc.crt" "$T/wca.pem" "$(date -
 assert_contains "$wline" " equals_supplied=yes " "the supplied certificate matches by X.509 fingerprint"
 assert_contains "$wline" " valid_now=yes cabundle_verifies=yes" "a valid certificate verifies against a caBundle without its trailing newline"
 
+# ---- k_remaining_check ----
+TH=5184000
+kcalc() { # RUN STEP NOT_AFTER START END
+  mkdir -p "$1/k"
+  printf 'step=%s\nissuer_not_after_epoch=%s\nthreshold_s=%s\ncheck_started_epoch=%s\ncheck_ended_epoch=%s\ncheck_proxy_started_epoch=%s\ncheck_proxy_ended_epoch=%s\n' \
+    "$2" "$3" "$TH" "$4" "$5" "$4" "$5" > "$1/k/$2-calc.txt"
+  printf '$ linkerd check\n[exit 0]\n' > "$1/k/$2-check.txt"
+  printf '$ linkerd check --proxy\n[exit 0]\n' > "$1/k/$2-check-proxy.txt"
+}
+N=1800000000
+kcalc "$T/k1" minus $(( N + TH - 590 )) "$N" $(( N + 20 ))
+kcalc "$T/k1" plus $(( N + 100 + TH + 590 )) $(( N + 100 )) $(( N + 120 ))
+assert_succeeds "minus under, plus over 60 days at check time" k_remaining_check "$T/k1"
+assert_contains "$(k_remaining_check "$T/k1")" "ok: plus check" "reports each command"
+kcalc "$T/k2" minus $(( N + TH - 590 )) "$N" $(( N + 20 ))
+kcalc "$T/k2" plus $(( N + 100 + TH + 10 )) $(( N + 100 )) $(( N + 120 ))
+assert_fails "plus measured after it dropped under 60 days (conservative: end time)" k_remaining_check "$T/k2"
+kcalc "$T/k3" minus $(( N + TH + 5 )) "$N" $(( N + 20 ))
+kcalc "$T/k3" plus $(( N + 100 + TH + 590 )) $(( N + 100 )) $(( N + 120 ))
+assert_fails "minus still over 60 days at its start" k_remaining_check "$T/k3"
+kcalc "$T/k4" minus $(( N + TH - 590 )) "$N" $(( N + 20 ))
+assert_fails "a missing plus step fails" k_remaining_check "$T/k4"
+kcalc "$T/k5" minus $(( N + TH - 590 )) "$N" $(( N + 20 ))
+kcalc "$T/k5" plus $(( N + 100 + TH + 590 )) $(( N + 100 )) $(( N + 120 ))
+rm "$T/k5/k/plus-check-proxy.txt"
+assert_fails "a missing transcript fails" k_remaining_check "$T/k5"
+
 finish test-scenarios
