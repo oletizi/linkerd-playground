@@ -196,3 +196,40 @@ _w_upgrade_cmd() {
   [ $# -eq 0 ] || q="$(printf ' %q' "$@")"
   printf 'linkerd upgrade%s > %q\n' "$q" "$out"
 }
+
+# pod_section METRICS_FILE POD: POD's lines in a tick's metrics file (metrics/<tick>.txt).
+pod_section() {
+  awk -v h="== lab/${2:?pod_section: POD required} " 'index($0, h) == 1 { on = 1; next } /^== / { on = 0 } on' "${1:?}"
+}
+
+_exact() { awk -v n="$1" '$1 == n { v = $2 } END { print v }' "$2"; } # NAME FILE
+
+# s_hard_endpoint_state SWAP_EPOCH NOW_EPOCH BEFORE_SECTION NOW_SECTION LINES_FILE:
+# S-hard's stage-1 condition for one unrestarted endpoint (design section 7, with a
+# successful renewal accepted so that S4 stays falsifiable). Returns 0 when met.
+s_hard_endpoint_state() {
+  local swap="$1" now="$2" b="$3" c="$4" l="$5" exp ref okb errb okn errn ts first=-
+  exp="$(_exact control_identity_cert_expiration_timestamp_seconds "$c")"
+  ref="$(_exact control_identity_cert_refresh_timestamp_seconds "$c")"
+  okb="$(_exact 'control_identity_cert_refreshes_total{result="ok"}' "$b")"
+  errb="$(_exact 'control_identity_cert_refreshes_total{result="error"}' "$b")"
+  okn="$(_exact 'control_identity_cert_refreshes_total{result="ok"}' "$c")"
+  errn="$(_exact 'control_identity_cert_refreshes_total{result="error"}' "$c")"
+  if [ -z "$exp" ] || [ -z "$ref" ] || [ -z "$okb" ] || [ -z "$errb" ] || [ -z "$okn" ] || [ -z "$errn" ]; then
+    echo "state=pending reason=metrics-unreadable"; return 1
+  fi
+  exp="${exp%.*}"; ref="${ref%.*}"
+  if [ "$ref" -ge "$swap" ] && [ "$okn" -gt "$okb" ]; then
+    echo "state=renewed refresh=$ref leaf_not_after=$exp renew_ok=$(( okn - okb )) renew_err=$(( errn - errb ))"
+    return 0
+  fi
+  while read -r ts _; do
+    if [ "$(date -u -d "$ts" +%s)" -gt "$exp" ]; then first="$ts"; break; fi
+  done < <(awk '/ fail /' "$l")
+  local detail="old_leaf_not_after=$exp renew_attempts=$(( okn + errn - okb - errb )) renew_err=$(( errn - errb )) first_fail_after_expiry=$first"
+  if [ "$exp" -lt "$now" ] && [ "$errn" -gt "$errb" ] && [ "$first" != - ]; then
+    echo "state=expired-failed $detail"; return 0
+  fi
+  echo "state=pending $detail"
+  return 1
+}
