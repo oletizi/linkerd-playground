@@ -19,7 +19,7 @@ The control's criteria change to match:
 
 Probe history is read from every `probes/<label>/` snapshot, deduplicated, because stage 4 replaces every probe pod and `probes/final/` alone would miss the earlier pods.
 
-This task also adds `scripts/run.sh --discovery`. The discovery smoke run of the new control is at the end of Task 9.
+This task also adds `scripts/run.sh --discovery [--short]`. A discovery run carries `discovery.txt`, so `evaluate_validity` never counts it as evidence (Task 3). `--short` asks for shortened observation windows: it is refused without `--discovery`, and Task 9 applies and records it. The discovery smoke run of the new control is at the end of Task 9.
 
 **Files:**
 - Create: `demos/cert-hygiene/lab/stages.sh`
@@ -38,7 +38,8 @@ This task also adds `scripts/run.sh --discovery`. The discovery smoke run of the
   - `matrix_restart_stages`: stages 2–4 alone (used by `restart_stages` and by S-hard, Task 17).
   - `_all_probe_lines RUN_DIR PROBE`: the probe's lines from every `probes/*/` snapshot, deduplicated and time-sorted.
   - `pods/verify-rollout-<deploy>.txt` for every lab Deployment.
-  - `scripts/run.sh [--discovery] SCENARIO`: with `--discovery`, the run directory is `runs/_discovery/<UTC>-<scenario>` instead of `runs/<scenario>/<UTC>`.
+  - `scripts/run.sh [--discovery [--short]] SCENARIO`: with `--discovery`, the run directory is `runs/_discovery/<UTC>-<scenario>` instead of `runs/<scenario>/<UTC>`, and it holds `discovery.txt` (`discovery=yes`, `short_windows=yes|no`). `--short` without `--discovery` is refused.
+  - Justfile: `run-discovery SCENARIO`, `run-discovery-short SCENARIO`.
 
 - [ ] **Step 1: Rewrite the control-criteria tests**
 
@@ -84,10 +85,12 @@ make_ctl "$T/cr6"; rm -r "$T/cr6/gates"
 assert_fails "no gate records breaks the control" control_criteria_check "$T/cr6"
 make_ctl "$T/cr7"; printf '2026-09-10T10:00:00Z reset\n2026-09-10T10:05:00Z tick baseline\n' > "$T/cr7/timeline.log"
 assert_fails "no recover marker breaks the control" control_criteria_check "$T/cr7"
+make_ctl "$T/crs"; printf 'stage=s04-restart\ngate=pass\ncell pair=A ok=9 fail=1 status=classified\ncell pair=B ok=10 fail=0 status=classified\n' > "$T/crs/gates/s04-restart.txt"
+assert_fails "a gate record whose stage name ends in -restart is read too" control_criteria_check "$T/crs"
 ```
 
 Run: `just demo cert-hygiene test`
-Expected: `test-control` fails (at least `cr1`, `cr2`, `cr4`, `cr5`, `cr6`, `cr7`).
+Expected: `test-control` fails on `cr1`, `cr3`, `cr4`, `cr5`, `cr6`, `cr7` and `crs`. The old function reads only `probes/final/`, bounds nothing by the `recover` marker, and ignores gate records. `cr2` passes under both the old and the new function.
 
 - [ ] **Step 2: Rewrite `control_criteria_check` in `demos/cert-hygiene/lab/lib-evidence-control.sh`**
 
@@ -129,7 +132,6 @@ control_criteria_check() {
   n=0
   for f in "$run"/gates/*.txt; do
     [ -f "$f" ] || continue
-    case "$f" in *-restart.txt) continue ;; esac
     n=$((n + 1))
     if ! s="$(gate_summary "$f")"; then echo "$s"; bad=1; continue; fi
     g="${s%% *}"
@@ -280,18 +282,31 @@ POST_EXPIRY_WINDOW_S=1800   # R's window (design 2); the control mirrors it
 
 - [ ] **Step 7: `--discovery` in `demos/cert-hygiene/scripts/run.sh`**
 
-Change the usage comment to `# Usage: run.sh [--discovery] <scenario>, e.g. run.sh 00-baseline-control. With --discovery the run goes under runs/_discovery/ and is never evidence.` Replace the three lines from `scenario="${1:?usage: run.sh <scenario>}"` through `rel="runs/$scenario/$(date -u +%Y%m%dT%H%M%SZ)"` with:
+Change the usage comment to `# Usage: run.sh [--discovery [--short]] <scenario>, e.g. run.sh 00-baseline-control. With --discovery the run goes under runs/_discovery/, carries discovery.txt and is never evidence; --short (discovery only) shortens its observation windows.` Replace the three lines from `scenario="${1:?usage: run.sh <scenario>}"` through `rel="runs/$scenario/$(date -u +%Y%m%dT%H%M%SZ)"` with:
 
 ```bash
-discovery=no
-if [ "${1:-}" = --discovery ]; then discovery=yes; shift; fi
-scenario="${1:?usage: run.sh [--discovery] <scenario>}"
+discovery=no; short=no
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --discovery) discovery=yes; shift ;;
+    --short) short=yes; shift ;;
+    *) break ;;
+  esac
+done
+[ "$short" = no ] || [ "$discovery" = yes ] || die "--short is discovery-only: evidence runs refuse shortened windows"
+scenario="${1:?usage: run.sh [--discovery [--short]] <scenario>}"
 [ -f "$DEMO/scenarios/$scenario.sh" ] || die "no scenario '$scenario' in $DEMO/scenarios/"
 if [ "$discovery" = yes ]; then
   rel="runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-$scenario"
 else
   rel="runs/$scenario/$(date -u +%Y%m%dT%H%M%SZ)"
 fi
+```
+
+After the existing line `mkdir -p "$run"`, add:
+
+```bash
+if [ "$discovery" = yes ]; then printf 'discovery=yes\nshort_windows=%s\n' "$short" > "$run/discovery.txt"; fi
 ```
 
 Append to `demos/cert-hygiene/Justfile`:
@@ -301,6 +316,10 @@ Append to `demos/cert-hygiene/Justfile`:
 # Launch a scenario as a discovery run (runs/_discovery/; never evidence)
 run-discovery SCENARIO:
     bash scripts/run.sh --discovery {{SCENARIO}}
+
+# The same, with the discovery-only shortened observation windows (DISCOVERY_* settings)
+run-discovery-short SCENARIO:
+    bash scripts/run.sh --discovery --short {{SCENARIO}}
 ```
 
 - [ ] **Step 8: Syntax, shellcheck, tests**

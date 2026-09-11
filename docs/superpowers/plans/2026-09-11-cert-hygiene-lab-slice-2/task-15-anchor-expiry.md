@@ -4,11 +4,13 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 
 **Goal:** Design § 6, `06-anchor-expiry`, profile `anchor-short`: a 20-minute anchor, and a 120-minute issuer that outlives it. T_mark is the anchor's `notAfter`, and the expiry itself is the fault. The post-expiry actions are the defaults, and the window is the 1800 s default.
 
-**Timing is measured per proxy.** Leaves are capped at the issuer's expiry, not the anchor's, so each proxy's last pre-expiry leaf expires at its own moment. Every tick's metrics already record, per proxy, `control_identity_cert_refresh_timestamp_seconds` (the last successful issuance), `…_expiration_timestamp_seconds` (that leaf's `notAfter`) and refresh counts. The probe logs record the first new-connection failure on each pair. Task 30 reads per-proxy survival from those.
+**Timing is measured per proxy.** Leaves are capped at the issuer's expiry, not the anchor's, so each proxy's last pre-expiry leaf expires at its own moment. Every tick's metrics already record, per proxy, `control_identity_cert_refresh_timestamp_seconds` (the last successful issuance), `…_expiration_timestamp_seconds` (that leaf's `notAfter`) and refresh counts. The probe logs record the first new-connection failure on each pair. Task 31 reads per-proxy survival from those.
 
 **Recovery in named stages** (design § 6):
 1. **Apply.** Create a new anchor and a new issuer signed by it, then apply both with `linkerd upgrade --identity-issuer-certificate-file=… --identity-issuer-key-file=… --identity-trust-anchors-file=… --force | kubectl apply -f -`. Record control-plane pod UIDs before and after the upgrade's own rollouts, which shows what the upgrade itself restarted.
-2. **No manual restarts** for `RECOVER_WINDOW_S`. To make "is identity issuing leaves chained to the new anchor?" a direct observation, a fresh meshed Deployment, `identity-canary`, is applied at the start of the stage. It is injected with the new trust bundle only, so it can become Ready only by obtaining a new-anchor leaf. Ticks run through the window, with identity logs and events at its end.
+2. **No manual restarts** for `RECOVER_WINDOW_S`. To make "is identity issuing leaves chained to the new anchor?" a direct observation, a fresh meshed Deployment, `identity-canary`, is applied at the start of the stage. Injected with the new trust bundle only, it can become Ready only by obtaining a new-anchor leaf. Ticks run through the window, with identity logs and events at its end.
+   - The canary counts as proof (`state=proven`) only when four things hold: it is Ready; it has a `linkerd-proxy` container; its trust annotation equals the current ConfigMap hash; and its proxy's refresh time is after the pod started.
+   - After the `--force` upgrade, the injector's new pod may not start until identity can issue. Linkerd's webhooks fail open, so the canary can then be admitted without a proxy and be Ready at once, which would judge A5 backwards. Such a canary is recorded (`state=no-proxy`), deleted and re-applied.
 3. **Identity/control-plane restart, only if needed.** If the canary isn't Ready by the end of stage 2, restart `linkerd-identity`, then every other control-plane Deployment that has a pod started before the stage-1 apply. Control-plane components load trust roots at container start (source notes § 3 and § 4), and their `trust-root-sha256` annotations do not equal the ConfigMap hash even when current (slice-1 run `runs/05-issuer-expiry/20260911T021157Z/trust/baseline.txt`), so start time, not annotation, identifies them. Then watch the canary for another `RECOVER_WINDOW_S`. If it isn't needed, the stage is recorded as not needed.
 4. **Workload restarts,** as the guide directs: every lab Deployment, gated and sampled (Task 7).
 5. **Verify** with `linkerd check`: the `verify` tick.
@@ -20,11 +22,11 @@ The credential plan is `A/I1 → B/I2` (Task 3). A5 asks whether the canary beca
 - Modify: `demos/cert-hygiene/lab/deploy.sh` (`identity-canary`), `demos/cert-hygiene/config.example.env` (`NEW_ANCHOR_LIFETIME`)
 
 **Interfaces:**
-- Consumes: Task 9 `run_scenario`, Task 7 `restart_and_gate`, `lab_deployments`, Task 8 `snap_before_restart`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`, `snap_logs`, `snap_events`, `observe_until`.
+- Consumes: Task 9 `run_scenario`, Task 7 `restart_and_gate`, `lab_deployments`, `_leaf_state`, `_trust_now`, Task 8 `snap_before_restart`, `make_trust_anchor`, `make_issuer`, `write_cert`, `snap_controlplane`, `snap_logs`, `snap_events`, `observe_until`.
 - Produces:
   - Deployment `identity-canary` (label `app=identity-canary`, container `idle`), applied without waiting by `deploy.sh identity-canary`.
-  - Evidence: `certs/trust-anchor-new.{pem,txt}`, `certs/issuer-replacement.{pem,txt}`, `recover/linkerd-upgrade.txt`, `recover/a-stage1-rollout.txt`, `controlplane/a-stage1-before.txt`, `controlplane/a-stage1-after.txt`, tick `a-stage1`; `recover/a-stage2-canary.txt`, ticks `a-stage2-N`, `recover/a-stage2-canary-N.txt`, `logs/a-stage2/`, `events/a-stage2.txt`; when stage 3 runs: `recover/a-stage3-identity.txt`, `recover/a-stage3-identity-rollout.txt`, `recover/a-stage3-stale.txt`, `recover/a-stage3-control-plane.txt`, `controlplane/a-stage3-after.txt`, ticks `a-stage3-N`, `recover/a-stage3-canary-N.txt`; `gates/a-stage4.txt`, tick `a-stage4`.
-  - Timeline markers: `a-stage1-apply`, `a-stage2`, `a-canary <stage>: Ready …|not Ready …`, `a-stage3 …` (run or not needed), `a-stage5`.
+  - Evidence: `certs/trust-anchor-new.{pem,txt}`, `certs/issuer-replacement.{pem,txt}`, `recover/linkerd-upgrade.txt`, `recover/a-stage1-rollout.txt`, `controlplane/a-stage1-before.txt`, `controlplane/a-stage1-after.txt`, tick `a-stage1`; `recover/a-stage2-canary.txt`, ticks `a-stage2-N`, `recover/a-stage2-canary-N.txt`, `recover/a-stage2-canary-N-state.txt` (the `_a_canary_state` line), `recover/a-stage2-canary-reapply-N.txt` when a canary had no proxy, `logs/a-stage2/`, `events/a-stage2.txt`; when stage 3 runs: `recover/a-stage3-identity.txt`, `recover/a-stage3-identity-rollout.txt`, `recover/a-stage3-stale.txt`, `recover/a-stage3-control-plane.txt`, `controlplane/a-stage3-after.txt`, ticks `a-stage3-N`, `recover/a-stage3-canary-N.txt`; `gates/a-stage4.txt`, tick `a-stage4`.
+  - Timeline markers: `a-stage1-apply`, `a-stage2`, `a-canary <stage>: Ready with a new-anchor leaf …|admitted without a proxy …|not proven …`, `a-stage3 …` (run or not needed), `a-stage5`.
   - Config: `NEW_ANCHOR_LIFETIME=87600h` (S reuses it).
 
 - [ ] **Step 1: Write `demos/cert-hygiene/lab/workloads/identity-canary.yaml`**
@@ -90,16 +92,50 @@ scenario_mark_epoch() {
   cert_not_after_epoch "$CERTS/ca.crt"
 }
 
-_a_canary_ready() { # STAGE TIMEOUT_S: ticks until identity-canary is Ready (0) or TIMEOUT_S passes (1)
-  local stage="$1" deadline=$(( $(date -u +%s) + $2 )) n=1 t0 ready
+_a_canary_state() { # one line "state=<proven|no-proxy|waiting> pod=... proxy=... trust=... ready=... started=... refresh=..."
+  # proven: Ready, injected (a linkerd-proxy container), carrying the current trust bundle,
+  # and its proxy obtained a leaf after the pod started. Only then does Ready mean identity
+  # issued a new-anchor leaf; a pod admitted without a proxy is Ready at once.
+  local js pod="" start="" proxy="" trust="" ready="" refresh state=waiting
+  js="$(kubectl -n "$LAB_NS" get pods -l app=identity-canary -o json 2>/dev/null || true)"
+  if [ -z "$js" ]; then echo "state=waiting pod=- reason=pod-list-unreadable"; return 0; fi
+  read -r pod start proxy trust ready < <(jq -r '[.items[] | select(.metadata.deletionTimestamp == null)] | first // empty
+      | [ .metadata.name,
+          ((.status.startTime // "") | if . == "" then "0" else (fromdateiso8601 | tostring) end),
+          (if ([.spec.initContainers[]?.name, .spec.containers[].name] | index("linkerd-proxy")) then "yes" else "no" end),
+          (.metadata.annotations["linkerd.io/trust-root-sha256"] // "-"),
+          (([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "False") ] | join(" ")' \
+      <<< "$js" 2>/dev/null) || true
+  if [ -z "$pod" ]; then echo "state=waiting pod=-"; return 0; fi
+  refresh="$(_leaf_state "$pod" | awk '{ print $1 }')"
+  if [ "$proxy" = no ]; then
+    state=no-proxy
+  elif [ "$ready" = True ] && [ "$trust" = "$(_trust_now)" ] \
+      && awk -v r="$refresh" -v s="$start" 'BEGIN { exit !(r != "-" && r + 0 > s + 0) }'; then
+    state=proven
+  fi
+  echo "state=$state pod=$pod proxy=$proxy trust=$trust ready=$ready started=$start refresh=$refresh"
+}
+
+_a_canary_ready() { # STAGE TIMEOUT_S: ticks until identity-canary is proven (0) or TIMEOUT_S passes (1)
+  local stage="$1" deadline=$(( $(date -u +%s) + $2 )) n=1 t0 s
   t0="$(date -u +%s)"
   while :; do
     tick "$stage-$n"
     capture "recover/$stage-canary-$n.txt" kubectl -n "$LAB_NS" get pods -l app=identity-canary -o wide
-    ready="$(kubectl -n "$LAB_NS" get pods -l app=identity-canary \
-      -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
-    if [ "$ready" = True ]; then mark a-canary "$stage: Ready $(( $(date -u +%s) - t0 ))s into the stage"; return 0; fi
-    if [ "$(date -u +%s)" -ge "$deadline" ]; then mark a-canary "$stage: not Ready after $2 s"; return 1; fi
+    s="$(_a_canary_state)"
+    echo "$s" > "$RUN_DIR/recover/$stage-canary-$n-state.txt"
+    case "$s" in
+      state=proven*)
+        mark a-canary "$stage: Ready with a new-anchor leaf $(( $(date -u +%s) - t0 ))s into the stage: $s"
+        return 0 ;;
+      state=no-proxy*)
+        mark a-canary "$stage: admitted without a proxy, so its readiness proves nothing; re-applying: $s"
+        # shellcheck disable=SC2016
+        capture "recover/$stage-canary-reapply-$n.txt" bash -c \
+          'kubectl -n "$1" delete deploy identity-canary --wait=true && bash "$2/deploy.sh" identity-canary' _ "$LAB_NS" "$LAB_DIR" ;;
+    esac
+    if [ "$(date -u +%s)" -ge "$deadline" ]; then mark a-canary "$stage: not proven after $2 s: $s"; return 1; fi
     n=$((n + 1))
     sleep "$OBSERVE_INTERVAL_S"
   done
@@ -113,13 +149,14 @@ _a_stage3() { # identity, then every control-plane Deployment with a pod older t
   while read -r d sel; do
     [ "$d" != linkerd-identity ] || continue
     if kubectl -n linkerd get pods -l "$sel" -o json \
-        | jq -e --argjson a "$A_APPLY_EPOCH" '[.items[] | select((.status.startTime | fromdateiso8601) < $a)] | length > 0' > /dev/null; then
+        | jq -e --argjson a "$A_APPLY_EPOCH" '[.items[] | select(.status.startTime != null and ((.status.startTime | fromdateiso8601) < $a))] | length > 0' > /dev/null; then
       stale+=("$d")
     fi
   done < <(kubectl -n linkerd get deploy -o json \
     | jq -r '.items[] | "\(.metadata.name) \(.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(","))"')
   printf 'apply_epoch=%s\nstarted_before_apply=%s\n' "$A_APPLY_EPOCH" "${stale[*]:-none}" > "$RUN_DIR/recover/a-stage3-stale.txt"
   if [ "${#stale[@]}" -gt 0 ]; then
+    # shellcheck disable=SC2016
     capture recover/a-stage3-control-plane.txt bash -c \
       'for d in "$@"; do kubectl -n linkerd rollout restart "deploy/$d" && kubectl -n linkerd rollout status "deploy/$d" --timeout=300s || exit 1; done' _ "${stale[@]}"
   else
@@ -141,6 +178,7 @@ scenario_recover() {
   mark a-stage1-apply "linkerd upgrade with a new anchor and issuer, --force"
   capture recover/linkerd-upgrade.txt bash -o pipefail -c \
     "linkerd upgrade --identity-issuer-certificate-file='$new/issuer.crt' --identity-issuer-key-file='$new/issuer.key' --identity-trust-anchors-file='$new/ca.crt' --force | kubectl apply -f -"
+  # shellcheck disable=SC2016
   capture recover/a-stage1-rollout.txt bash -c \
     'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
   snap_controlplane a-stage1-after
@@ -181,7 +219,7 @@ Expected: two `notAfter=` lines, the issuer's about 100 minutes after the anchor
 
 - [ ] **Step 7: Commit**
 
-A's evidence run is Task 24.
+A's evidence run is Task 25.
 
 ```bash
 git add demos/cert-hygiene/scenarios/06-anchor-expiry.sh demos/cert-hygiene/lab demos/cert-hygiene/config.example.env

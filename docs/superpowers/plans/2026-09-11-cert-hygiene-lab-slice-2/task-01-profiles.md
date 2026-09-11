@@ -7,7 +7,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
 **This task has a stop gate** (Step 11).
 
 **Files:**
-- Create: `demos/cert-hygiene/lab/profiles/long.env`, `issuer-short.env`, `webhook-short.env`, `webhook-short-fail.env`, `anchor-short.env`, `check-threshold.env`
+- Create: `demos/cert-hygiene/lab/profiles/long.env`, `issuer-short.env`, `webhook-short.env`, `webhook-short-fail.env`, `anchor-short.env`, `check-threshold.env`, and `webhook-long.env` (discovery only: lab-supplied webhook certificates with 24-hour lifetimes, so the Step 11 discovery never races an expiry)
 - Create: `demos/cert-hygiene/lab/lib-webhook.sh`, `demos/cert-hygiene/lab/discover-webhooks.sh`
 - Modify: `demos/cert-hygiene/lab/lib-lab.sh` (source `lib-webhook.sh`; add `load_profile`)
 - Modify (full rewrite): `demos/cert-hygiene/lab/reset.sh`
@@ -24,7 +24,7 @@ Part of the [slice 2 plan](README.md). Read its Global Constraints first.
   - `run_scenario SCENARIO PROFILE RUN_DIR` (the second argument is now a profile name; the `reset` timeline line says `profile=<p>`).
   - Config: `CONTROL_T_MARK_AFTER=15m` (the control's T_mark offset, R's issuer lifetime). `ANCHOR_LIFETIME`, `ISSUER_LIFETIME`, `LEAF_LIFETIME`, `CONTROL_ANCHOR_LIFETIME`, `CONTROL_ISSUER_LIFETIME` leave `config.example.env`.
 
-- [ ] **Step 1: Write the six profiles**
+- [ ] **Step 1: Write the seven profiles**
 
 `demos/cert-hygiene/lab/profiles/long.env`:
 
@@ -89,6 +89,19 @@ ANCHOR_LIFETIME=87600h
 ISSUER_LIFETIME=1439h50m
 LEAF_LIFETIME=5m
 WEBHOOK_CERT_LIFETIMES=
+EXTRA_INSTALL_FLAGS=
+```
+
+`demos/cert-hygiene/lab/profiles/webhook-long.env`:
+
+```bash
+# Discovery only (Task 1 Step 11): lab-supplied webhook certificates of the same kind as
+# webhook-short's, with 24-hour lifetimes, so checking that Linkerd accepts them never
+# races the 15-minute injector certificate.
+ANCHOR_LIFETIME=87600h
+ISSUER_LIFETIME=8760h
+LEAF_LIFETIME=5m
+WEBHOOK_CERT_LIFETIMES="proxyInjector=24h policyValidator=24h profileValidator=24h"
 EXTRA_INSTALL_FLAGS=
 ```
 
@@ -256,7 +269,7 @@ CONTROL_T_MARK_AFTER=15m
 In `demos/cert-hygiene/lab/collect.sh`, `write_versions`, replace the `cfg=` line's pattern so the whole line reads:
 
 ```bash
-  cfg="$(env | grep -E '^(LAB_|LINKERD_|GATEWAY_|ANCHOR_|ISSUER_|LEAF_|CONTROL_|REPLACEMENT_|PROBE_|OBSERVE_|POST_|RECOVER_|IMAGE_|PROFILE=|WEBHOOK_|EXTRA_|GATE_|OUTAGE_|FAULT_|S_HARD_|K_|POLICY_|SP_|NEW_|W_)' | sort)" \
+  cfg="$(env | grep -E '^(LAB_|LINKERD_|GATEWAY_|ANCHOR_|ISSUER_|LEAF_|CONTROL_|REPLACEMENT_|PROBE_|OBSERVE_|POST_|RECOVER_|IMAGE_|PROFILE=|WEBHOOK_|EXTRA_|GATE_|OUTAGE_|FAULT_|S_HARD_|K_|POLICY_|SP_|NEW_|W_|DISCOVERY_)' | sort)" \
 ```
 
 The prefixes for later tasks' settings are added now so `collect.sh` is not touched again for this.
@@ -288,11 +301,13 @@ run_scenario 05-issuer-expiry issuer-short "${1:?usage: 05-issuer-expiry.sh <run
 
 ```bash
 #!/usr/bin/env bash
-# Runs INSIDE the lab VM, against a lab just reset with a webhook-short profile and with
-# baseline workloads deployed. Records whether Linkerd serves the lab-supplied webhook
-# certificates: each Secret's certificate against the supplied one, each webhook
-# configuration's caBundle against the supplied CA, linkerd check's webhook rows, and a
-# server-side dry-run pod create (the proxy-injector must add linkerd-proxy).
+# Runs INSIDE the lab VM, against a lab just reset with the webhook-long profile
+# (lab-supplied webhook certificates) and with baseline workloads deployed. Records
+# whether Linkerd serves the lab-supplied webhook certificates: each Secret's certificate
+# against the supplied one, each webhook configuration's caBundle against the supplied
+# CA, linkerd check's webhook rows, a server-side dry-run pod create (the proxy-injector
+# must add linkerd-proxy), and how many webhooks a render with webhookFailurePolicy=Fail
+# (as webhook-short-fail installs) sets to Fail. The render is never applied or saved.
 # Usage: discover-webhooks.sh <out-dir>
 set -euo pipefail
 # shellcheck source=/dev/null
@@ -301,7 +316,7 @@ out="${1:?usage: discover-webhooks.sh <out-dir>}"
 [ ! -e "$out" ] || die "$out exists; refusing to overwrite"
 # shellcheck disable=SC2012
 certs="$(ls -dt "$CERTS_ROOT"/*/ | head -n 1)"
-[ -d "$certs/webhooks" ] || die "newest cert set $certs has no webhooks/; reset with webhook-short first"
+[ -d "$certs/webhooks" ] || die "newest cert set $certs has no webhooks/; reset with webhook-long first"
 mkdir -p "$out"
 
 fp() { openssl x509 -noout -fingerprint -sha256 | cut -d= -f2; } # PEM on stdin
@@ -336,6 +351,10 @@ else
   echo injection=not-injected >> "$out/summary.txt"
 fi
 grep -E 'webhook has valid cert|cert is valid for at least 60 days' "$out/check.txt" >> "$out/summary.txt" || true
+mapfile -t wargs < <(webhook_install_args "$certs/webhooks")
+fails="$(linkerd install --ignore-cluster "${wargs[@]}" --set webhookFailurePolicy=Fail 2>&1 \
+  | grep -c 'failurePolicy: Fail' || true)"
+echo "render_fail_policy_count=$fails" >> "$out/summary.txt"
 log "webhook discovery data in $out"
 cat "$out/summary.txt"
 ```
@@ -370,15 +389,15 @@ Expected: `PASS: test-evidence`.
 
 - [ ] **Step 11: Discovery — does `linkerd install` accept the supplied webhook certificates? (stop gate)**
 
-Run: `just demo cert-hygiene reset webhook-short`. If the wait prints `timed out`, run `bash demos/cert-hygiene/scripts/wait-log.sh .lab-logs/reset.log 540` again until it prints the log tail.
-Expected: the tail ends `reset complete: profile=webhook-short …` and `[exit 0]`. If `linkerd install` rejected the values, the tail shows its error: record it.
+Run: `just demo cert-hygiene reset webhook-long`. This profile supplies the same kind of lab webhook certificates as `webhook-short`, with 24-hour lifetimes, so a slow reset, deploy or discovery can't reach an expiry and trip the stop gate falsely. If the wait prints `timed out`, run `bash demos/cert-hygiene/scripts/wait-log.sh .lab-logs/reset.log 540` again until it prints the log tail.
+Expected: the tail ends `reset complete: profile=webhook-long …` and `[exit 0]`. If `linkerd install` rejected the values, the tail shows its error: record it.
 
 Run: `just demo cert-hygiene deploy baseline`, then `just demo cert-hygiene discover-webhooks`.
-Expected in the printed `summary.txt`: three `component=` lines, each with `secret_matches_supplied=yes cabundle_matches_supplied_ca=yes failure_policy=Ignore`; `injection=injected`; `√ proxy-injector webhook has valid cert`, `√ sp-validator webhook has valid cert`, `√ policy-validator webhook has valid cert`, and a `‼ … cert is valid for at least 60 days` line per webhook (short certificates always warn).
+Expected in the printed `summary.txt`: three `component=` lines, each with `secret_matches_supplied=yes cabundle_matches_supplied_ca=yes failure_policy=Ignore`; `injection=injected`; `√ proxy-injector webhook has valid cert`, `√ sp-validator webhook has valid cert`, `√ policy-validator webhook has valid cert`, a `‼ … cert is valid for at least 60 days` line per webhook (certificates this short always warn); and `render_fail_policy_count=3`, which shows the `webhook-short-fail` profile's `--set webhookFailurePolicy=Fail` reaches all three webhooks.
 
 Write `demos/cert-hygiene/runs/_discovery/<stamp>-webhooks/FINDINGS.md` with the Write tool: one heading "Does linkerd install accept lab-supplied webhook certificates?", the `summary.txt` lines quoted, the webhook names quoted (Task 11 reads them from here: the policy validator's and the sp-validator's `webhook_names`), and a one-sentence answer.
 
-**STOP GATE:** if any component shows `no`, if `injection=not-injected`, or if any "webhook has valid cert" row is not `√`, commit the discovery directory, then stop and report to the user with the FINDINGS. W cannot run as designed.
+**STOP GATE:** if any component shows `no`, if `injection=not-injected`, if any "webhook has valid cert" row is not `√`, or if `render_fail_policy_count` is not `3`, commit the discovery directory, then stop and report to the user with the FINDINGS. W cannot run as designed.
 
 - [ ] **Step 12: Update the article README and commit**
 

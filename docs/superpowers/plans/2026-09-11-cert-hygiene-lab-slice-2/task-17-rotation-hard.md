@@ -152,6 +152,7 @@ scenario_fault() { # the hard swap
   mark s-hard-swap "linkerd upgrade with a new anchor and issuer in one step, --force, no bundle"
   capture swap/linkerd-upgrade.txt bash -o pipefail -c \
     "linkerd upgrade --identity-trust-anchors-file='$new/ca.crt' --identity-issuer-certificate-file='$new/issuer.crt' --identity-issuer-key-file='$new/issuer.key' --force | kubectl apply -f -"
+  # shellcheck disable=SC2016
   capture swap/rollout.txt bash -c \
     'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
   snap_controlplane swap-after
@@ -170,7 +171,7 @@ _s_hard_stage1() { # no restarts until every endpoint meets the stage-1 conditio
     now="$(awk -F= '$1 == "sampled_at_epoch" { print $2 }' "$RUN_DIR/metrics/stage1-$n.txt")"
     kubectl -n "$LAB_NS" logs "$(_current_pod probe-tcp-new)" -c probe > "$tmp/clientA" 2>&1 || true
     kubectl -n "$LAB_NS" logs "$(_current_pod probe-tcp-new-b)" -c probe > "$tmp/clientB" 2>&1 || true
-    cat "$tmp/clientA" "$tmp/clientB" > "$tmp/server"
+    sort "$tmp/clientA" "$tmp/clientB" > "$tmp/server"   # time order: the first failure is the earliest
     met=yes
     for role in clientA:probe-tcp-new clientB:probe-tcp-new-b server:server; do
       d="${role#*:}"; pod="$(_current_pod "$d")"
@@ -208,7 +209,7 @@ Expected: no errors; `lib-evidence-scenarios.sh` under 300 lines; no findings.
 
 - [ ] **Step 6: Commit**
 
-S-hard's evidence run is Task 25.
+S-hard's evidence run is Task 26, after its discovery run (Task 19).
 
 ```bash
 git add demos/cert-hygiene/scenarios/08-anchor-rotation-hard.sh demos/cert-hygiene/lab demos/cert-hygiene/config.example.env
