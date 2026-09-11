@@ -88,6 +88,36 @@ trust_invariant_check() {
   return "$bad"
 }
 
+# control_criteria_check RUN_DIR: the negative control's pass criteria (design spec
+# section 4.4) that a script can judge. Probe lines before the baseline tick are
+# startup noise and are ignored. Other check warnings are compared by a human.
+control_criteria_check() {
+  local run="${1:?control_criteria_check: RUN_DIR required}" bad=0 t p n f
+  t="$(awk '$2 == "tick" && $3 == "baseline" { print $1; exit }' "$run/timeline.log" 2>/dev/null)"
+  [ -n "$t" ] || { echo "fail: no baseline tick in timeline.log"; return 1; }
+  for p in probe-http probe-tcp-new probe-tcp-stream; do
+    f="$run/probes/$p.log"
+    if [ ! -s "$f" ]; then echo "fail: $f missing"; bad=1; continue; fi
+    n="$(awk -v t="$t" '$1 >= t && / (fail|closed) /' "$f" | wc -l | tr -d ' ')"
+    if [ "$n" -eq 0 ]; then echo "ok: $p has no fail/closed lines after baseline"
+    else echo "fail: $p has $n fail/closed lines after baseline"; bad=1; fi
+  done
+  n="$(grep -c ' connect ' "$run/probes/probe-tcp-stream.log" 2>/dev/null || true)"
+  if [ "$n" = 1 ]; then echo "ok: one stream connection"
+  else echo "fail: $n stream connect lines, want 1"; bad=1; fi
+  for f in verify-rollout-restart-target verify-rollout-probe-new; do
+    if [ "$(tail -n 1 "$run/pods/$f.txt" 2>/dev/null)" = "[exit 0]" ]; then echo "ok: $f completed"
+    else echo "fail: $f did not complete"; bad=1; fi
+  done
+  n="$(grep -l '×' "$run"/checks/*.txt 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$n" -eq 0 ]; then echo "ok: no fatal check results"
+  else echo "fail: $n check files contain a fatal (×) result"; bad=1; fi
+  n="$(grep -lE '‼.*valid for at least 60 days' "$run"/checks/*.txt 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$n" -eq 0 ]; then echo "ok: no certificate-lifetime warnings"
+  else echo "fail: $n check files carry a certificate-lifetime warning"; bad=1; fi
+  return "$bad"
+}
+
 _kv() { # KEY FILE: the value of KEY=... in FILE, or nothing
   grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-
 }
@@ -132,6 +162,9 @@ evaluate_validity() {
     *":$expected") ;;
     *) reasons+=("control plane is not $expected") ;;
   esac
+  if [ "$scenario" = 00-baseline-control ]; then
+    [ "$(head -n 1 "$run/control-criteria.txt" 2>/dev/null)" = result=ok ] || reasons+=("control criteria not met")
+  fi
   if [ "$scenario" = 05-issuer-expiry ]; then
     local tree
     tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"

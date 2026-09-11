@@ -32,3 +32,11 @@ discover:
 # One full evidence snapshot of the current lab into .lab-logs/ (not evidence)
 snapshot:
     bash scripts/in-lab.sh lab/snapshot-once.sh .lab-logs/snapshot-$(date -u +%Y%m%dT%H%M%SZ)
+
+# Launch a scenario detached in the lab (prints the run directory)
+run SCENARIO:
+    bash scripts/run.sh {{SCENARIO}}
+
+# Wait for a run to finish; prints its timeline tail and validity verdict
+wait RUN TIMEOUT="3600":
+    bash scripts/wait-run.sh {{RUN}} {{TIMEOUT}}
