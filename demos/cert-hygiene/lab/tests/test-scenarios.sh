@@ -264,4 +264,34 @@ kcalc "$T/k5" plus $(( N + 100 + TH + 590 )) $(( N + 100 )) $(( N + 120 ))
 rm "$T/k5/k/plus-check-proxy.txt"
 assert_fails "a missing transcript fails" k_remaining_check "$T/k5"
 
+# ---- pod_section ----
+printf 'sampled_at_epoch=1\n== lab/a :4191\nm_a 1\n== lab/b :4191\nm_b 2\nm_b2 3\n== linkerd/id :9990\nx 9\n' > "$T/metrics.txt"
+assert_eq "$(pod_section "$T/metrics.txt" b | paste -sd' ' -)" "m_b 2 m_b2 3" "a pod's section, up to the next header"
+assert_eq "$(pod_section "$T/metrics.txt" zzz)" "" "an absent pod has no section"
+
+# ---- s_hard_endpoint_state ----
+SWAP_T=1800000000
+sec() { # FILE REFRESH EXPIRY OK ERR
+  printf 'control_identity_cert_expiration_timestamp_seconds %s.0\ncontrol_identity_cert_refresh_timestamp_seconds %s.25\ncontrol_identity_cert_refreshes_total{result="ok"} %s\ncontrol_identity_cert_refreshes_total{result="error"} %s\n' \
+    "$3" "$2" "$4" "$5" > "$1"
+}
+sec "$T/before" $(( SWAP_T - 100 )) $(( SWAP_T + 220 )) 5 0
+printf '2026-09-11T00:00:00Z probe-tcp-new seq=1 ok\n' > "$T/lines-none"
+printf '%s probe-tcp-new seq=9 fail socat_rc=1\n' "$(date -u -d "@$(( SWAP_T + 230 ))" +%Y-%m-%dT%H:%M:%SZ)" > "$T/lines-fail"
+printf '%s probe-tcp-new seq=8 fail socat_rc=1\n' "$(date -u -d "@$(( SWAP_T + 100 ))" +%Y-%m-%dT%H:%M:%SZ)" > "$T/lines-early"
+sec "$T/n1" $(( SWAP_T - 100 )) $(( SWAP_T + 220 )) 5 3
+out="$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail")"
+assert_contains "$out" "state=expired-failed" "old leaf expired, renewal failed, then a new connection failed"
+assert_contains "$out" "old_leaf_not_after=$(( SWAP_T + 220 ))" "records the old leaf's notAfter"
+assert_succeeds "expired-failed meets the condition" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail"
+assert_fails "no failure after the leaf expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-early"
+assert_fails "leaf not yet expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 200 )) "$T/before" "$T/n1" "$T/lines-fail"
+sec "$T/n2" $(( SWAP_T - 100 )) $(( SWAP_T + 220 )) 5 0
+assert_fails "expired and failed, but no failed renewal counted: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail"
+sec "$T/n3" $(( SWAP_T + 60 )) $(( SWAP_T + 380 )) 6 0
+assert_contains "$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none")" "state=renewed" "a successful renewal after the swap"
+assert_succeeds "renewed meets the condition (S4 falsifiable)" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none"
+: > "$T/n4"
+assert_fails "unreadable metrics: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n4" "$T/lines-fail"
+
 finish test-scenarios
