@@ -51,3 +51,11 @@ matrix_restart_stages() {
   restart_and_gate stage4-all "${rest[@]}"
   tick stage4-all
 }
+
+# capture_cp_rollouts FILE: wait for every control-plane Deployment's rollout,
+# recorded to FILE with capture. The one control-plane rollout-status loop; this task,
+# and Tasks 15, 16 and 17, each called it verbatim before this helper existed.
+capture_cp_rollouts() {
+  # shellcheck disable=SC2016
+  capture "$1" bash -c 'for d in $(kubectl -n linkerd get deploy -o name); do kubectl -n linkerd rollout status "$d" --timeout=300s || exit 1; done'
+}
