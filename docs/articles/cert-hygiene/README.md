@@ -25,7 +25,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
 Every experiment below has been run, written up, and carried into [findings.md](findings.md).
 
 - **Identity issuer expiry:** run three times (once, then twice more with fuller recording). Reproduced. The repeats also settled how the handshake fails, which restarts recovery needs, and how long an already-open connection lasted.
-- **Webhook serving certificates:** run twice, once per failure policy. Reproduced — with the important qualification that two of the three webhooks kept working for tens of minutes past their own expiry, until the API server had to reconnect.
+- **Webhook serving certificates:** run twice, once per failure policy. Reproduced — with the important qualification that two of the three webhooks kept working past their own expiry, about 30 minutes for the proxy injector and about 10 minutes for the ServiceProfile validator, until the API server had to reconnect.
 - **Identity-service outage:** run once. Reproduced, including the answer to whether a proxy re-certifies on its own afterwards (it did not). One thing that run saw but cannot explain is recorded as an open question.
 - **Trust-anchor expiry:** run once. Reproduced, except that failures did not stagger across proxies as expected; whether recovery needs the identity service restarted separately is unresolved.
 - **Trust-anchor rotation:** run twice, staged and one-step. Reproduced; the guidance in the findings is rewritten from it.
@@ -36,7 +36,7 @@ Every experiment below has been run, written up, and carried into [findings.md](
 
 The experiments run in [`demos/cert-hygiene/`](../../../demos/cert-hygiene/): a throwaway single-machine Kubernetes cluster with Linkerd. It makes certificates expire on purpose and records everything that happens. Raw recordings of each run are kept under `demos/cert-hygiene/runs/`.
 
-How the lab works is in its [design](../../superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md). How it was built is in its [implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md). Both use internal shorthand that the pages above avoid.
+How the lab works is in its [first design](../../superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md) and [first implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md). The second round of experiments — every scenario, credential profile, restart stage and validity rule behind the evidence on these pages — is specified in its [second design](../../superpowers/specs/2026-09-11-cert-hygiene-lab-slice-2-design.md) and [second implementation plan](../../superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/README.md). All four use internal shorthand that the pages above avoid.
 
 ## Research conventions
 
