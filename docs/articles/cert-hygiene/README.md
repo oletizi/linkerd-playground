@@ -18,7 +18,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 - **Identity issuer expiry:** tested. Results are in [findings.md](findings.md). Its repeat, with fuller logging, is part of the second round of lab experiments below; its open questions are answered once that write-up lands.
 - **Trust-anchor expiry and rotation, webhook certificates, an identity-service outage, and the `linkerd check` threshold** are part of the second round of lab experiments below; their results are not findings until each is written up. **Viz/tap and the other scenarios** in [notes/demo-feasibility.md](notes/demo-feasibility.md) remain untested; their findings still come from Linkerd's source code only.
-- **Second round of lab experiments** (webhook certificates, identity outage, `linkerd check` threshold, trust-anchor expiry and rotation, and a repeat of the issuer experiment): the lab is built, and a matching run where nothing expires has been recorded. The issuer experiment has been repeated twice; the webhook, identity-outage, linkerd check threshold, trust-anchor expiry and staged trust-anchor rotation experiments have been run. Write-ups are pending; the one-step trust-anchor replacement is next.
+- **Second round of lab experiments** (webhook certificates, identity outage, `linkerd check` threshold, trust-anchor expiry and rotation, and a repeat of the issuer experiment): every experiment has been run. The write-ups are in progress; until each is done, its results are not findings.
 
 ## The test lab
 
