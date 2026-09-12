@@ -71,3 +71,14 @@ conditions) and § 14 (guardrails), and narrowed claims in
 
 **What it produced:** the fixed plan in
 `docs/superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/`.
+
+## 2026-09-12 — cert-hygiene lab, slice 2 execution
+
+- [`2026-09-12-cert-hygiene-slice-2-controller-rulings.md`](2026-09-12-cert-hygiene-slice-2-controller-rulings.md)
+  — every decision taken while executing the slice 2 plan, recorded verbatim from the
+  execution ledger: a stop gate that fired on a false comparison, a defect in the plan's
+  own test fixture, three harness faults the throwaway runs caught, the user-approved
+  forced-reconnect phase, and the limits on what the evidence lets the article claim.
+
+Each task of that plan also had its own review, and the branch had a final whole-branch
+review; those are transient and are not kept here.
