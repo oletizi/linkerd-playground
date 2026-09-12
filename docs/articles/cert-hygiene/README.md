@@ -4,14 +4,14 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 ## Start here
 
-1. **[findings.md](findings.md)** — what we learned, in plain words, organised to match the article outline. Its [triage table](findings.md#triage-table) comes in two parts: what we reproduced in a test cluster, and what Linkerd's code predicts but we haven't tested yet. Each row links to its details. Every statement on the page says which kind it is.
+1. **[findings.md](findings.md)** — what we learned, in plain words, organised to match the article outline. Its [triage table](findings.md#triage-table) comes in two parts: the first holds what we reproduced across the lab experiments, and the second what Linkerd's code predicts but we haven't tested yet. Each row links to its details. Every statement on the page says which kind it is.
 2. **[sources.md](sources.md)** — what to cite for each claim, how authoritative each source is, and which claims in the draft need careful wording.
 3. **[notes/](notes/)** — the detail behind the findings. You only need these to check a specific claim:
    - [notes/lab-evidence-issuer-expiry.md](notes/lab-evidence-issuer-expiry.md) — the full record of the issuer-expiry experiment, quoting raw logs and metrics.
    - [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) — two repeats of the issuer-expiry experiment with fuller recording, and which open questions they answer.
    - [notes/lab-evidence-webhook-expiry.md](notes/lab-evidence-webhook-expiry.md) — webhook certificates expiring one at a time, under each failure policy, and how recovery went.
    - [notes/lab-evidence-identity-outage.md](notes/lab-evidence-identity-outage.md) — what happened while the identity service was down, and after it came back.
-   - [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — `linkerd check`'s 60-day issuer warning measured just either side of the boundary.
+   - [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — what `linkerd check`'s 60-day issuer warning did just under, and just over, the boundary.
    - [notes/lab-evidence-anchor-expiry.md](notes/lab-evidence-anchor-expiry.md) — a trust anchor expiring, how failures spread, and what recovery took.
    - [notes/lab-evidence-anchor-rotation.md](notes/lab-evidence-anchor-rotation.md) — rotating a trust anchor by Linkerd's staged procedure, and replacing it in one step.
    - [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md) — what Linkerd's source code says about certificate behaviour, with links to the exact lines.
@@ -22,9 +22,15 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 ## Status
 
-- **Identity issuer expiry:** tested. Results are in [findings.md](findings.md). Its repeat, with fuller logging, is part of the second round of lab experiments below; its open questions are answered once that write-up lands.
-- **Trust-anchor expiry and rotation, webhook certificates, an identity-service outage, and the `linkerd check` threshold** are part of the second round of lab experiments below; their results are not findings until each is written up. **Viz/tap and the other scenarios** in [notes/demo-feasibility.md](notes/demo-feasibility.md) remain untested; their findings still come from Linkerd's source code only.
-- **Second round of lab experiments** (webhook certificates, identity outage, `linkerd check` threshold, trust-anchor expiry and rotation, and a repeat of the issuer experiment): every experiment has been run. Every write-up is done; carrying them into the findings is next.
+Every experiment below has been run, written up, and carried into [findings.md](findings.md).
+
+- **Identity issuer expiry:** run three times (once, then twice more with fuller recording). Reproduced. The repeats also settled how the handshake fails, which restarts recovery needs, and how long an already-open connection lasted.
+- **Webhook serving certificates:** run twice, once per failure policy. Reproduced — with the important qualification that two of the three webhooks kept working for tens of minutes past their own expiry, until the API server had to reconnect.
+- **Identity-service outage:** run once. Reproduced, including the answer to whether a proxy re-certifies on its own afterwards (it did not). One thing that run saw but cannot explain is recorded as an open question.
+- **Trust-anchor expiry:** run once. Reproduced, except that failures did not stagger across proxies as expected; whether recovery needs the identity service restarted separately is unresolved.
+- **Trust-anchor rotation:** run twice, staged and one-step. Reproduced; the guidance in the findings is rewritten from it.
+- **The `linkerd check` 60-day warning:** run once. Only partly reproduced: the warning firing below 60 days is established, the check clearing above 60 days is not, and the pages therefore quote no precise boundary.
+- **Viz/tap** is not tested, and is a possible follow-up. It and the other scenarios in [notes/demo-feasibility.md](notes/demo-feasibility.md) still rest on Linkerd's source code only.
 
 ## The test lab
 
