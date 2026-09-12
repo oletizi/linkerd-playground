@@ -59,18 +59,50 @@ printf '2026-09-11T00:00:00Z probe-tcp-new seq=1 ok\n' > "$T/lines-none"
 printf '%s probe-tcp-new seq=9 fail socat_rc=1\n' "$(date -u -d "@$(( SWAP_T + 230 ))" +%Y-%m-%dT%H:%M:%SZ)" > "$T/lines-fail"
 printf '%s probe-tcp-new seq=8 fail socat_rc=1\n' "$(date -u -d "@$(( SWAP_T + 100 ))" +%Y-%m-%dT%H:%M:%SZ)" > "$T/lines-early"
 sec "$T/n1" $(( SWAP_T - 100 )) $(( SWAP_T + 220 )) 5 3
-out="$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail")"
+out="$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail" "$T/proxy-empty")"
 assert_contains "$out" "state=expired-failed" "old leaf expired, renewal failed, then a new connection failed"
 assert_contains "$out" "old_leaf_not_after=$(( SWAP_T + 220 ))" "records the old leaf's notAfter"
-assert_succeeds "expired-failed meets the condition" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail"
-assert_fails "no failure after the leaf expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-early"
-assert_fails "leaf not yet expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 200 )) "$T/before" "$T/n1" "$T/lines-fail"
+assert_succeeds "expired-failed meets the condition" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-fail" "$T/proxy-empty"
+assert_fails "no failure after the leaf expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n1" "$T/lines-early" "$T/proxy-empty"
+assert_fails "leaf not yet expired: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 200 )) "$T/before" "$T/n1" "$T/lines-fail" "$T/proxy-empty"
 sec "$T/n2" $(( SWAP_T - 100 )) $(( SWAP_T + 220 )) 5 0
-assert_fails "expired and failed, but no failed renewal counted: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail"
+
+# proxy-log fixtures: VM-local (UTC-7) timestamps, exactly as kubectl logs --timestamps
+# renders them. proxyline EPOCH writes one identity-controller "Failed to connect" line
+# whose instant, converted back through the UTC-7 offset, is EPOCH.
+proxyline() { # EPOCH >>FILE
+  local vmt
+  vmt="$(date -u -d "@$(( $1 - 25200 ))" +%Y-%m-%dT%H:%M:%S)"
+  printf '%s.000000000-07:00 [   1.000000s]  WARN ThreadId(02) identity:identity{server.addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:controller{addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:endpoint{addr=10.42.0.14:8080}: linkerd_reconnect: Failed to connect error=endpoint 10.42.0.14:8080: invalid peer certificate: BadSignature error.sources=[invalid peer certificate: BadSignature]\n' \
+    "$vmt"
+}
+: > "$T/proxy-empty"
+proxyline $(( SWAP_T + 50 )) > "$T/proxy-post"
+proxyline $(( SWAP_T - 10 )) > "$T/proxy-pre"
+
+# the real shape from the two timed-out discovery runs: ok/error counters unchanged
+# across the swap, but the unrestarted proxy's own log shows post-swap identity-connect
+# failures. That log evidence, together with the leaf's expiry and the recorded first
+# failed forced-new connection, must still meet the condition.
+out="$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail" "$T/proxy-post")"
+assert_contains "$out" "state=expired-failed" "proxy-log evidence of a failed renewal meets the condition"
+assert_contains "$out" "renew_log_fails=1" "counts the post-swap identity-connect failures"
+assert_succeeds "proxy-log expired-failed meets the condition" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail" "$T/proxy-post"
+assert_fails "expired and failed, but no failed renewal counted (metric or log): pending" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail" "$T/proxy-empty"
+assert_fails "log failure present but the leaf not yet expired: pending" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 200 )) "$T/before" "$T/n2" "$T/lines-fail" "$T/proxy-post"
+assert_fails "log failure present and leaf expired, but no recorded fresh-connection failure: pending" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-early" "$T/proxy-post"
+assert_fails "a log line just before the swap does not count: pending" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n2" "$T/lines-fail" "$T/proxy-pre"
 sec "$T/n3" $(( SWAP_T + 60 )) $(( SWAP_T + 380 )) 6 0
-assert_contains "$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none")" "state=renewed" "a successful renewal after the swap"
-assert_succeeds "renewed meets the condition (S4 falsifiable)" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none"
+assert_contains "$(s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none" "$T/proxy-post")" "state=renewed" "a successful renewal after the swap"
+assert_succeeds "renewed meets the condition (S4 falsifiable)" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none" "$T/proxy-post"
+assert_succeeds "renewed does not consult the log (a nonexistent proxy-log file is never opened)" \
+  s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 90 )) "$T/before" "$T/n3" "$T/lines-none" "$T/does-not-exist"
 : > "$T/n4"
-assert_fails "unreadable metrics: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n4" "$T/lines-fail"
+assert_fails "unreadable metrics: pending" s_hard_endpoint_state "$SWAP_T" $(( SWAP_T + 240 )) "$T/before" "$T/n4" "$T/lines-fail" "$T/proxy-empty"
 
 finish test-scenarios

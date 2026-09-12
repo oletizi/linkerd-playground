@@ -48,7 +48,8 @@ _s_hard_stage1() { # no restarts until every endpoint meets the stage-1 conditio
       d="${role#*:}"; pod="$(_current_pod "$d")"
       pod_section "$RUN_DIR/metrics/fault-minus10.txt" "$pod" > "$tmp/before"
       pod_section "$RUN_DIR/metrics/stage1-$n.txt" "$pod" > "$tmp/now"
-      if ! state="$(s_hard_endpoint_state "$S_SWAP_EPOCH" "$now" "$tmp/before" "$tmp/now" "$tmp/${role%%:*}")"; then met=no; fi
+      kubectl -n "$LAB_NS" logs "$pod" -c linkerd-proxy --timestamps > "$tmp/proxy-${role%%:*}" 2>&1 || true
+      if ! state="$(s_hard_endpoint_state "$S_SWAP_EPOCH" "$now" "$tmp/before" "$tmp/now" "$tmp/${role%%:*}" "$tmp/proxy-${role%%:*}")"; then met=no; fi
       printf 'tick=stage1-%s role=%s pod=%s %s\n' "$n" "${role%%:*}" "$pod" "$state" >> "$f"
     done
     if [ "$met" = yes ]; then result=met; break; fi

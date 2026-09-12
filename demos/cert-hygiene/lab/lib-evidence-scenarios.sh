@@ -231,11 +231,41 @@ pod_section() {
 
 _exact() { awk -v n="$1" '$1 == n { v = $2 } END { print v }' "$2"; } # NAME FILE
 
-# s_hard_endpoint_state SWAP_EPOCH NOW_EPOCH BEFORE_SECTION NOW_SECTION LINES_FILE:
-# S-hard's stage-1 condition for one unrestarted endpoint (design section 7, with a
-# successful renewal accepted so that S4 stays falsifiable). Returns 0 when met.
+# _s_hard_log_fails SWAP_EPOCH PROXY_LOG_FILE: how many of PROXY_LOG_FILE's lines (a
+# kubectl logs --timestamps capture of the endpoint's own linkerd-proxy container; VM-
+# local timestamps, UTC-7, offset included in each line so no explicit conversion is
+# needed) show a failed identity-controller connection at or after SWAP_EPOCH -- the
+# "identity:identity" span together with "Failed to connect"; the observed cause
+# ("invalid peer certificate") is not required, only that target and that phrase.
+# Echoes "count=N at=TS msg=M" (TS/M of the first such line; "-" when none). A missing or
+# unreadable file is zero matches, never fatal: this is log evidence, not the record of
+# truth (the metrics and the probe lines are).
+_s_hard_log_fails() {
+  local swap="$1" p="$2" line ts epoch count=0 at=- msg=-
+  if [ -r "$p" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in *"identity:identity"*"Failed to connect"*) ;; *) continue ;; esac
+      ts="${line%% *}"
+      epoch="$(date -u -d "$ts" +%s 2>/dev/null)" || continue
+      [ -n "$epoch" ] || continue
+      [ "$epoch" -ge "$swap" ] || continue
+      count=$(( count + 1 ))
+      if [ "$at" = - ]; then at="$ts"; msg="${line#* }"; msg="${msg// /_}"; fi
+    done < "$p"
+  fi
+  printf 'count=%s at=%s msg=%s\n' "$count" "$at" "$msg"
+}
+
+# s_hard_endpoint_state SWAP_EPOCH NOW_EPOCH BEFORE_SECTION NOW_SECTION LINES_FILE
+# PROXY_LOG_FILE: S-hard's stage-1 condition for one unrestarted endpoint (design
+# section 7, with a successful renewal accepted so that S4 stays falsifiable). Returns 0
+# when met. An unrestarted proxy that cannot trust the new anchor never completes a CSR
+# handshake, so the error counter never moves either -- PROXY_LOG_FILE's identity-
+# connect failures (_s_hard_log_fails) are accepted as the renewal attempt's result
+# alongside the error counter, but never on their own: expiry and a recorded first
+# failed forced-new connection (from LINES_FILE) are still required.
 s_hard_endpoint_state() {
-  local swap="$1" now="$2" b="$3" c="$4" l="$5" exp ref okb errb okn errn ts first=-
+  local swap="$1" now="$2" b="$3" c="$4" l="$5" p="$6" exp ref okb errb okn errn ts first=-
   exp="$(_exact control_identity_cert_expiration_timestamp_seconds "$c")"
   ref="$(_exact control_identity_cert_refresh_timestamp_seconds "$c")"
   okb="$(_exact 'control_identity_cert_refreshes_total{result="ok"}' "$b")"
@@ -253,8 +283,12 @@ s_hard_endpoint_state() {
   while read -r ts _; do
     if [ "$(date -u -d "$ts" +%s)" -gt "$exp" ]; then first="$ts"; break; fi
   done < <(awk '/ fail /' "$l")
-  local detail="old_leaf_not_after=$exp renew_attempts=$(( okn + errn - okb - errb )) renew_err=$(( errn - errb )) first_fail_after_expiry=$first"
-  if [ "$exp" -lt "$now" ] && [ "$errn" -gt "$errb" ] && [ "$first" != - ]; then
+  local logline cf af mf logn logat logmsg
+  logline="$(_s_hard_log_fails "$swap" "$p")"
+  read -r cf af mf <<< "$logline"
+  logn="${cf#count=}"; logat="${af#at=}"; logmsg="${mf#msg=}"
+  local detail="old_leaf_not_after=$exp renew_attempts=$(( okn + errn - okb - errb )) renew_err=$(( errn - errb )) first_fail_after_expiry=$first renew_log_fails=$logn renew_first_err_at=$logat renew_first_err=$logmsg"
+  if [ "$exp" -lt "$now" ] && [ "$first" != - ] && { [ "$errn" -gt "$errb" ] || [ "$logn" -gt 0 ]; }; then
     echo "state=expired-failed $detail"; return 0
   fi
   echo "state=pending $detail"
