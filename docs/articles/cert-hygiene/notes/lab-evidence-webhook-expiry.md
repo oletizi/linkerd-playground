@@ -1,0 +1,121 @@
+# Evidence: webhook serving certificates expiring one at a time
+
+- **Runs:** `demos/cert-hygiene/runs/02-webhook-expiry-ignore/20260912T095814Z` (WI, `failurePolicy=Ignore`) and `demos/cert-hygiene/runs/02-webhook-expiry-fail/20260912T105527Z` (WF, `failurePolicy=Fail`) — both `evidence_valid=yes`
+- **Control:** `demos/cert-hygiene/runs/00-baseline-control/20260912T065110Z` (C) — same harness tree as both runs (`harness_tree_sha256=e86c787ea2317ecdbc45e607681b83bba0f9e94b48f7f87aed3d95f0d274e7c8` in all three `git-state.txt` files)
+- **Versions:** `linkerd_cli_version=edge-26.9.1`, `linkerd_controller_image=cr.l5d.io/linkerd/controller:edge-26.9.1`, `kubernetes_version=v1.36.4+k3s1` (`versions.txt`, both runs)
+- **Credentials:** lab-supplied static webhook serving certificates (`config_PROFILE=webhook-short`), not how Linkerd normally runs — Linkerd's own webhook-secret controller rotates these itself. Lifetimes `config_WEBHOOK_CERT_LIFETIMES=proxyInjector=15m policyValidator=25m profileValidator=35m`; anchor `config_ANCHOR_LIFETIME=87600h`, issuer `config_ISSUER_LIFETIME=8760h` — long-lived, neither expires in either run. `config_W_POST_WINDOW_S=600`, `config_W_RECONNECT_WINDOW_S=180`.
+- **T1/T2/T3 (webhook `notAfter`), WI:** proxy-injector `2026-09-12T10:15:16Z` (T_mark), policy-validator `2026-09-12T10:25:16Z`, sp-validator `2026-09-12T10:35:16Z` (`timeline.log`). **WF:** proxy-injector `2026-09-12T11:12:12Z` (T_mark), policy-validator `2026-09-12T11:22:12Z`, sp-validator `2026-09-12T11:32:12Z`. In both runs T2 = T1+600s and T3 = T1+1200s exactly, matching the design's "10 minutes apart".
+- **Forced reconnect:** `reconnect-restart kubectl rollout restart: linkerd-proxy-injector linkerd-destination` at WI `10:44:57Z` (T+1781, ~569s after T3) / WF `11:41:52Z` (T+1780, ~576s after T3); `reconnect-rolled-out` 5s later in both. Seven reconnect-phase admission rounds follow (`reconnect-0` … `reconnect-6`, `reconnect-end after 180s of reconnect probes`), then recovery starts (`recover-delete` at WI `10:47:38Z`, WF `11:44:33Z`).
+
+Two runs is two runs: this shows what happened in these two runs, on this Linkerd version, at these lifetimes — not what always happens. Paths below are relative to each run directory unless prefixed `demos/`. `T+N` means N seconds after that run's own T1/T_mark.
+
+## Acceptance conditions (design § 13, W row)
+
+| Condition | Ignore (WI) | Fail (WF) | Evidence |
+| --- | --- | --- | --- |
+| Each webhook's expiry phase is recorded, with a healthy baseline proving its probe | met | met | `admission-baseline.txt`: `result=ok`, five `ok:` lines, both runs; three `webhook-expired` markers each, with the first tick after each in `timeline.log` |
+| The forced-reconnect phase is recorded | met | met | `timeline.log` `reconnect-backing`/`reconnect-restart`/`reconnect-rolled-out`/`reconnect-end` markers; `admission/reconnect-0000` … `reconnect-0153`(WI)/`reconnect-0155`(WF), each with per-attempt `request.yaml`/`response.txt`/`observed.yaml` |
+| Exact responses, object states, checks and recovery-branch artifacts exist for both `Ignore` and `Fail` | met | met | `admission/*/*.response.txt` (505 files WI, matching count WF), `checks/<tick>-check.txt`, `recover/branch.txt`, `recover/plain-*`, `recover/supplied-*`, `controlplane/recover-plain.txt`, `admission/recovered/*` |
+| Any claim about when an expired webhook fails names whether the API server had reconnected | met | met | See W1/W2/W7 below — every "when it started failing" claim states the reconnect state |
+
+**W's § 13 condition is met in both runs; the artifacts required for "reproduced" all exist.** The hypothesis-by-hypothesis verdicts below still carry a reconnect qualifier that a reader-facing claim must keep.
+
+## Phases
+
+Phase boundaries below are named by the design's own labels; `post-NNNN` directory names are seconds after T1 (WI/WF `admission/` listing), and `webhook-expired` markers name the first *tick* after each `notAfter` (`timeline.log`).
+
+| Phase | WI window (T+) | WF window (T+) | Webhooks expired | `admission/` phases |
+| --- | --- | --- | --- | --- |
+| Before T1 | ≤0 | ≤0 | none | `baseline`, `pre-expiry` |
+| T1–T2 | 12–574 | 13–573 | proxy-injector | `post-0012` … `post-0574` |
+| T2–T3 | 605–1175 | 603–1174 | proxy-injector, policy-validator | `post-0605` … `post-1175` |
+| After T3, before reconnect | 1204–1774 | 1204–1774 | all three | `post-1204` … `post-1774` |
+| Forced reconnect | 1781–1940 | 1779–1940 | all three, API server forced to reconnect | `reconnect-0000` … `reconnect-0153`/`-0155` |
+| Recovered | after recovery | after recovery | n/a | `recovered` (`recover-plain`, `recover-supplied`, `verify`) |
+
+## W1 — with Ignore, each expired webhook's probe gets through
+
+**Verdict: mixed — confirmed only after the forced reconnect; falsified for the T1–T3 window, which is W7's finding, not W1's as literally stated.**
+
+- **(a) proxy-injector / pod without a proxy.** Not true in the T1–T3 window: `admission/post-0012/inject-probe-fault-plus10.observed.yaml` (T+12, just after T1) and `admission/post-1774/inject-probe-post-58.observed.yaml` (T+1774, the last tick before reconnect, all three webhooks long expired) both list `name: linkerd-proxy` among the containers; `grep -L 'name: linkerd-proxy$' admission/post-*/inject-probe-*.observed.yaml` returns **no files** — every post-phase pod got a proxy. Only from `admission/reconnect-0000/inject-probe-reconnect-0.observed.yaml` onward does the same grep list a file: that pod has only an `idle` container, no `linkerd-init`, no `linkerd-proxy`. All `inject-probe-*.response.txt` are `[exit 0]` throughout (pod creation always succeeds under `Ignore`; the response text never shows a webhook error even where the webhook was silently skipped).
+- **(b) policy-invalid accepted once policy-validator has expired.** True immediately at T2, no reconnect needed: `admission/post-0574/policy-invalid-post-18.response.txt` (T+574, before T2) still ends `admission webhook "linkerd-policy-validator.linkerd.io" denied the request: ... [exit 1]`; `admission/post-0605/policy-invalid-post-19.response.txt` (T+605, the first tick after T2) reads `networkauthentication.policy.linkerd.io/policy-invalid-post-19 created` `[exit 0]` — bypassed, with every later post-phase attempt also `[exit 0]`.
+- **(c) serviceprofile-invalid accepted once sp-validator has expired.** Not true until the forced reconnect, exactly like (a): `admission/post-1204/serviceprofile-invalid-post-39.response.txt` (T+1204, first tick after T3) still ends `admission webhook "linkerd-sp-validator.linkerd.io" denied the request: ServiceProfile "serviceprofile-invalid-post-39" RetryBudget: time: invalid duration "not-a-duration" [exit 1]`, and every post-phase attempt through `admission/post-1774/serviceprofile-invalid-post-58.response.txt` (T+1774) shows the identical denial. Only `admission/reconnect-0000/serviceprofile-invalid-reconnect-0.response.txt` flips to `serviceprofile.linkerd.io/serviceprofile-invalid-reconnect-0 created` `[exit 0]`.
+- **Isolation before each webhook's own expiry holds:** `policy-invalid` and `serviceprofile-invalid` are correctly denied at every tick before their own webhook's `notAfter`, matching the healthy baseline (`admission-baseline.txt`); the proxy-injector's own expiry at T1 doesn't touch them, and neither validator's behaviour changes early.
+
+So the design's plain reading of W1 — "after each webhook's expiry, its probe gets through" — is **falsified for proxy-injector and sp-validator until the forced reconnect**, and **confirmed for policy-validator immediately at its own expiry, without needing a reconnect.** This asymmetry is the same one W7 predicts and the design's own "first `Ignore` discovery run" note anticipated.
+
+## W2 — with Fail, each expired webhook's probes (including valid) are rejected
+
+**Verdict: same mixed pattern as W1, mirrored — confirmed immediately for policy-validator, confirmed only after forced reconnect for proxy-injector and sp-validator.**
+
+- **proxy-injector:** `admission/post-0013/inject-probe-fault-plus10.response.txt` (T+13, just after T1) and `admission/post-1774/inject-probe-post-58.response.txt` (T+1774) both read `pod/inject-probe-<tick> created` `[exit 0]`, and `grep -c 'name: linkerd-proxy$' admission/post-1774/inject-probe-post-58.observed.yaml` = `3` — the pod still got a proxy, meaning the webhook call still succeeded, despite the cert having been expired for T+1774−T1 ≈ 1774s. Only at `admission/reconnect-0000/inject-probe-reconnect-0.response.txt` does it flip to:
+
+  > `Error from server (InternalError): ... Internal error occurred: failed calling webhook "linkerd-proxy-injector.linkerd.io": failed to call webhook: Post "https://linkerd-proxy-injector.linkerd.svc:443/?timeout=10s": tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2026-09-12T04:41:56-07:00 is after 2026-09-12T11:12:12Z` `[exit 1]`
+
+  and `admission/reconnect-0000/inject-probe-reconnect-0.observed.yaml` records `kubectl get` returning `Error from server (NotFound): pods "inject-probe-reconnect-0" not found` — the pod was never created at all.
+- **policy-validator (both invalid and valid probes):** `admission/post-0013/policy-invalid-fault-plus10.response.txt` (T+13, before T2) reads the ordinary validation denial, `admission webhook "linkerd-policy-validator.linkerd.io" denied the request: data did not match any variant of untagged enum Cidr` `[exit 1]`. At `admission/post-0603/policy-invalid-post-19.response.txt` (T+603, the first tick after T2) the text changes to:
+
+  > `Error from server (InternalError): ... Internal error occurred: failed calling webhook "linkerd-policy-validator.linkerd.io": failed to call webhook: Post "https://linkerd-policy-validator.linkerd.svc:443/?timeout=10s": tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2026-09-12T04:22:15-07:00 is after 2026-09-12T11:22:12Z`
+
+  Both are `[exit 1]`, but the *error text* is the finding: a legitimate validation denial before T2, a webhook-call/TLS failure from T2 on. The **valid** policy probe makes the same transition visible in the exit code alone: `policy-valid-*` is `[exit 0]` through `admission/post-0573/policy-valid-post-18.response.txt` (T+573) and `[exit 1]` from `admission/post-0603/policy-valid-post-19.response.txt` (T+603) onward — confirming W2 for policy-validator immediately at its own expiry, no reconnect required.
+- **sp-validator:** `admission/post-1774/serviceprofile-invalid-post-58.response.txt` (T+1774, well after T3) still reads the ordinary `admission webhook "linkerd-sp-validator.linkerd.io" denied the request: ServiceProfile "serviceprofile-invalid-post-58" RetryBudget: time: invalid duration "not-a-duration"` `[exit 1]` — the validator is still actually running the check on a reused connection. Only `admission/reconnect-0000/serviceprofile-invalid-reconnect-0.response.txt` shows the webhook-call failure text (`failed calling webhook "linkerd-sp-validator.linkerd.io": ... x509: certificate has expired`). The **valid** ServiceProfile probe shows it in the exit code: `serviceprofile-valid-*` stays `[exit 0]` through `admission/post-1774/serviceprofile-valid-post-58.response.txt` and only becomes `[exit 1]` from `admission/reconnect-0000/serviceprofile-valid-reconnect-0.response.txt`.
+
+## W3 — mesh traffic is unaffected
+
+**Verdict: confirmed, in both runs, for the entire run — not just the pre-recovery window.**
+
+`bash demos/cert-hygiene/scripts/probe-lines.sh <run> <probe>` for all four probes (`probe-http`, `probe-tcp-new`, `probe-tcp-new-b`, `probe-tcp-stream`), filtered to the outcome field, shows **zero non-`ok` lines** in either run, over the whole run (WI: 1512/1512/1512/1519 `ok`; WF: 1509/1509/1509/1516 `ok`) — including before `recover-delete` (the window W3 is judged on) and including through the forced-reconnect restarts (`kubectl rollout restart` of `linkerd-proxy-injector` and `linkerd-destination`, WI `10:44:57Z`–`10:47:36Z`). `probe-tcp-new` lines through the restart window (WI `10:44:31Z` seq=1309 … `10:45:59Z` seq=1353) show unbroken 2-second-interval `ok` lines with no gap. The control (`00-baseline-control/20260912T065110Z`) shows the identical all-`ok` pattern over its own run. The design allows the restart to disturb traffic (a webhook shares a pod with the destination or policy controller here); in these two runs it didn't, and W3's own judging window (before `recover-delete`) is unaffected either way.
+
+## W4 — `linkerd check` goes fatal per webhook
+
+**Verdict: confirmed for proxy-injector (T1); inconclusive for policy-validator and sp-validator, because `linkerd check` halts at the first fatal line in the category and never re-lists their rows in this run's transcripts.**
+
+- `checks/fault-minus10-check.txt` (WI, T−10, before T1): `linkerd-webhooks-and-apisvc-tls` section reads `√ proxy-injector webhook has valid cert`, `‼ proxy-injector cert is valid for at least 60 days` (with `certificate will expire on 2026-09-12T10:15:16Z`), then the same √/‼ pair for sp-validator and policy-validator.
+- `checks/fault-plus10-check.txt` (WI, T+12, first tick after T1): the section now reads only
+
+  > `× proxy-injector webhook has valid cert`
+  > `    certificate is not valid anymore. Expired on 2026-09-12T10:15:16Z`
+  > `Status check results are ×`
+  > `[exit 1]`
+
+  — `linkerd check` stops after the first failing check in the category; the sp-validator and policy-validator "webhook has valid cert" rows, still present in the earlier baseline transcript, do not appear here or in any later transcript in this run (checked `post-19-check.txt` and `post-39-check.txt`, the first ticks after T2 and T3 — both are byte-identical to `fault-plus10-check.txt`'s webhook section). WF's `checks/fault-plus10-check.txt` shows the same truncation, one hour later and against its own T1 timestamp.
+- So this run's evidence directly confirms W4 for the first webhook to expire (proxy-injector, T1: √+‼ → × at the first post-T1 tick) but **cannot confirm or falsify W4 for policy-validator or sp-validator via plain `linkerd check`**, because the tool never reaches their rows again once an earlier row in the same category is already fatal. Settling it would need either `linkerd check --proxy` (a different category — not checked here since it doesn't carry these rows) or a run where only the second or third webhook's cert is made to expire without the first also being expired.
+
+## W7 — once the API server must reconnect, every call to that expired webhook fails; before that, a reused connection may keep working
+
+**Verdict: confirmed, in both runs, for all three webhooks — this is the mechanism behind the W1/W2 findings above, not a separate observation.**
+
+- **After the forced reconnect, every call fails the handshake, in both directions.** With `Ignore` (WI), all three probes (`inject-probe`, `policy-invalid`, `serviceprofile-invalid`) get through unchecked from `admission/reconnect-0000/` onward — see W1 above. With `Fail` (WF), all three are rejected outright from `admission/reconnect-0000/` onward, each with the same `x509: certificate has expired` text quoted under W2 above (proxy-injector, policy-validator) plus the equivalent for sp-validator: `admission/reconnect-0000/serviceprofile-invalid-reconnect-0.response.txt` — `Error from server (InternalError): ... failed calling webhook "linkerd-sp-validator.linkerd.io": ... x509: certificate has expired or is not yet valid: current time 2026-09-12T04:41:57-07:00 is after 2026-09-12T11:32:12Z`.
+- **Before the reconnect, a webhook reached over a reused pre-expiry connection keeps working — how long is an observation, not a prediction, and here it is exactly "until the forced reconnect, no longer."** proxy-injector's calls kept succeeding from T1 (`10:15:16Z`) through `admission/post-1774` (T+1774, ≈29.6 minutes past its own expiry) in both runs; sp-validator's calls kept succeeding from T3 (`10:35:16Z`) through the same `post-1774` tick (≈23.3 minutes past its own expiry). Neither failed on its own before the reconnect; both failed at the first reconnect-phase attempt (`reconnect-0000`, ≈7-8s after `reconnect-rolled-out`).
+- **policy-validator is the exception the design's own "first `Ignore` discovery run" note flagged:** its calls started failing at its own expiry (T2), 1195s before the forced reconnect in WI (T2 at T+600, reconnect at T+1781) — see W1(b)/W2 (policy-validator) above, and the k3s-journal timing in the Supplementary section. The reconnect is not what exposes policy-validator's expired cert; something about that webhook's own connection (not investigated further here) was already failing calls before the reconnect.
+- The k3s journal (Supplementary, below) independently corroborates the same split: zero `failed calling webhook` entries for proxy-injector or sp-validator before the reconnect, in either run; policy-validator's first entry lands 5s after its own T2.
+
+## W6 — recovery branch (observation)
+
+**Observed:** both runs land on **branch (ii)** — plain `linkerd upgrade | kubectl apply -f -` re-rendered the same, still-expired, lab-supplied credentials.
+
+- `recover/branch.txt` (WI): `branch=ii`; facts line for each component, e.g. `component=proxyInjector secret_sha256=7595a70120f4... supplied_sha256=7595a70120f4... equals_supplied=yes not_after_epoch=1789208116 valid_now=no cabundle_verifies=no` (identical hashes for all three components; `valid_now=no` in every case). WF's `recover/branch.txt` shows the identical shape with its own hashes and epochs, also `branch=ii`.
+- Propagation, WI: `recover/plain-propagation.txt` last line `2026-09-12T10:50:48Z injection=no policy_denied=no sp_denied=no` — the plain upgrade did not restore any of the three. WF: `2026-09-12T11:47:43Z injection=no policy_denied=no sp_denied=no`, same shape.
+- `recover/plain-render.txt` first line, both runs: `$ bash -o pipefail -c linkerd upgrade > /home/orion/cert-hygiene-certs/<cert-set>/recover-plain.yaml` — a plain `linkerd upgrade` with no credential flags.
+- `grep -c redacted recover/plain-manifest.yaml` = `5` in both runs, proving the rendered manifest (with its five certificate/key values redacted) was recorded.
+- For branch (ii)'s follow-up, `recover/supplied-facts.txt` (WI): all three components `equals_supplied=yes valid_now=yes cabundle_verifies=yes` after applying freshly generated lab-supplied credentials with `--set-file`, with `admission=healthy` and every probe `ok:`. WF's `recover/supplied-facts.txt` shows the identical shape, `admission=healthy`.
+- `recover/plain-check.txt` (WI) ends `× proxy-injector webhook has valid cert ... [exit 1]` (still the pre-existing expired cert, branch ii's own signature); `recover/supplied-check.txt` ends `Status check results are √ [exit 0]` in both runs.
+
+## Supplementary: the k3s journal
+
+`grep -c -i 'failed calling webhook' logs/final/k3s-journal.txt`: WI = 354, WF = 177. Split by webhook (both runs): `115 linkerd-policy-validator.linkerd.io`, `27 linkerd-proxy-injector.linkerd.io`, `35 linkerd-sp-validator.linkerd.io` — matching the counts named in the task dispatch for both runs. WI has exactly double WF's total because the journal is cumulative for the VM and WI ran first the same day; the per-webhook split is identical.
+
+Timing (WI, local `-07:00` offset checked against `timeline.log`): the first `linkerd-policy-validator` failure is `Sep 12 03:25:21` = `10:25:21Z`, 5s after T2 (`10:25:16Z`) — immediate, no reconnect needed, matching the admission-probe finding above. `linkerd-proxy-injector` and `linkerd-sp-validator` have **zero** journal entries before `Sep 12 03:45:00` local (`10:45:00Z`) — checked directly: `grep ... | awk '$3 < "03:45:00"' | wc -l` returns `0` for both. Their first entries land at `Sep 12 03:45:02`/`03:45:03` local (`10:45:02Z`/`10:45:03Z`), 5-6s after `reconnect-rolled-out` (`10:45:02Z`). Sample line:
+
+> `Sep 12 03:25:21 cert-hygiene-lab k3s[3610497]: W0912 03:25:21.618232 3610497 dispatcher.go:205] Failed calling webhook, failing open linkerd-policy-validator.linkerd.io: failed calling webhook "linkerd-policy-validator.linkerd.io": failed to call webhook: Post "https://linkerd-policy-validator.linkerd.svc:443/?timeout=10s": tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2026-09-12T03:25:21-07:00 is after 2026-09-12T10:25:16Z`
+
+This is supplementary evidence only, but it agrees exactly with the admission-probe records above: policy-validator's TLS calls start failing at its own expiry; proxy-injector's and sp-validator's don't fail until the forced reconnect.
+
+## What this means for the article
+
+- **The Ignore/Fail split the design predicts (W1/W2) is real, but gated by whether the API server has opened a new connection to that webhook (W7) — this is the headline finding of this experiment.** In our lab, a webhook whose serving certificate has expired can keep working exactly as before — the proxy-injector kept injecting proxies, the sp-validator kept validating ServiceProfiles — for as long as the API server reuses a connection opened before the cert expired. Only forcing a new connection (here, restarting the webhook's backing pods) exposed the expired cert as a TLS handshake failure. Any reader-facing claim about "pods admitted without a proxy" or "validation skipped" under `Ignore` must say whether this was observed before or after a reconnect; in our lab it was **after** for two of the three webhooks. Artifacts: `admission/post-*/inject-probe-*.observed.yaml` and `admission/reconnect-*/inject-probe-*.observed.yaml` (WI), the mirrored `admission/post-*|reconnect-*/*-invalid-*.response.txt` and `*-valid-*.response.txt` text (WF).
+- **The three webhooks did not behave alike, and that asymmetry is itself evidence, not noise.** The policy-validator's webhook calls started failing immediately at its own certificate's expiry, in both runs, with no forced reconnect needed. The proxy-injector's and sp-validator's calls kept succeeding on reused connections for the rest of the run (up to T+1774s, roughly 24 minutes past proxy-injector's own expiry) until the forced reconnect. This matches the design's note about the first `Ignore` discovery run (before forced reconnect existed), and the k3s journal above corroborates it independently. Do not generalise this specific 1-of-3 split beyond this lab's k3s/API-server version and these webhook lifetimes.
+- **W's § 13 acceptance condition is met** — the phase artifacts, forced-reconnect phase, exact responses/object states/checks, and recovery-branch artifacts all exist for both runs (see the table above) — so W counts as reproduced by the design's own rule, provided the write-up states the reconnect qualifier on every "when it fails" claim, which this note does throughout.
+- **W4 is only partly settled by this evidence.** `linkerd check` confirms the first webhook to expire goes fatal at its own expiry, but the tool's own behaviour (stopping at the first fatal line in a category) means this run's transcripts cannot show whether the *second* and *third* webhooks' "webhook has valid cert" rows independently go fatal at their own expiries or only after the reconnect. Say this plainly rather than assuming W4 holds identically for all three.
+- **W6 is an observation only, as the design requires: no verdict.** Both runs' plain `linkerd upgrade` re-rendered the identical, still-expired, lab-supplied credentials (branch ii) rather than generating fresh ones. This is specific to lab-supplied static webhook credentials — a non-default setup — and says nothing about how Linkerd's own webhook-secret rotation controller behaves when it (not an external process) owns the credentials.
+- **Credential-model caveat, on every claim above about recovery:** these runs use lab-supplied static webhook serving certificates, not Linkerd's own rotated ones. Recovery required an explicit `--set-file` with freshly generated credentials in both runs; that is a fact about this experimental setup, not a claim about default Linkerd operation.
