@@ -75,7 +75,7 @@
 - **Research notes:** Make this the practical evidence-gathering source in the diagnosis section. It supports "certificate-like symptoms are not proof of expiry": inspect the reported failure and certificate state rather than inferring a root cause from a symptom. Mind its limits:
   - `linkerd check` does not inspect workload (proxy) certificates. This is from Linkerd's source code; in our lab, in both issuer repeats, it reported healthy — including under `--proxy` — six seconds before fresh connections through those same proxies failed ten out of ten.
   - The 60-day warning headline looked the same for an issuer with about 15 minutes left and for one about 10 minutes short of 60 days. Only the date in its detail line showed how close expiry was (our lab).
-  - **The 60-day row is not a precise boundary.** In our lab an issuer with about nine minutes *more* than 60 days of remaining validity still got the warning, in all four checks recorded in that run. Do not write that the warning fires at exactly 60 days, and do not state where above 60 days it clears — our evidence never showed it clearing.
+  - **The 60-day row is not a precise boundary.** In our lab an issuer with about nine minutes *more* than 60 days of remaining validity still got the warning, in both checks we ran against that issuer, with and without `--proxy`. Do not write that the warning fires at exactly 60 days, and do not state where above 60 days it clears — our evidence never showed it clearing.
   - It halts at the first failing check in a category. With more than one expired webhook certificate, only the first is reported (our lab); inspect the others directly.
   - The symptom may not look like a certificate error at all: in our lab, applications saw `Connection reset by peer`.
 
@@ -83,7 +83,7 @@
 
 ## This project's own evidence
 
-Every entry below is a first-party experiment in the same throwaway single-node test cluster, on Linkerd `edge-26.9.1`. Each was compared against a run of the same steps on long-lived certificates, in which nothing expired and nothing failed, so that restarts and rollout choreography can be told apart from certificate failures. Attribute all of them as "in our testing" or "in our lab", naming the version and the shortened lifetimes.
+Every entry below is a first-party experiment in the same throwaway single-node test cluster, on Linkerd `edge-26.9.1`. Each experiment that breaks something was compared against a run of the same steps on long-lived certificates, in which nothing expired and nothing failed, so that restarts and rollout choreography can be told apart from certificate failures; the `linkerd check` warning experiment breaks nothing and has no such comparison run. Attribute all of them as "in our testing" or "in our lab", naming the version and the shortened lifetimes.
 
 ### Our lab: identity issuer expiry, and its two repeats
 
@@ -128,7 +128,7 @@ Every entry below is a first-party experiment in the same throwaway single-node 
 - **Authority level:** First-party experiment. One run, bracketing the boundary with two issuers (one 10 minutes short of 60 days, one 10 minutes past it), compared with the 15-minute issuer from the two issuer-expiry repeats. Linkerd `edge-26.9.1`.
 - **Claims supported:**
   - The warning `‼ issuer cert is valid for at least 60 days` fires below 60 days, with identical wording at about 15 minutes of remaining validity and at about 10 minutes short of 60 days. Only the date in its detail line shows how close expiry is.
-  - It also fired for an issuer with about nine minutes **more** than 60 days of remaining validity, in all four checks recorded in that run.
+  - It also fired for an issuer with about nine minutes **more** than 60 days of remaining validity, in both checks we ran against that issuer, with and without `--proxy`. That measurement comes from the valid evidence run, and is reproduced.
 - **Claims NOT supported — do not write these:** that the warning fires at exactly 60 days; that the check clears above 60 days (that was never seen in a valid run); any precise figure for where the row flips.
 - **Outline mapping:** Diagnosis, Hygiene.
 - **Research notes:** The 60-day threshold value itself is source-derived (see "Linkerd source code" below); this experiment measured only the tool's behaviour, and it needs more margin than a plain countdown. Where above 60 days the row clears is open.
