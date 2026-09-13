@@ -1,0 +1,9 @@
+name = "linkerd-evidence"
+main = "src/worker.js"
+compatibility_date = "2026-09-13"
+workers_dev = true
+
+# The bucket is public, so the Worker needs no secrets — only where to fetch from.
+[vars]
+B2_DOWNLOAD_HOST = "https://f004.backblazeb2.com"
+B2_BUCKET = "linkerd-playground"
