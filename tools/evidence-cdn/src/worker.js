@@ -16,6 +16,17 @@
 const ALLOWED_METHODS = new Set(['GET', 'HEAD']);
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
+/**
+ * Bump this to invalidate every cached response.
+ *
+ * A workers.dev hostname is not a zone, so there is no cache-purge button. The
+ * cache key carries this version instead: changing it and redeploying makes every
+ * previously cached entry unreachable. That is the escape hatch for a response
+ * cached in error — which has already happened once, when an early version of this
+ * Worker cached a 404 for a year.
+ */
+const CACHE_VERSION = 'v2';
+
 export default {
   async fetch(request, env, ctx) {
     if (!ALLOWED_METHODS.has(request.method)) {
@@ -44,23 +55,40 @@ export default {
     }
 
     const origin = `${env.B2_DOWNLOAD_HOST}/file/${env.B2_BUCKET}/${key}`;
+    const range = request.headers.get('Range');
 
-    // Range requests matter: a run archive is fetched whole, but a reader
-    // following a citation may want one slice of a large log.
-    const forwarded = new Headers();
-    for (const header of ['Range', 'If-None-Match', 'If-Modified-Since']) {
-      const value = request.headers.get(header);
-      if (value) forwarded.set(header, value);
+    // The cache is managed explicitly rather than through `cf.cacheKey`, which is
+    // an Enterprise-only feature and is silently ignored on other plans. Owning the
+    // key means CACHE_VERSION genuinely invalidates, and it means only a complete,
+    // successful body is ever stored.
+    const cache = caches.default;
+    const cacheKey = new Request(`${url.origin}/${CACHE_VERSION}/${key}`, { method: 'GET' });
+
+    if (!range) {
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        const hit = new Response(request.method === 'HEAD' ? null : cached.body, cached);
+        hit.headers.set('x-evidence-cache', 'hit');
+        return hit;
+      }
     }
 
-    const response = await fetch(origin, {
-      method: request.method,
-      headers: forwarded,
-      cf: { cacheEverything: true, cacheTtl: 31536000 },
-    });
+    // Range requests go straight to the origin: a reader may want one slice of a
+    // large log, and a partial body must never become the cached copy of a file.
+    const forwarded = new Headers();
+    if (range) forwarded.set('Range', range);
+
+    const response = await fetch(origin, { method: range ? 'GET' : 'GET', headers: forwarded });
 
     const headers = new Headers(response.headers);
-    headers.set('Cache-Control', IMMUTABLE);
+    // Only a successful body is immutable. Caching a 404 for a year would mean a
+    // file uploaded later stays invisible until the cache expires — so errors are
+    // never cached, and a miss is always re-checked against the origin.
+    if (response.ok || response.status === 206 || response.status === 304) {
+      headers.set('Cache-Control', IMMUTABLE);
+    } else {
+      headers.set('Cache-Control', 'no-store');
+    }
     // B2 exposes internals that mean nothing to a reader of the evidence.
     for (const header of [
       'x-bz-file-id',
@@ -74,10 +102,21 @@ export default {
     const sha1 = response.headers.get('x-bz-content-sha1');
     if (sha1) headers.set('x-evidence-sha1', sha1.replace(/^unverified:/, ''));
 
-    return new Response(response.body, {
+    const result = new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers,
     });
+    result.headers.set('x-evidence-cache', 'miss');
+
+    // Store only a whole, successful body. A 404 is never cached, so a file
+    // uploaded after someone looked for it becomes visible immediately.
+    if (response.ok && !range) {
+      ctx.waitUntil(cache.put(cacheKey, result.clone()));
+    }
+
+    return request.method === 'HEAD'
+      ? new Response(null, { status: result.status, headers: result.headers })
+      : result;
   },
 };
