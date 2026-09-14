@@ -11,7 +11,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
    - [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) — two repeats of the issuer-expiry experiment with fuller recording, and which open questions they answer.
    - [notes/lab-evidence-webhook-expiry.md](notes/lab-evidence-webhook-expiry.md) — webhook certificates expiring one at a time, under each failure policy, and how recovery went.
    - [notes/lab-evidence-identity-outage.md](notes/lab-evidence-identity-outage.md) — what happened while the identity service was down, and after it came back.
-   - [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — what `linkerd check`'s 60-day issuer warning did just under, and just over, the boundary.
+   - [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — where `linkerd check`'s 60-day issuer warning actually starts: a bisect that narrows it from a day-wide guess to a 305-second bracket about an hour past 60 days.
    - [notes/lab-evidence-anchor-expiry.md](notes/lab-evidence-anchor-expiry.md) — a trust anchor expiring, how failures spread, and what recovery took.
    - [notes/lab-evidence-anchor-rotation.md](notes/lab-evidence-anchor-rotation.md) — rotating a trust anchor by Linkerd's staged procedure, and replacing it in one step.
    - [notes/lab-evidence-tap-expiry.md](notes/lab-evidence-tap-expiry.md) — the tap API server's certificate expiring: what kept working, for how long, and what finally broke it.
@@ -23,14 +23,14 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 ## Status
 
-Every experiment below has been run and written up. All but the last have been carried into [findings.md](findings.md); the viz/tap write-up is new and its triage row has not been moved there yet.
+Every experiment below has been run and written up. All but two have been carried into [findings.md](findings.md); the viz/tap write-up and the measured `linkerd check` boundary are new, and their triage rows have not been moved there yet.
 
 - **Identity issuer expiry:** run three times (once, then twice more with fuller recording). Reproduced. The repeats also settled how the handshake fails, which restarts recovery needs, and how long an already-open connection lasted.
 - **Webhook serving certificates:** run twice, once per failure policy. Reproduced — with the important qualification that two of the three webhooks kept working past their own expiry, about 30 minutes for the proxy injector and about 10 minutes for the ServiceProfile validator, until the API server had to reconnect.
 - **Identity-service outage:** run once. Reproduced, including the answer to whether a proxy re-certifies on its own afterwards (it did not). One thing that run saw but cannot explain is recorded as an open question.
 - **Trust-anchor expiry:** run once. Reproduced, except that failures did not stagger across proxies as expected; whether recovery needs the identity service restarted separately is unresolved.
 - **Trust-anchor rotation:** run twice, staged and one-step. Reproduced; the guidance in the findings is rewritten from it.
-- **The `linkerd check` 60-day warning:** run once. Only partly reproduced: the warning firing below 60 days is established, the check clearing above 60 days is not, and the pages therefore quote no precise boundary.
+- **The `linkerd check` 60-day warning:** run nine times — once in the second round, then eight more as a bisect. Reproduced in both directions, and the boundary is now measured rather than bracketed by a day: the check still printed its fatal row at 58 m 58 s past 60 days of remaining validity, and cleared to `√` at 1 h 4 m 3 s past, so it does not fire at 60 days. The pages should quote that 305-second bracket, never a single figure.
 - **Viz/tap API certificate expiry:** run once. Reproduced, with the same qualification the webhook experiment found: `linkerd viz check` went fatal at the moment of expiry, but the tap APIService stayed available and `linkerd viz tap` kept returning live events for about half an hour afterwards, until a restart of the tap pod forced the API server to open a new connection. The remaining scenarios in [notes/demo-feasibility.md](notes/demo-feasibility.md) still rest on Linkerd's source code only.
 
 ## The test lab
