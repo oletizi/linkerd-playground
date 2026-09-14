@@ -145,6 +145,13 @@ _scenario_setup() { # SCENARIO PROFILE RUN_DIR TIMED(yes|no)
     write_cert webhook-ca "$CERTS/webhooks/ca.crt"
     for comp in "${WEBHOOK_COMPONENTS[@]}"; do write_cert "webhook-$comp" "$CERTS/webhooks/$comp.crt"; done
   fi
+  # V's certificate state (design section 8): the tap serving certificate, and the lab
+  # webhook CA it is signed by when WEBHOOK_CERT_LIFETIMES did not already record it. No
+  # hook covers this setup step, so it is here rather than in a scenario file.
+  if [ -n "$TAP_CERT_LIFETIME" ]; then
+    [ -f "$RUN_DIR/certs/webhook-ca.pem" ] || write_cert webhook-ca "$CERTS/webhooks/ca.crt"
+    write_cert tap "$CERTS/webhooks/tap.crt"
+  fi
   bash "$LAB_DIR/deploy.sh" baseline >> "$RUN_DIR/install.log" 2>&1 || die "baseline deploy failed; see install.log"
   write_versions "$SCENARIO" "$CERT_SET"
   if [ "$timed" = yes ]; then

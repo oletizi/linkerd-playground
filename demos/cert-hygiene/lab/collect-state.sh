@@ -161,7 +161,7 @@ snap_viz() {
 # 1.4) -> apiservices/NAME.txt. Field names follow discover-tap.sh (Task 1 discovery),
 # which reads apiservice_available the same way.
 snap_apiservices() {
-  local f="$RUN_DIR/apiservices/$1.txt" tmp
+  local f="$RUN_DIR/apiservices/$1.txt" tmp caBundle
   mkdir -p "$RUN_DIR/apiservices"
   tmp="$(mktemp)"
   {
@@ -169,8 +169,15 @@ snap_apiservices() {
     if _record "v1alpha1.tap.linkerd.io read" kubectl get apiservice v1alpha1.tap.linkerd.io -o json > "$tmp"; then
       jq -r '(([.status.conditions[]? | select(.type == "Available")] | first) // {}) as $c
         | "apiservice_available_status=\($c.status // "-")\napiservice_available_reason=\($c.reason // "-")\napiservice_available_message=\($c.message // "-")\napiservice_backing_service=\(.spec.service.name // "<none>").\(.spec.service.namespace // "<none>").svc"' "$tmp"
-      printf 'apiservice_cabundle_sha256=%s\n' \
-        "$(jq -r '.spec.caBundle // empty' "$tmp" | base64 -d 2>/dev/null | sha256sum | cut -d' ' -f1)"
+      # A missing caBundle is "-", like every other neighbouring sentinel (_webhook_lines,
+      # snap_trust): the SHA-256 of an empty string would otherwise be indistinguishable
+      # from a real hash (review finding, slice 3 Task 3).
+      caBundle="$(jq -r '.spec.caBundle // empty' "$tmp")"
+      if [ -n "$caBundle" ]; then
+        printf 'apiservice_cabundle_sha256=%s\n' "$(printf '%s' "$caBundle" | base64 -d 2>/dev/null | sha256sum | cut -d' ' -f1)"
+      else
+        printf 'apiservice_cabundle_sha256=-\n'
+      fi
     else
       cat "$tmp"
     fi
