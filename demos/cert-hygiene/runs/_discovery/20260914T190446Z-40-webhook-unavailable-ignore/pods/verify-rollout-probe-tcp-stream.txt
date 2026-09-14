@@ -1,3 +1,0 @@
-$ kubectl -n lab rollout status deploy/probe-tcp-stream --timeout=120s
-deployment "probe-tcp-stream" successfully rolled out
-[exit 0]

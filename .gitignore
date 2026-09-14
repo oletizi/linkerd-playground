@@ -16,9 +16,10 @@ site/.astro/
 .idea/
 demos/cert-hygiene/.lab-logs/
 
-# Recorded lab runs live in the bucket and the evidence release, not here; only
-# their manifests are committed. The current control run is the exception that
-# must stay on disk, because the control-at-tree validity rule reads it from
-# there, so it is ignored rather than deleted. Discovery runs are still tracked.
+# Recorded lab runs live in the bucket and the evidence release, not here; only their
+# manifests are committed -- discovery runs included, the same as every other run. The
+# current control run is the exception that must stay on disk, because the
+# control-at-tree validity rule reads it from there, so it is ignored rather than
+# deleted. (A handful of discovery runs were committed whole before this rule was
+# corrected; those stay in history as an exception, not a pattern to repeat.)
 /demos/cert-hygiene/runs/*/*/
-!/demos/cert-hygiene/runs/_discovery/*/

@@ -1,6 +1,0 @@
-result=ok
-ok: inject-probe-baseline was created with a linkerd-proxy container
-ok: policy-invalid-baseline was denied by linkerd-policy-validator.linkerd.io
-ok: serviceprofile-invalid-baseline was denied by linkerd-sp-validator.linkerd.io
-ok: policy-valid-baseline was created
-ok: serviceprofile-valid-baseline was created

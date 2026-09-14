@@ -1,3 +1,0 @@
-$ kubectl -n lab logs probe-http-586cfdddb4-2xpg4 -c linkerd-proxy --timestamps --previous
-Error from server (BadRequest): previous terminated container "linkerd-proxy" in pod "probe-http-586cfdddb4-2xpg4" not found
-[exit 1]

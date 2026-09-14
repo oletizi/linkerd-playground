@@ -1,3 +1,0 @@
-$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-invalid-pre-2.request.yaml -o yaml
-Error from server (NotFound): networkauthentications.policy.linkerd.io "policy-invalid-pre-2" not found
-[exit 1]

@@ -88,10 +88,53 @@ snap_credentials() {
   printf 'webhooks_sha256=%s\n' "$(printf '%s' "$joined" | sha256sum | cut -d' ' -f1)" >> "$f"
 }
 
-# The three Linkerd webhook configurations, in WEBHOOK_COMPONENTS order.
+# The three Linkerd webhook configurations, in WEBHOOK_COMPONENTS order. Only ever
+# iterated in that fixed order (snap_webhooks), never indexed against WEBHOOK_COMPONENTS
+# by a second caller: webhook_config (lib-webhook.sh) is the name-keyed lookup for that
+# (_w_facts, w_cert_state_line), so no caller pairs the two arrays by position.
 WEBHOOK_CONFIGS=(mutatingwebhookconfiguration/linkerd-proxy-injector-webhook-config
   validatingwebhookconfiguration/linkerd-policy-validator-webhook-config
   validatingwebhookconfiguration/linkerd-sp-validator-webhook-config)
+
+# w_backing_write FILE COMPONENT...: each COMPONENT's Service's backing Deployment(s) to
+# FILE (truncated first, directory created), derived from its selector (w_backing_line).
+# The Deployment listing is read once and shared across every COMPONENT; a failed read,
+# or a failed per-Service read, is recorded on that component's line, never fatal. Shared
+# by W (reconnect/backing.txt, all three components) and N (scale/backing.txt, one).
+w_backing_write() {
+  local f="${1:?w_backing_write: FILE required}" tmp comp svc derr=""
+  shift
+  [ $# -ge 1 ] || die "w_backing_write: at least one COMPONENT required"
+  mkdir -p "$(dirname "$f")"
+  tmp="$(mktemp -d)"
+  : > "$f"
+  _record "linkerd Deployment listing" kubectl -n linkerd get deploy -o json > "$tmp/d.json" || derr="$(cat "$tmp/d.json")"
+  for comp in "$@"; do
+    svc="$(webhook_service "$comp")"
+    if [ -n "$derr" ]; then w_backing_line "$comp" "$svc" "$tmp/d.json" "$tmp/d.json" "$derr" >> "$f"
+    elif _record "Service $svc read" kubectl -n linkerd get svc "$svc" -o json > "$tmp/s.json"; then
+      w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" >> "$f"
+    else w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/s.json")" >> "$f"; fi
+  done
+  rm -rf "$tmp"
+}
+
+# w_cert_state_line COMPONENT SUPPLIED_DIR TMPDIR NOW: one component's certificate-state
+# line (w_fact_line), read from its live Secret and its own webhook configuration's
+# caBundle (webhook_config, never an index-paired array), against the lab-supplied
+# certificate at SUPPLIED_DIR/COMPONENT.crt. Shared by W's per-component recovery-facts
+# loop (_w_facts) and N's per-tick certificate-state record (_n_cert_state).
+w_cert_state_line() {
+  local comp="${1:?w_cert_state_line: COMPONENT required}" sup="${2:?w_cert_state_line: SUPPLIED_DIR required}"
+  local tmp="${3:?w_cert_state_line: TMPDIR required}" now="${4:?w_cert_state_line: NOW required}" sfp
+  sfp="$(cert_facts s < "$sup/$comp.crt" | awk -F= '$1 == "s_sha256" { print $2 }')" \
+    || die "w_cert_state_line: cannot read the lab-supplied certificate $sup/$comp.crt"
+  kubectl -n linkerd get secret "$(webhook_secret "$comp")" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+    | base64 -d > "$tmp/$comp.crt" 2>/dev/null || true
+  kubectl get "$(webhook_config "$comp")" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null \
+    | base64 -d > "$tmp/$comp-ca.pem" 2>/dev/null || true
+  w_fact_line "$comp" "$sfp" "$tmp/$comp.crt" "$tmp/$comp-ca.pem" "$now"
+}
 
 _webhook_lines() { # CONFIG JSON_FILE: one line per webhook, with the caBundle hashed
   local cfg="$1" name policy b64 hash

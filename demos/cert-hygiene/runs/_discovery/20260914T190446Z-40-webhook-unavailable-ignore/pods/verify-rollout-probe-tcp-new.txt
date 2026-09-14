@@ -1,3 +1,0 @@
-$ kubectl -n lab rollout status deploy/probe-tcp-new --timeout=120s
-deployment "probe-tcp-new" successfully rolled out
-[exit 0]

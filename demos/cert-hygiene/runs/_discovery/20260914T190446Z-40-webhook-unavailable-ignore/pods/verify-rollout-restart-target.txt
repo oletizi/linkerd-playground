@@ -1,3 +1,0 @@
-$ kubectl -n lab rollout status deploy/restart-target --timeout=120s
-deployment "restart-target" successfully rolled out
-[exit 0]

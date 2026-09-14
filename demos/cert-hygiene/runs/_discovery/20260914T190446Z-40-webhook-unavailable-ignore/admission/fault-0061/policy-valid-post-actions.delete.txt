@@ -1,3 +1,0 @@
-$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/fault-0061/policy-valid-post-actions.request.yaml --wait=false
-networkauthentication.policy.linkerd.io "policy-valid-post-actions" deleted from lab namespace
-[exit 0]

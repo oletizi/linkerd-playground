@@ -28,8 +28,14 @@ make_run() {
   printf 'result=ok\n' > "$d/admission-restored.txt"
   printf 'result=ok\n' > "$d/k-remaining.txt"
   printf 'result=ok\nok: tap events observed while the certificate was valid\n' > "$d/tap-baseline.txt"
-  mkdir -p "$d/s-hard" "$d/recover" "$d/reconnect"
+  mkdir -p "$d/s-hard" "$d/recover" "$d/reconnect" "$d/scale"
   printf 'result=met\n' > "$d/s-hard/stage1-condition.txt"
+  printf 'component=proxyInjector service=linkerd-proxy-injector deployment=linkerd-proxy-injector\n' > "$d/scale/backing.txt"
+  printf '$ kubectl -n linkerd scale deploy/linkerd-proxy-injector --replicas=0\ndeployment.apps/linkerd-proxy-injector scaled\n[exit 0]\n' > "$d/scale/scale-down.txt"
+  printf '$ bash -c ... capture_rollouts linkerd linkerd-proxy-injector\n[exit 0]\n' > "$d/scale/rollout-down.txt"
+  printf '$ bash -c ... pods-gone linkerd component=proxy-injector\n[exit 0]\n' > "$d/scale/pods-gone.txt"
+  printf '$ bash -c ... scale-up linkerd linkerd-proxy-injector=1\ndeployment.apps/linkerd-proxy-injector scaled\n[exit 0]\n' > "$d/scale/scale-up.txt"
+  printf '$ bash -c ... capture_rollouts linkerd linkerd-proxy-injector\n[exit 0]\n' > "$d/scale/rollout-up.txt"
   if [ "$scenario" = 30-tap-expiry ]; then
     # V's reconnect has one component (tap), whose Service and namespace are derived from
     # the live APIService rather than a fixed table, so the fixture names them directly.

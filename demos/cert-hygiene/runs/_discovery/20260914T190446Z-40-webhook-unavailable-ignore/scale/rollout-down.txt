@@ -1,5 +1,0 @@
-$ bash -c ns="$1"; shift
-    [ $# -ge 1 ] || { echo "no Deployment named"; exit 1; }
-    for d in "$@"; do kubectl -n "$ns" rollout status "deploy/$d" --timeout=300s || exit 1; done capture_rollouts linkerd linkerd-proxy-injector
-deployment "linkerd-proxy-injector" successfully rolled out
-[exit 0]

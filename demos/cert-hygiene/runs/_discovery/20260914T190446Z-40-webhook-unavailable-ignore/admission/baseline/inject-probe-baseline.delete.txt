@@ -1,3 +1,0 @@
-$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/baseline/inject-probe-baseline.request.yaml --wait=false
-pod "inject-probe-baseline" deleted from lab namespace
-[exit 0]

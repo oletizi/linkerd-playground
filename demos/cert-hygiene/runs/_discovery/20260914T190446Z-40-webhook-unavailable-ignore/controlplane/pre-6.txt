@@ -1,7 +1,0 @@
-sampled_at_epoch=1789412956
-pod linkerd/linkerd-destination-56c77b8c78-x59vm uid=f1ab248d-0fc6-4578-a29c-599a120c4b38 start=2026-09-14T19:06:14Z phase=Running ready=True restarts=0 trust=2790f21039438c4d4d1d2629257288b2fba3809dd4c629a5e981bb8f7a49b720
-pod linkerd/linkerd-identity-68469d87df-6lqqh uid=bd8a8c6c-c767-48ac-a247-3b227e4fc368 start=2026-09-14T19:06:14Z phase=Running ready=True restarts=0 trust=2790f21039438c4d4d1d2629257288b2fba3809dd4c629a5e981bb8f7a49b720
-pod linkerd/linkerd-proxy-injector-5d44bdbbf-z7v46 uid=aee6b80b-30ce-4e24-a748-5fe8b2dac759 start=2026-09-14T19:06:14Z phase=Running ready=True restarts=0 trust=2790f21039438c4d4d1d2629257288b2fba3809dd4c629a5e981bb8f7a49b720
-deploy linkerd/linkerd-destination generation=1 observedGeneration=1 replicas=1 readyReplicas=1 template_sha256=766fab7f46eec554d3b047112a6a14a8280dea7d9dc112fdcc2636cb3a04297f
-deploy linkerd/linkerd-identity generation=1 observedGeneration=1 replicas=1 readyReplicas=1 template_sha256=d7cb48ddd7e5ea7c29ee7ae6afc0d1d3ae2078201a242ffd6a16cd357f790234
-deploy linkerd/linkerd-proxy-injector generation=1 observedGeneration=1 replicas=1 readyReplicas=1 template_sha256=ad00b465ba7ac5594befbbd6dd652d066e05756a20b2af3a7d54e1401be18a61

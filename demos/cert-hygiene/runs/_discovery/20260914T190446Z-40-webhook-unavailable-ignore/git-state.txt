@@ -1,3 +1,0 @@
-demo_repo_commit=85d28f22fbccfef69621c09660ce86ff65aa85b4
-demo_repo_dirty=true
-harness_tree_sha256=6e79250c058b15f30b8dccd03386b585d30562ad55941e9295d1c0898e27394e

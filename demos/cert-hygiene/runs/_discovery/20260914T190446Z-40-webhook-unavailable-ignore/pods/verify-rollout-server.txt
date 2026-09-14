@@ -1,3 +1,0 @@
-$ kubectl -n lab rollout status deploy/server --timeout=120s
-deployment "server" successfully rolled out
-[exit 0]

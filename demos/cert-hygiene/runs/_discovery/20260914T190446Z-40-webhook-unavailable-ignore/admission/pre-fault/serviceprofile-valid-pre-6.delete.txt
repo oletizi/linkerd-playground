@@ -1,3 +1,0 @@
-$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/serviceprofile-valid-pre-6.request.yaml --wait=false
-serviceprofile.linkerd.io "serviceprofile-valid-pre-6" deleted from lab namespace
-[exit 0]

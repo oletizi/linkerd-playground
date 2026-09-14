@@ -1,3 +1,0 @@
-$ kubectl -n lab logs server-577d5dfdbd-ddd2n -c http --timestamps --previous
-Error from server (BadRequest): previous terminated container "http" in pod "server-577d5dfdbd-ddd2n" not found
-[exit 1]

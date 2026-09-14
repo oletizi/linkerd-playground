@@ -1,2 +1,0 @@
-$ kubectl -n lab logs server-577d5dfdbd-ddd2n -c http --timestamps
-[exit 0]

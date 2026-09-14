@@ -1,3 +1,0 @@
-$ kubectl create -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/baseline/serviceprofile-valid-baseline.request.yaml
-serviceprofile.linkerd.io/serviceprofile-valid-baseline created
-[exit 0]

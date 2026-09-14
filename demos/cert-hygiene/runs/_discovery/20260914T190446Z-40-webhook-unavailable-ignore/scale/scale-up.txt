@@ -1,4 +1,0 @@
-$ bash -c ns="$1"; shift
-    for pair in "$@"; do kubectl -n "$ns" scale "deploy/${pair%%=*}" --replicas="${pair#*=}" || exit 1; done scale-up linkerd linkerd-proxy-injector=1
-deployment.apps/linkerd-proxy-injector scaled
-[exit 0]

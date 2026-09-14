@@ -1,8 +1,0 @@
-apiVersion: policy.linkerd.io/v1alpha1
-kind: NetworkAuthentication
-metadata:
-  name: policy-valid-post-3
-  namespace: lab
-spec:
-  networks:
-    - cidr: 10.255.0.0/16

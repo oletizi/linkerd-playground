@@ -1,3 +1,0 @@
-$ kubectl -n lab rollout status deploy/probe-http --timeout=120s
-deployment "probe-http" successfully rolled out
-[exit 0]

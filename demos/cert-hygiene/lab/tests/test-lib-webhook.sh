@@ -25,6 +25,13 @@ assert_eq "$(webhook_service proxyInjector)" linkerd-proxy-injector "proxyInject
 assert_eq "$(webhook_service policyValidator)" linkerd-policy-validator "policyValidator's Service"
 assert_eq "$(webhook_service profileValidator)" linkerd-sp-validator "profileValidator's Service"
 assert_fails "an unknown component dies (webhook_service)" webhook_service nope
+assert_eq "$(webhook_config proxyInjector)" mutatingwebhookconfiguration/linkerd-proxy-injector-webhook-config \
+  "proxyInjector's webhook configuration"
+assert_eq "$(webhook_config policyValidator)" validatingwebhookconfiguration/linkerd-policy-validator-webhook-config \
+  "policyValidator's webhook configuration"
+assert_eq "$(webhook_config profileValidator)" validatingwebhookconfiguration/linkerd-sp-validator-webhook-config \
+  "profileValidator's webhook configuration"
+assert_fails "an unknown component dies (webhook_config)" webhook_config nope
 assert_eq "$(webhook_secret proxyInjector)" linkerd-proxy-injector-k8s-tls "the Secret is <service>-k8s-tls"
 assert_eq "$(webhook_lifetime 'proxyInjector=15m policyValidator=20m' policyValidator)" 20m \
   "webhook_lifetime picks its own component out of the spec"

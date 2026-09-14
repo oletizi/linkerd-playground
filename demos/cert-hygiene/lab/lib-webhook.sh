@@ -20,6 +20,17 @@ webhook_service() { # COMPONENT: the webhook's Service name in the linkerd names
   esac
 }
 
+webhook_config() { # COMPONENT: the webhook configuration object naming COMPONENT's webhook
+  # (the same identifiers WEBHOOK_CONFIGS, collect-state.sh, lists in WEBHOOK_COMPONENTS
+  # order; this is the name-keyed lookup so callers never pair the two arrays by index)
+  case "${1:?webhook_config: COMPONENT required}" in
+    proxyInjector) echo mutatingwebhookconfiguration/linkerd-proxy-injector-webhook-config ;;
+    policyValidator) echo validatingwebhookconfiguration/linkerd-policy-validator-webhook-config ;;
+    profileValidator) echo validatingwebhookconfiguration/linkerd-sp-validator-webhook-config ;;
+    *) die "webhook_config: unknown component '$1'" ;;
+  esac
+}
+
 webhook_secret() { # COMPONENT: the Secret holding the webhook's serving certificate
   echo "$(webhook_service "$1")-k8s-tls"
 }

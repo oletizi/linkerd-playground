@@ -1,3 +1,0 @@
-$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-valid-pre-8.request.yaml --wait=false
-networkauthentication.policy.linkerd.io "policy-valid-pre-8" deleted from lab namespace
-[exit 0]

@@ -37,22 +37,16 @@ _n_phase() { # TICK: the admission phase for a probe set taken now (mirrors W's 
 
 # _n_cert_state TICK: webhook-cert-state/TICK.txt -- N3's per-tick record of the
 # proxy-injector's serving certificate (notAfter, fingerprint, and whether it still
-# verifies against the live caBundle), reusing w_fact_line (shared with W) rather than a
-# second certificate-state mechanism. Read every tick, including during the fault: the
-# Secret and the webhook configuration are ordinary API objects, unaffected by the
-# Deployment behind the Service having no pods.
+# verifies against the live caBundle), reusing w_cert_state_line (collect-state.sh,
+# shared with W's _w_facts) rather than a second certificate-state mechanism. Read every
+# tick, including during the fault: the Secret and the webhook configuration are ordinary
+# API objects, unaffected by the Deployment behind the Service having no pods.
 _n_cert_state() {
   local tick="${1:?_n_cert_state: TICK required}"
-  local f="$RUN_DIR/webhook-cert-state/$tick.txt" tmp sfp
+  local f="$RUN_DIR/webhook-cert-state/$tick.txt" tmp
   mkdir -p "$RUN_DIR/webhook-cert-state"
   tmp="$(mktemp -d)"
-  sfp="$(cert_facts s < "$CERTS/webhooks/proxyInjector.crt" | awk -F= '$1 == "s_sha256" { print $2 }')" \
-    || die "_n_cert_state: cannot read the lab-supplied certificate $CERTS/webhooks/proxyInjector.crt"
-  kubectl -n linkerd get secret "$(webhook_secret proxyInjector)" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
-    | base64 -d > "$tmp/proxyInjector.crt" 2>/dev/null || true
-  kubectl get "${WEBHOOK_CONFIGS[0]}" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null \
-    | base64 -d > "$tmp/proxyInjector-ca.pem" 2>/dev/null || true
-  w_fact_line proxyInjector "$sfp" "$tmp/proxyInjector.crt" "$tmp/proxyInjector-ca.pem" "$(date -u +%s)" > "$f"
+  w_cert_state_line proxyInjector "$CERTS/webhooks" "$tmp" "$(date -u +%s)" > "$f"
   rm -rf "$tmp"
 }
 
@@ -80,24 +74,35 @@ scenario_post_actions() { # T_mark + 60s: admission probes instead of new worklo
   mark admission-probes post-actions
 }
 
-# _n_backing: scale/backing.txt, the proxy-injector Service's backing Deployment(s),
-# derived from its selector (w_backing_line, reused from W) rather than a hardcoded name.
-# A failed read is recorded, never fatal here; scenario_fault dies if it names none.
-_n_backing() {
-  local f="$RUN_DIR/scale/backing.txt" svc tmp derr=""
-  mkdir -p "$RUN_DIR/scale"
-  svc="$(webhook_service proxyInjector)"
-  tmp="$(mktemp -d)"
-  : > "$f"
-  _record "linkerd Deployment listing" kubectl -n linkerd get deploy -o json > "$tmp/d.json" || derr="$(cat "$tmp/d.json")"
-  if [ -n "$derr" ]; then w_backing_line proxyInjector "$svc" "$tmp/d.json" "$tmp/d.json" "$derr" >> "$f"
-  elif _record "Service $svc read" kubectl -n linkerd get svc "$svc" -o json > "$tmp/s.json"; then
-    w_backing_line proxyInjector "$svc" "$tmp/s.json" "$tmp/d.json" >> "$f"
-  else w_backing_line proxyInjector "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/s.json")" >> "$f"; fi
-  rm -rf "$tmp"
+# _n_selector DEPLOY: DEPLOY's own .spec.selector.matchLabels as a "k=v,k=v" -l value,
+# never a hardcoded label -- unlike O's fixed identity-component label, N's backing
+# Deployment is itself derived (_n_backing), so the label it waits on has to be too.
+_n_selector() {
+  local d="${1:?_n_selector: DEPLOY required}" json
+  json="$(kubectl -n linkerd get deploy "$d" -o jsonpath='{.spec.selector.matchLabels}')" \
+    || die "_n_selector: cannot read $d's selector"
+  [ -n "$json" ] || die "_n_selector: $d's selector is empty"
+  jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")' <<< "$json" \
+    || die "_n_selector: cannot parse $d's selector: $json"
 }
 
-scenario_fault() { # scale the derived Deployment(s) to zero and wait for the rollout
+# _n_wait_gone: scale/pods-gone.txt -- wait for every backing Deployment's pods to
+# actually be gone. capture_rollouts alone is not enough: `kubectl rollout status` can
+# report success while the old pod is still Running and a live, Ready endpoint (seen in
+# the first discovery run's controlplane/fault-after.txt, sampled 2s after T_mark, after
+# rollout-down.txt had already recorded [exit 0]). Without this, a probe landing in that
+# gap would record a wrong observation with nothing in the artifacts flagging it.
+_n_wait_gone() {
+  local d sels=()
+  for d in "${N_BACKING_DEPLOYS[@]}"; do sels+=("$(_n_selector "$d")"); done
+  # shellcheck disable=SC2016
+  capture scale/pods-gone.txt bash -c 'ns="$1"; shift
+    for sel in "$@"; do kubectl -n "$ns" wait --for=delete pod -l "$sel" --timeout=120s || exit 1; done' \
+    pods-gone linkerd "${sels[@]}"
+}
+
+scenario_fault() { # scale the derived Deployment(s) to zero, wait for the rollout AND
+  # for their pods to actually be gone
   local d
   snap_controlplane fault-before
   _n_backing
@@ -108,14 +113,54 @@ scenario_fault() { # scale the derived Deployment(s) to zero and wait for the ro
   for d in "${N_BACKING_DEPLOYS[@]}"; do
     N_ORIG_REPLICAS["$d"]="$(kubectl -n linkerd get deploy "$d" -o jsonpath='{.spec.replicas}')" \
       || die "scenario_fault: cannot read $d's replica count"
+    [ -n "${N_ORIG_REPLICAS[$d]}" ] || die "scenario_fault: $d's replica count is empty"
   done
   mark scale-down "${N_BACKING_DEPLOYS[*]} -> 0 replicas (was $(for d in "${N_BACKING_DEPLOYS[@]}"; do printf '%s=%s ' "$d" "${N_ORIG_REPLICAS[$d]}"; done))"
   capture scale/scale-down.txt kubectl -n linkerd scale "${N_BACKING_DEPLOYS[@]/#/deploy/}" --replicas=0
   capture_rollouts scale/rollout-down.txt linkerd "${N_BACKING_DEPLOYS[@]}"
+  _n_wait_gone
   snap_controlplane fault-after
 }
 
-scenario_recover() { # scale the same Deployment(s) back to their original replica counts
+# _n_injecting_now: yes|no -- does a server-side dry-run of the inject-probe template get
+# a linkerd-proxy container right now? Same throwaway-dry-run technique as W's
+# _w_serving_now (no object is ever created), scoped to the one webhook N's fault
+# touches.
+_n_injecting_now() {
+  local tmp rc=no
+  tmp="$(mktemp -d)"
+  admission_render inject-probe propagation-probe > "$tmp/pod.yaml"
+  if kubectl create --dry-run=server -o yaml -f "$tmp/pod.yaml" 2>&1 | grep -qE 'name: linkerd-proxy$'; then rc=yes; fi
+  rm -rf "$tmp"
+  echo "$rc"
+}
+
+# _n_settle: scale/settle.txt -- poll until the proxy-injector serves again, or
+# W_PROPAGATION_TIMEOUT_S passes. "pods Ready" and "webhook serving" are different
+# instants, the same reason W's own recovery polls _w_serving_now rather than trusting
+# the rollout wait alone; without this, the verify tick that n-restored judges could run
+# before the webhook is actually back; result=fail there is judged, never masked.
+_n_settle() {
+  local f="$RUN_DIR/scale/settle.txt" deadline s
+  deadline=$(( $(date -u +%s) + W_PROPAGATION_TIMEOUT_S ))
+  : > "$f"
+  while :; do
+    s="$(_n_injecting_now)"
+    printf '%s injecting=%s\n' "$(_utc)" "$s" >> "$f"
+    if [ "$s" = yes ]; then mark settled "proxy-injector serving again"; return 0; fi
+    if [ "$(date -u +%s)" -ge "$deadline" ]; then mark settled "not serving after ${W_PROPAGATION_TIMEOUT_S}s"; return 0; fi
+    sleep 5
+  done
+}
+
+# _n_backing: scale/backing.txt, the proxy-injector Service's backing Deployment(s)
+# (w_backing_write, collect-state.sh, shared with W's _w_backing).
+_n_backing() {
+  w_backing_write "$RUN_DIR/scale/backing.txt" proxyInjector
+}
+
+scenario_recover() { # scale the same Deployment(s) back to their original replica
+  # counts, wait for the rollout, then settle before the verify tick judges it
   local d pairs=()
   for d in "${N_BACKING_DEPLOYS[@]}"; do pairs+=("$d=${N_ORIG_REPLICAS[$d]}"); done
   mark scale-up "restoring ${pairs[*]}"
@@ -125,4 +170,5 @@ scenario_recover() { # scale the same Deployment(s) back to their original repli
     scale-up linkerd "${pairs[@]}"
   capture_rollouts scale/rollout-up.txt linkerd "${N_BACKING_DEPLOYS[@]}"
   snap_controlplane recover-scaled-up
+  _n_settle
 }

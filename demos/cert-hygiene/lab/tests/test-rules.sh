@@ -52,7 +52,7 @@ for f in backing restart rollout; do
   assert_contains "$(scenario_required_files 30-tap-expiry)" "reconnect/$f.txt" "V requires reconnect/$f.txt"
 done
 assert_contains "$(scenario_required_files 40-webhook-unavailable-ignore)" admission-restored.txt "N requires admission-restored.txt"
-for f in backing scale-down rollout-down scale-up rollout-up; do
+for f in backing scale-down rollout-down pods-gone scale-up rollout-up; do
   assert_contains "$(scenario_required_files 40-webhook-unavailable-fail)" "scale/$f.txt" "N requires scale/$f.txt"
 done
 
@@ -195,6 +195,17 @@ make_run "$T/nr" 40-webhook-unavailable-fail c2 h1 false
 printf 'result=fail\nfail: inject-probe-verify was not created with a linkerd-proxy container\n' > "$T/nr/admission-restored.txt"
 assert_fails "N without a proving restore is invalid" evaluate_validity "$T/nr" 40-webhook-unavailable-fail "$V" "$T/ctl"
 assert_contains "$(reason "$T/nr")" "reason=N: admission did not work again after the replicas were restored" "reason names the restore"
+# n-restored also checks that the fault/recovery commands themselves succeeded (a
+# control's entire content is "the fault happened"): a probe passing on both sides of a
+# scale command that actually failed would still be evidence_valid=yes without this.
+make_run "$T/npg" 40-webhook-unavailable-ignore c2 h1 false
+printf '$ bash -c ... pods-gone linkerd component=proxy-injector\nerror: timed out waiting for the condition\n[exit 1]\n' > "$T/npg/scale/pods-gone.txt"
+assert_fails "N whose pods-gone wait timed out is invalid" evaluate_validity "$T/npg" 40-webhook-unavailable-ignore "$V" "$T/ctl"
+assert_contains "$(reason "$T/npg")" "reason=N fault/recovery: scale/pods-gone.txt does not end [exit 0]" "reason names pods-gone.txt"
+make_run "$T/nsd" 40-webhook-unavailable-fail c2 h1 false
+printf '$ kubectl -n linkerd scale deploy/linkerd-proxy-injector --replicas=0\nerror: connection refused\n[exit 1]\n' > "$T/nsd/scale/scale-down.txt"
+assert_fails "N whose scale-down failed is invalid even with both probes ok" evaluate_validity "$T/nsd" 40-webhook-unavailable-fail "$V" "$T/ctl"
+assert_contains "$(reason "$T/nsd")" "reason=N fault/recovery: scale/scale-down.txt does not end [exit 0]" "reason names scale-down.txt"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"

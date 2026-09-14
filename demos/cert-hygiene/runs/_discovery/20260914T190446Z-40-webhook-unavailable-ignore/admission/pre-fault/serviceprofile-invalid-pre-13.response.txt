@@ -1,3 +1,0 @@
-$ kubectl create -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/serviceprofile-invalid-pre-13.request.yaml
-Error from server: error when creating "runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/serviceprofile-invalid-pre-13.request.yaml": admission webhook "linkerd-sp-validator.linkerd.io" denied the request: ServiceProfile "serviceprofile-invalid-pre-13" RetryBudget: time: invalid duration "not-a-duration"
-[exit 1]

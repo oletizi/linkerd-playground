@@ -1,3 +1,0 @@
-$ kubectl create -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-invalid-fault-minus60.request.yaml
-Error from server: error when creating "runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-invalid-fault-minus60.request.yaml": admission webhook "linkerd-policy-validator.linkerd.io" denied the request: data did not match any variant of untagged enum Cidr
-[exit 1]

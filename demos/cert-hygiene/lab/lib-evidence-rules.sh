@@ -48,7 +48,8 @@ scenario_required_files() {
     40-webhook-unavailable-*)
       _certs webhook-ca webhook-proxyInjector webhook-policyValidator webhook-profileValidator
       printf '%s\n' admission-baseline.txt admission-restored.txt \
-        scale/backing.txt scale/scale-down.txt scale/rollout-down.txt scale/scale-up.txt scale/rollout-up.txt ;;
+        scale/backing.txt scale/scale-down.txt scale/rollout-down.txt scale/pods-gone.txt \
+        scale/scale-up.txt scale/rollout-up.txt ;;
   esac
 }
 
@@ -119,17 +120,18 @@ _missing_proxy_logs() {
 
 _first_is() { [ "$(head -n 1 "$1" 2>/dev/null)" = "$2" ]; } # FILE LINE
 
-# _reconnect_exit_reasons RUN_DIR: one reason line per reconnect/{restart,rollout}.txt
-# that does not end "[exit 0]" -- the forced-reconnect exit check w-reconnect and
-# v-reconnect share byte for byte (only the backing.txt check that precedes it differs
-# per scenario, so that check stays in each caller). Prints nothing and is silent
-# (never fails) when both end [exit 0]; callers append each printed line to reasons,
-# the way _missing_proxy_logs's callers do.
-_reconnect_exit_reasons() {
-  local run="$1" f
-  for f in restart rollout; do
-    [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
-      || echo "forced reconnect: reconnect/$f.txt does not end [exit 0]"
+# _exit0_reasons RUN_DIR LABEL FILE...: one reason line per FILE (run-relative) that does
+# not end "[exit 0]" -- the exit-status check w-reconnect, v-reconnect and n-restored
+# share byte for byte (only the file list, and what precedes it, differs per scenario, so
+# those checks stay in each caller). Prints nothing and is silent (never fails) when every
+# FILE ends [exit 0]; callers append each printed line to reasons, the way
+# _missing_proxy_logs's callers do.
+_exit0_reasons() {
+  local run="${1:?}" label="${2:?}" f
+  shift 2
+  for f in "$@"; do
+    [ "$(tail -n 1 "$run/$f" 2>/dev/null)" = "[exit 0]" ] \
+      || echo "$label: $f does not end [exit 0]"
   done
   return 0
 }
@@ -181,7 +183,7 @@ evaluate_validity() {
           awk -v c="component=$comp" '$1 == c && $3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' \
             "$run/reconnect/backing.txt" 2>/dev/null || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment for $comp")
         done
-        while read -r f; do reasons+=("$f"); done < <(_reconnect_exit_reasons "$run") ;;
+        while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "forced reconnect" reconnect/restart.txt reconnect/rollout.txt) ;;
       k-remaining)
         _first_is "$run/k-remaining.txt" result=ok || reasons+=("K measurements are not on opposite sides of 60 days at check time") ;;
       s-hard-stage1)
@@ -194,7 +196,7 @@ evaluate_validity() {
         # run time from the live APIService, never a fixed table (Task 3b)
         awk '$3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' "$run/reconnect/backing.txt" 2>/dev/null \
           || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment")
-        while read -r f; do reasons+=("$f"); done < <(_reconnect_exit_reasons "$run") ;;
+        while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "forced reconnect" reconnect/restart.txt reconnect/rollout.txt) ;;
       control-at-tree)
         tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
         _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree") ;;
@@ -203,7 +205,9 @@ evaluate_validity() {
           || reasons+=("N: the healthy baseline did not prove every admission probe") ;;
       n-restored)
         _first_is "$run/admission-restored.txt" result=ok \
-          || reasons+=("N: admission did not work again after the replicas were restored") ;;
+          || reasons+=("N: admission did not work again after the replicas were restored")
+        while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "N fault/recovery" \
+          scale/scale-down.txt scale/rollout-down.txt scale/pods-gone.txt scale/scale-up.txt scale/rollout-up.txt) ;;
       *) die "evaluate_validity: rule '$rule' has no check" ;;
     esac
   done

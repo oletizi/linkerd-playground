@@ -108,20 +108,14 @@ _w_settle() { # LABEL: control-plane rollouts, webhook propagation, then the sta
 
 _w_facts() { # LABEL SUPPLIED_DIR: recover/LABEL-facts.txt, the inputs of w_branch_classify.
   # Cluster reads are recorded, never fatal: w_fact_line records a missing Secret
-  # certificate as "-" and one that is not a readable certificate as "unreadable".
-  local label="$1" sup="$2" f="$RUN_DIR/recover/$1-facts.txt" tmp i comp sfp now
+  # certificate as "-" and one that is not a readable certificate as "unreadable". Each
+  # component's line is w_cert_state_line (collect-state.sh), shared with N.
+  local label="$1" sup="$2" f="$RUN_DIR/recover/$1-facts.txt" tmp comp now
   tmp="$(mktemp -d)"
   now="$(date -u +%s)"
   : > "$f"
-  for i in "${!WEBHOOK_COMPONENTS[@]}"; do
-    comp="${WEBHOOK_COMPONENTS[i]}"
-    sfp="$(cert_facts s < "$sup/$comp.crt" | awk -F= '$1 == "s_sha256" { print $2 }')" \
-      || die "_w_facts: cannot read the lab-supplied certificate $sup/$comp.crt"
-    kubectl -n linkerd get secret "$(webhook_secret "$comp")" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
-      | base64 -d > "$tmp/$comp.crt" 2>/dev/null || true
-    kubectl get "${WEBHOOK_CONFIGS[i]}" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null \
-      | base64 -d > "$tmp/$comp-ca.pem" 2>/dev/null || true
-    w_fact_line "$comp" "$sfp" "$tmp/$comp.crt" "$tmp/$comp-ca.pem" "$now" >> "$f"
+  for comp in "${WEBHOOK_COMPONENTS[@]}"; do
+    w_cert_state_line "$comp" "$sup" "$tmp" "$now" >> "$f"
   done
   rm -rf "$tmp"
   admission_probes recovered "recover-$label"
@@ -133,21 +127,9 @@ _w_facts() { # LABEL SUPPLIED_DIR: recover/LABEL-facts.txt, the inputs of w_bran
   fi
 }
 
-_w_backing() { # reconnect/backing.txt: each webhook Service's backing Deployment(s), derived
-  # now from its selector (w_backing_line); a failed read is recorded, never fatal
-  local f="$RUN_DIR/reconnect/backing.txt" tmp comp svc derr=""
-  tmp="$(mktemp -d)"
-  mkdir -p "$RUN_DIR/reconnect"
-  : > "$f"
-  _record "linkerd Deployment listing" kubectl -n linkerd get deploy -o json > "$tmp/d.json" || derr="$(cat "$tmp/d.json")"
-  for comp in "${WEBHOOK_COMPONENTS[@]}"; do
-    svc="$(webhook_service "$comp")"
-    if [ -n "$derr" ]; then w_backing_line "$comp" "$svc" "$tmp/d.json" "$tmp/d.json" "$derr" >> "$f"
-    elif _record "Service $svc read" kubectl -n linkerd get svc "$svc" -o json > "$tmp/s.json"; then
-      w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" >> "$f"
-    else w_backing_line "$comp" "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/s.json")" >> "$f"; fi
-  done
-  rm -rf "$tmp"
+_w_backing() { # reconnect/backing.txt: each webhook Service's backing Deployment(s)
+  # (w_backing_write, collect-state.sh, shared with N)
+  w_backing_write "$RUN_DIR/reconnect/backing.txt" "${WEBHOOK_COMPONENTS[@]}"
 }
 
 _w_reconnect() { # the forced-reconnect phase (design section 3): restart each Deployment behind
