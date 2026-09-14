@@ -20,7 +20,7 @@ V=edge-26.9.1
 reason() { cat "$1/validity.txt"; }
 
 # ---- the table itself ----
-assert_eq "${#LAB_SCENARIOS[@]}" 9 "nine scenarios"
+assert_eq "${#LAB_SCENARIOS[@]}" 10 "ten scenarios"
 assert_fails "unknown scenario dies (rules)" scenario_rules 99-nope
 assert_fails "unknown scenario dies (plan)" credential_plan_for 99-nope
 assert_fails "unknown scenario dies (files)" scenario_required_files 99-nope
@@ -33,6 +33,7 @@ assert_eq "$(scenario_rules 20-check-threshold | paste -sd' ' -)" "k-remaining" 
 assert_eq "$(scenario_rules 06-anchor-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "A rules"
 assert_eq "$(scenario_rules 07-anchor-rotation-staged | paste -sd' ' -)" "control-at-tree" "S-staged rules"
 assert_eq "$(scenario_rules 08-anchor-rotation-hard | paste -sd' ' -)" "s-hard-stage1 control-at-tree" "S-hard rules"
+assert_eq "$(scenario_rules 30-tap-expiry | paste -sd' ' -)" "v-baseline control-at-tree" "V rules"
 assert_eq "$(credential_plan_for 07-anchor-rotation-staged | grep '^plan')" "plan A/I1 A+B/I1 A+B/I2 B/I2" "S-staged plan"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^plan')" "plan A/I1/W1 A/I1/W2" "W: the webhook certificates change once across ticks"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^components')" "components trust issuer webhooks" "W components"
@@ -40,7 +41,9 @@ assert_eq "$(credential_plan_for 09-identity-outage | grep '^plan')" "plan A/I1"
 assert_eq "$(credential_plan_for 06-anchor-expiry | grep '^plan')" "plan A/I1 B/I2" "A plan"
 assert_eq "$(credential_plan_for 08-anchor-rotation-hard | grep '^plan')" "plan A/I1 B/I2" "S-hard plan"
 assert_eq "$(credential_plan_for 20-check-threshold | grep '^plan')" "plan A/I1 A/I2" "K plan"
+assert_eq "$(credential_plan_for 30-tap-expiry | grep '^plan')" "plan A/I1" "V: one state; the tap cert is not part of the credential plan"
 assert_contains "$(scenario_required_files 20-check-threshold)" certs/issuer-plus.pem "K requires the +10m issuer"
+assert_contains "$(scenario_required_files 30-tap-expiry)" tap-baseline.txt "V requires tap-baseline.txt"
 
 # ---- every scenario: a complete fixture is valid ----
 make_run "$T/ctl/r1" 00-baseline-control c1 h1 false
@@ -184,6 +187,16 @@ make_run "$T/sh" 08-anchor-rotation-hard c2 h1 false
 printf 'result=timeout\n' > "$T/sh/s-hard/stage1-condition.txt"
 assert_fails "S-hard whose stage 1 timed out is invalid" evaluate_validity "$T/sh" 08-anchor-rotation-hard "$V" "$T/ctl"
 assert_contains "$(reason "$T/sh")" "reason=S-hard stage 1 did not reach its per-endpoint condition" "reason names stage 1"
+# v-baseline: a run where tap never worked while its certificate was valid is not
+# evidence about tap breaking, whether tap-baseline.txt says so or is simply missing.
+make_run "$T/vfail" 30-tap-expiry c2 h1 false
+printf 'result=fail\nfail: no tap events observed before expiry\n' > "$T/vfail/tap-baseline.txt"
+assert_fails "V without a proven tap baseline is invalid" evaluate_validity "$T/vfail" 30-tap-expiry "$V" "$T/ctl"
+assert_contains "$(reason "$T/vfail")" "reason=tap was never proved working while its certificate was valid" "reason names the tap baseline"
+make_run "$T/vmiss" 30-tap-expiry c2 h1 false
+rm "$T/vmiss/tap-baseline.txt"
+assert_fails "V without tap-baseline.txt at all is invalid" evaluate_validity "$T/vmiss" 30-tap-expiry "$V" "$T/ctl"
+assert_contains "$(reason "$T/vmiss")" "reason=missing tap-baseline.txt" "reason names the missing file"
 
 # ---- credential_plan_check ----
 state() { printf 'trust_roots_sha256=%s\nissuer_sha256=%s\n' "$2" "$3" > "$1"; }

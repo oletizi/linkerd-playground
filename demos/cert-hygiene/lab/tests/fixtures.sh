@@ -26,6 +26,7 @@ make_run() {
   printf 'result=ok\n' > "$d/control-criteria.txt"
   printf 'result=ok\n' > "$d/admission-baseline.txt"
   printf 'result=ok\n' > "$d/k-remaining.txt"
+  printf 'result=ok\nok: tap events observed while the certificate was valid\n' > "$d/tap-baseline.txt"
   mkdir -p "$d/s-hard" "$d/recover" "$d/reconnect"
   printf 'result=met\n' > "$d/s-hard/stage1-condition.txt"
   printf 'component=%s service=%s deployment=%s\n' proxyInjector linkerd-proxy-injector linkerd-proxy-injector \

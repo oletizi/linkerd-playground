@@ -117,23 +117,60 @@ snap_webhooks() { # NAME: webhook configurations and serving certificates -> web
   rm -f "$tmp"
 }
 
-snap_controlplane() { # NAME: linkerd pods (UID, start, readiness) and Deployments -> controlplane/NAME.txt
-  local f="$RUN_DIR/controlplane/$1.txt" tmp d
-  mkdir -p "$RUN_DIR/controlplane"
+# _snap_namespace_state NAMESPACE FILE: NAMESPACE's pods (UID, start, readiness) and each
+# Deployment's generation and pod-template hash. The shared body of snap_controlplane and
+# snap_viz (design section 1.4): both read the same shape, so a reader who knows one
+# knows the other.
+_snap_namespace_state() {
+  local ns="${1:?_snap_namespace_state: NAMESPACE required}" f="${2:?_snap_namespace_state: FILE required}" tmp d
   tmp="$(mktemp)"
   {
     printf 'sampled_at_epoch=%s\n' "$(date -u +%s)"
-    if _record "linkerd pod listing" kubectl -n linkerd get pods -o json > "$tmp"; then
-      jq -r '.items[] | "pod linkerd/\(.metadata.name) uid=\(.metadata.uid) start=\(.status.startTime // "-") phase=\(.status.phase) ready=\(([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "-") restarts=\([.status.containerStatuses[]?.restartCount] | add // 0) trust=\(.metadata.annotations["linkerd.io/trust-root-sha256"] // "-")"' "$tmp"
+    if _record "$ns pod listing" kubectl -n "$ns" get pods -o json > "$tmp"; then
+      jq -r --arg ns "$ns" '.items[] | "pod \($ns)/\(.metadata.name) uid=\(.metadata.uid) start=\(.status.startTime // "-") phase=\(.status.phase) ready=\(([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "-") restarts=\([.status.containerStatuses[]?.restartCount] | add // 0) trust=\(.metadata.annotations["linkerd.io/trust-root-sha256"] // "-")"' "$tmp"
     else
       cat "$tmp"
     fi
-    if _record "linkerd deployment listing" kubectl -n linkerd get deploy -o json > "$tmp"; then
+    if _record "$ns deployment listing" kubectl -n "$ns" get deploy -o json > "$tmp"; then
       for d in $(jq -r '.items[].metadata.name' "$tmp"); do
-        jq -r --arg n "$d" '.items[] | select(.metadata.name == $n) | "deploy linkerd/\(.metadata.name) generation=\(.metadata.generation) observedGeneration=\(.status.observedGeneration // "-") replicas=\(.spec.replicas) readyReplicas=\(.status.readyReplicas // 0)"' "$tmp" \
+        jq -r --arg n "$d" --arg ns "$ns" '.items[] | select(.metadata.name == $n) | "deploy \($ns)/\(.metadata.name) generation=\(.metadata.generation) observedGeneration=\(.status.observedGeneration // "-") replicas=\(.spec.replicas) readyReplicas=\(.status.readyReplicas // 0)"' "$tmp" \
           | tr -d '\n'
         printf ' template_sha256=%s\n' "$(jq -S -c --arg n "$d" '.items[] | select(.metadata.name == $n) | .spec.template' "$tmp" | sha256sum | cut -d' ' -f1)"
       done
+    else
+      cat "$tmp"
+    fi
+  } > "$f"
+  rm -f "$tmp"
+}
+
+snap_controlplane() { # NAME: linkerd pods (UID, start, readiness) and Deployments -> controlplane/NAME.txt
+  mkdir -p "$RUN_DIR/controlplane"
+  _snap_namespace_state linkerd "$RUN_DIR/controlplane/$1.txt"
+}
+
+# snap_viz NAME: linkerd-viz pods (UID, start, readiness) and Deployments, for V only
+# (design section 1.4) -> viz/NAME.txt. Same shape as snap_controlplane.
+snap_viz() {
+  mkdir -p "$RUN_DIR/viz"
+  _snap_namespace_state linkerd-viz "$RUN_DIR/viz/$1.txt"
+}
+
+# snap_apiservices NAME: v1alpha1.tap.linkerd.io's Available condition (status, reason,
+# message), its caBundle's SHA-256, and its backing Service, for V only (design section
+# 1.4) -> apiservices/NAME.txt. Field names follow discover-tap.sh (Task 1 discovery),
+# which reads apiservice_available the same way.
+snap_apiservices() {
+  local f="$RUN_DIR/apiservices/$1.txt" tmp
+  mkdir -p "$RUN_DIR/apiservices"
+  tmp="$(mktemp)"
+  {
+    printf 'sampled_at_epoch=%s\n' "$(date -u +%s)"
+    if _record "v1alpha1.tap.linkerd.io read" kubectl get apiservice v1alpha1.tap.linkerd.io -o json > "$tmp"; then
+      jq -r '(([.status.conditions[]? | select(.type == "Available")] | first) // {}) as $c
+        | "apiservice_available_status=\($c.status // "-")\napiservice_available_reason=\($c.reason // "-")\napiservice_available_message=\($c.message // "-")\napiservice_backing_service=\(.spec.service.name // "<none>").\(.spec.service.namespace // "<none>").svc"' "$tmp"
+      printf 'apiservice_cabundle_sha256=%s\n' \
+        "$(jq -r '.spec.caBundle // empty' "$tmp" | base64 -d 2>/dev/null | sha256sum | cut -d' ' -f1)"
     else
       cat "$tmp"
     fi

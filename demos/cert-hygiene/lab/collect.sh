@@ -103,6 +103,10 @@ tick() { # NAME: the seven files every tick must have (see evaluate_validity)
   snap_trust "$name"
   snap_webhooks "$name"
   snap_controlplane "$name"
+  if [ -n "${TAP_CERT_LIFETIME:-}" ]; then   # Viz is installed only when the profile sets this
+    snap_apiservices "$name"
+    snap_viz "$name"
+  fi
   wait
   if declare -F scenario_tick_extra > /dev/null; then scenario_tick_extra "$name"; fi
 }

@@ -6,7 +6,8 @@
 # Used by test-rules.sh and later tasks, not by this file itself.
 # shellcheck disable=SC2034
 LAB_SCENARIOS=(00-baseline-control 05-issuer-expiry 02-webhook-expiry-ignore 02-webhook-expiry-fail
-  09-identity-outage 20-check-threshold 06-anchor-expiry 07-anchor-rotation-staged 08-anchor-rotation-hard)
+  09-identity-outage 20-check-threshold 06-anchor-expiry 07-anchor-rotation-staged 08-anchor-rotation-hard
+  30-tap-expiry)
 
 # scenario_rules SCENARIO: the rule ids that apply beyond the common rules and the plan.
 scenario_rules() {
@@ -17,6 +18,7 @@ scenario_rules() {
     09-identity-outage|07-anchor-rotation-staged) echo control-at-tree ;;
     20-check-threshold) echo k-remaining ;;
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
+    30-tap-expiry) printf '%s\n' v-baseline control-at-tree ;;
     *) die "scenario_rules: unknown scenario '$1'" ;;
   esac
 }
@@ -41,6 +43,7 @@ scenario_required_files() {
     06-anchor-expiry) _certs trust-anchor-new issuer-replacement; echo recover/linkerd-upgrade.txt ;;
     07-anchor-rotation-staged) _certs trust-anchor-new trust-bundle issuer-new ;;
     08-anchor-rotation-hard) _certs trust-anchor-new issuer-new; echo s-hard/stage1-condition.txt ;;
+    30-tap-expiry) echo tap-baseline.txt ;;
   esac
 }
 
@@ -50,7 +53,7 @@ credential_plan_for() {
   scenario_rules "$s" > /dev/null
   case "$s" in
     02-webhook-expiry-*) printf 'components trust issuer webhooks\nplan A/I1/W1 A/I1/W2\n' ;;
-    00-baseline-control|09-identity-outage) printf 'components trust issuer\nplan A/I1\n' ;;
+    00-baseline-control|09-identity-outage|30-tap-expiry) printf 'components trust issuer\nplan A/I1\n' ;;
     05-issuer-expiry|20-check-threshold) printf 'components trust issuer\nplan A/I1 A/I2\n' ;;
     06-anchor-expiry|08-anchor-rotation-hard) printf 'components trust issuer\nplan A/I1 B/I2\n' ;;
     07-anchor-rotation-staged) printf 'components trust issuer\nplan A/I1 A+B/I1 A+B/I2 B/I2\n' ;;
@@ -166,6 +169,9 @@ evaluate_validity() {
       s-hard-stage1)
         _first_is "$run/s-hard/stage1-condition.txt" result=met \
           || reasons+=("S-hard stage 1 did not reach its per-endpoint condition before its timeout") ;;
+      v-baseline)
+        _first_is "$run/tap-baseline.txt" result=ok \
+          || reasons+=("tap was never proved working while its certificate was valid: tap-baseline.txt") ;;
       control-at-tree)
         tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
         _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree") ;;
