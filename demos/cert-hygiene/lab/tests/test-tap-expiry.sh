@@ -32,6 +32,16 @@ TAP_SCENARIO="$DEMO/scenarios/30-tap-expiry.sh"
 # shellcheck disable=SC2016   # the single-quoted pattern is meant literally, for grep -F
 grep -vF '. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lab" && pwd)/scenario-common.sh"' "$TAP_SCENARIO" \
   | grep -v '^run_scenario ' > "$T/tap-functions.sh"
+# Each grep -v above matches exactly one line today. If either ever stops matching -- the
+# launcher line is reworded, or 30-tap-expiry.sh grows a second "run_scenario " call --
+# this file would silently source a copy that still ends in a live run_scenario
+# invocation: a real, timed cluster reset from a unit test. Guard it explicitly rather
+# than trust that arithmetic silently: refuse to source anything but a copy exactly two
+# lines shorter than the original.
+orig_lines="$(wc -l < "$TAP_SCENARIO")"
+stripped_lines="$(wc -l < "$T/tap-functions.sh")"
+[ "$stripped_lines" -eq "$(( orig_lines - 2 ))" ] || die \
+  "30-tap-expiry.sh stripped to $stripped_lines lines from $orig_lines original (expected exactly 2 fewer); the source-line or run_scenario filter no longer matches what it should -- refusing to source a copy that might still invoke run_scenario for real"
 # shellcheck source=/dev/null
 . "$T/tap-functions.sh"
 
@@ -51,6 +61,25 @@ assert_eq "$(_v_tap_events "$T/cut.txt")" 1 "a stream timeout(1) cut mid-object:
 tapfile "$T/one.txt" '{"id":1}'
 assert_eq "$(_v_tap_events "$T/one.txt")" 1 "one complete JSON object: counted 1"
 assert_eq "$(_v_tap_events "$T/no-such-file.txt" 2>/dev/null)" 0 "a missing tap capture: 0, never fatal"
+
+# head -n -1's strip is otherwise untested: jq already discards "[exit N]" on its own
+# (it is not valid JSON, and jq streams out every complete value it finds before erroring
+# on it), so every assertion above passes identically with head -n -1 deleted -- proved
+# by mutation while writing this fixture, then removed again. A real capture() (collect.sh)
+# never inserts a newline of its own between a command's raw output and the footer it
+# appends; if the command's last byte is not itself a newline -- plausible when timeout(1)
+# kills `linkerd viz tap` mid-stream -- the footer lands on the SAME physical line as
+# whatever came before it. tapfile() above always inserts a newline after every body
+# argument, so it cannot reproduce that; built directly here instead, with the final body
+# event glued straight onto "[exit 0]" with no separating newline.
+{
+  printf '$ timeout 10s linkerd viz tap deploy/server -n cert-hygiene -o json\n'
+  printf '%s\n' '{"id":1}' '{"id":2}'
+  printf '%s' '{"id":3}'
+  printf '[exit 0]\n'
+} > "$T/glued.txt"
+assert_eq "$(_v_tap_events "$T/glued.txt")" 2 \
+  "a complete final event glued to the [exit N] footer (no newline before it) is dropped along with it by head -n -1; only the two cleanly newline-terminated events before it count"
 
 # ---- _v_backing / _v_backing_namespace: the namespace= field (slice 3 Task 1 item 3) ----
 mkdir -p "$T/bin"

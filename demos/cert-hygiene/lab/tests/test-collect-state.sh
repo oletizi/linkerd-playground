@@ -24,9 +24,12 @@ mkdir -p "$T/bin"
 cat > "$T/bin/kubectl" <<'EOF'
 #!/bin/sh
 # Stub: only "kubectl get apiservice v1alpha1.tap.linkerd.io -o json", the one call
-# snap_apiservices makes. STUB_GET selects success/failure; STUB_JSON is the fixture body.
-case "$1 $2" in
-  "get apiservice")
+# snap_apiservices makes. Matched against the full argument list, not just "$1 $2", so a
+# regression that changed the APIService name in snap_apiservices (or dropped -o json)
+# would fail this stub instead of being silently accepted. STUB_GET selects
+# success/failure; STUB_JSON is the fixture body.
+case "$*" in
+  "get apiservice v1alpha1.tap.linkerd.io -o json")
     if [ "$STUB_GET" = ok ]; then cat "$STUB_JSON"
     else echo 'apiservices.apiregistration.k8s.io "v1alpha1.tap.linkerd.io" not found' >&2; exit 1
     fi

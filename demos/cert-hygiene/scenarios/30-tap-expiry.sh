@@ -64,7 +64,18 @@ _v_backing() {
   else
     line="$(w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json")"
   fi
-  printf '%s namespace=%s\n' "$line" "${ns:--}" > "$f"
+  # namespace= is inserted right after the fixed component/service/deployment prefix,
+  # never appended after the line as a whole: w_backing_line's optional trailing
+  # "error=<free text>" holds exactly that -- free text -- and a reader scanning fields
+  # left to right for the first one matching "^namespace=" (_v_backing_namespace, below)
+  # could otherwise be fooled by an error message that happens to contain such a token
+  # (slice 4 review finding: this field used to be appended after error=, positionally
+  # unsafe). component=, service= and deployment=<value> are each a single token with no
+  # embedded spaces, so splitting the line on its first three fields and reinserting
+  # namespace= before whatever (if anything) follows is exact, never a guess at where
+  # the free text starts.
+  awk -v ns="${ns:--}" '{ rest = $0; sub(/^[^ ]+ [^ ]+ [^ ]+/, "", rest)
+    print $1, $2, $3, "namespace=" ns rest }' <<< "$line" > "$f"
   rm -rf "$tmp"
 }
 
@@ -79,17 +90,19 @@ _v_reconnect() { # the forced-reconnect phase (design section 8, added by Task 3
   # the Deployment behind the tap Service once, so the API server must open a new connection
   # to it, then probe. No lab workload is restarted and no credential changes: the new pod
   # still mounts the expired tap certificate. The namespace comes back from
-  # reconnect/backing.txt (_v_backing derived it once, from the live APIService); it falls
-  # back to linkerd-viz -- tap's namespace whenever it exists at all -- only when backing.txt
-  # names none, which happens only when the Deployment listing below is empty too and the
-  # restart is skipped regardless.
+  # reconnect/backing.txt (_v_backing derived it once, from the live APIService) and is
+  # passed straight through, "-" sentinel and all -- never a hardcoded fallback (slice 4
+  # review finding: a fallback here would carry the exact hardcoded namespace this task
+  # existed to remove, for a reader to copy, even though the path is unreachable: "-" is
+  # written only when the APIService read itself failed, which leaves ds empty too, and
+  # both the restart and capture_rollouts below already skip on an empty ds regardless of
+  # what ns holds).
   local ds=() ns
   snap_viz reconnect-before
   _v_backing
   mark reconnect-backing "$(cat "$RUN_DIR/reconnect/backing.txt")"
   mapfile -t ds < <(w_backing_deployments "$RUN_DIR/reconnect/backing.txt")
   ns="$(_v_backing_namespace "$RUN_DIR/reconnect/backing.txt")"
-  [ -n "$ns" ] && [ "$ns" != - ] || ns=linkerd-viz
   mark reconnect-restart "kubectl rollout restart: ${ds[*]:-no backing Deployment}"
   if [ "${#ds[@]}" -gt 0 ]; then
     capture reconnect/restart.txt kubectl -n "$ns" rollout restart "${ds[@]/#/deploy/}"
