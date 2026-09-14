@@ -13,9 +13,10 @@ Every statement says where it comes from:
 - **Identity issuer expiry**, run three times — a first run, then two repeats with fuller recording, which is where most of what follows comes from: a 15-minute issuer, 5-minute workload certificates, a 30-day trust anchor.
 - **Webhook serving certificates**, run twice, once for each of the two failure policies: three webhook certificates expiring 10 minutes apart (15, 25 and 35 minutes), with a long-lived anchor and issuer that never expired.
 - **An identity-service outage**: the identity service taken down for 15 minutes, with 5-minute workload certificates and a long-lived anchor and issuer.
-- **The `linkerd check` warning threshold**: two issuers, one 10 minutes short of 60 days and one 10 minutes past it.
+- **The `linkerd check` warning threshold**, run ten times: first a pair of issuers 10 minutes either side of 60 days, then a bisect of eight more issuers with lifetimes between 54 minutes and 12 hours past 60 days, to find where the warning actually starts.
 - **Trust-anchor expiry**: a 20-minute anchor, a 2-hour issuer that outlived it, and 5-minute workload certificates.
 - **Trust-anchor rotation**, run twice: once by Linkerd's staged procedure and once as a one-step replacement, both with long-lived anchors and issuers and 5-minute workload certificates.
+- **Viz tap API certificate expiry**: a 15-minute serving certificate for the tap API server, with a long-lived anchor and issuer and Linkerd's own webhook certificates untouched, followed by a forced restart of the tap pod.
 
 Linkerd's default for workload certificates is 24 hours. Each experiment that breaks something is compared against a run of the same lab on long-lived certificates, in which nothing expired and nothing failed, so the failures below come from the expiry and not from the test setup or from the restarts themselves. That comparison run follows its own sequence of steps, not a step-for-step copy of each experiment's. The `linkerd check` warning experiment has no such comparison run and needs none: it breaks nothing, and only reads what the tool prints for certificates of known remaining life. Where a timing below says "seconds" or "minutes", expect the same shape stretched over hours with default settings. One or two runs of a thing is one or two runs: these are the behaviours we recorded, not laws.
 
@@ -33,19 +34,14 @@ Linkerd's default for workload certificates is 24 hours. Each experiment that br
 6. **If the identity service is unreachable for longer than a workload certificate has left, that workload's traffic fails** — and the proxy does not recover by itself when the service comes back. Only a restart got it a new certificate.
 7. **An expired trust anchor is silent until each proxy's current certificate runs out.** In our lab that was about four minutes after the anchor expired, and every proxy failed at almost the same moment rather than one by one.
 8. **Rotating a trust anchor in Linkerd's staged way caused no failed fresh connections; replacing it in one step broke the mesh.** (Connections already open still dropped each time the pod at their far end was restarted, as they do for any rollout.) After a one-step replacement, proxies that hadn't been restarted could no longer reach the identity service at all, kept their existing certificates until those expired, and then failed.
-9. **`linkerd check`'s 60-day issuer warning is not a precise 60-day line.** It fired for an issuer with 15 minutes left, for one about 10 minutes short of 60 days, and also for one with about nine minutes *more* than 60 days of life left.
-
-### What Linkerd's code says, not yet tested
-
-10. **`linkerd viz tap` is served through a Kubernetes aggregated API with its own certificate,** and nothing checks the viz tap-injector's certificate. Our inference: when the tap API's certificate expires, that API goes unavailable and tap stops working. We have not run this experiment.
+9. **`linkerd check`'s 60-day issuer warning starts before the 60-day mark, not at it.** It fired for an issuer with 15 minutes left, for one about 10 minutes short of 60 days — and, in the bisect, for one with 58 minutes 58 seconds *more* than 60 days of validity remaining. It first cleared to `√` at 1 hour 4 minutes 3 seconds more. So the row is already warning while a certificate still has about 60 days and an hour left: it appears roughly an hour of calendar time *before* the 60-day mark arrives, and is certainly firing by the time it does.
+10. **An expired tap API certificate is loud in `linkerd viz check` and silent everywhere else — for a while.** `linkerd viz check` went fatal on `tap API server has valid cert` at the first observation after the expiry, 10 seconds later, and never changed again. But the tap APIService stayed `Available=True` and `linkerd viz tap` kept streaming live events for 29½ minutes afterwards, through 59 consecutive observations, until we restarted the tap pod and the API server had to open a new connection — four seconds after which tap returned a `503`. Mesh traffic was untouched throughout.
 
 ---
 
 ## Triage table
 
-Two tables: what we reproduced, and what Linkerd's code predicts but we haven't tested. Each row links to its details.
-
-### Reproduced in the lab
+Every row here has been reproduced in the lab. Each links to its details.
 
 | What you're seeing | What to suspect | Why | Details |
 | --- | --- | --- | --- |
@@ -57,12 +53,7 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 | Linkerd policy or ServiceProfile resources apply without complaint but aren't validated — or, on a cluster configured to fail closed, are refused with an x509 error. | Policy-validator or ServiceProfile-validator webhook certificate expired | Same fail-open default. In our lab the policy validator started failing at its own expiry, while the ServiceProfile validator kept validating until the API server had to reconnect. | [Validation skipped](#policy-and-serviceprofile-resources-arent-validated) |
 | The identity service has been down for a while, and meshed traffic starts failing — first as connection resets, and new pods never become ready. | Proxies' certificates ran out while they couldn't renew | A proxy that can't reach the identity service keeps its current certificate until it expires, and does not renew by itself afterwards. | [Identity outage](#a-proxy-cant-renew-during-an-identity-service-outage) |
 | Traffic was fine, then starts failing a few minutes later although nothing changed. The identity service is up but refuses every certificate request, and new pods never become ready. | Trust anchor expired | Proxies don't check the anchor's own date; the identity service does. Failures appear when each proxy's current certificate runs out. | [Trust anchor](#trust-anchor-expired) |
-
-### Expected from Linkerd's code, not yet tested
-
-| What you'd see | What to suspect | Why (from the code) | Details |
-| --- | --- | --- | --- |
-| `linkerd viz tap` and other viz features stop working. | Viz tap API certificate expired | Tap is served through a Kubernetes aggregated API with its own certificate. What an expired one does is our inference. | [Tap and viz](#tap-and-other-viz-features-stopped-working) |
+| `linkerd viz check` is fatal on `tap API server has valid cert`, and every `linkerd-viz` row that used to follow it is missing from the output. `linkerd viz tap` may still be streaming events — or may be answering `HTTP error, status Code [503] … service unavailable`, with no mention of a certificate. | Viz tap API server's certificate expired | The check reads the certificate, so it goes fatal at the expiry and truncates the section there. Tap itself is served through a Kubernetes aggregated API, and in our lab it kept working until the API server had to open a new connection to the tap pod. | [Tap and viz](#tap-and-other-viz-features-stopped-working) |
 
 ---
 
@@ -117,7 +108,7 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 - **Seen in the lab, with an important qualification: it didn't start when the certificate expired. It started when the API server had to open a new connection.** With the proxy-injector's serving certificate expired, every pod we created still came out fully injected — for about 29.6 minutes past the expiry, right up to the moment we restarted the webhook's backing pods. From the first attempt after that restart, pods were created with no `linkerd-proxy` container at all and no error reported, exactly as the fail-open setting predicts.
 - On a cluster configured to fail closed, the same restart turned pod creation into an outright rejection: `failed calling webhook "linkerd-proxy-injector.linkerd.io" … x509: certificate has expired or is not yet valid`, and the pod was never created. Before that restart, pods were still being injected normally.
 - *From Linkerd's code:* Linkerd's Helm chart gives the proxy-injector webhook `failurePolicy: Ignore` by default. Kubernetes documents that with `Ignore`, an error calling the webhook, a TLS error included, is ignored and the request proceeds.
-- **Our inference** for the delay: the API server kept using a connection it had opened before the certificate expired, and only validates the certificate when it opens a new one. The cluster's own logs show no failed call to this webhook until seconds after the restart, which fits, but we did not instrument the API server's connection handling.
+- The delay is not specific to webhooks: we saw the same thing again with the tap API server's certificate. The explanation, and what it means for triage, is in [Expired serving certificates keep working until something reconnects](#expired-serving-certificates-keep-working-until-something-reconnects).
 - `linkerd check` did flag it at the moment of expiry, without waiting for any reconnect: `× proxy-injector webhook has valid cert`. It stops at the first failing row in that category, though, so the other two webhooks' rows never appeared again in the same run.
 - **Suggested wording:** "An expired webhook certificate is not necessarily a loud failure. In our testing, the proxy injector kept injecting proxies for about half an hour after its certificate expired, on a connection the API server had already opened, and only started silently skipping injection once its pods were restarted and the API server had to reconnect. Whether an expired webhook bites now or later depends on that reconnect."
 - **Caveat:** our lab supplied its own static webhook serving certificates, which is not how Linkerd normally runs — Linkerd's own controller rotates these. That matters most for recovery (see [Best practices](#best-practices-prevention-and-monitoring)). The full record is in [notes/lab-evidence-webhook-expiry.md](notes/lab-evidence-webhook-expiry.md).
@@ -164,6 +155,31 @@ Two tables: what we reproduced, and what Linkerd's code predicts but we haven't 
 
 [Back to the triage table](#triage-table)
 
+### Tap and other viz features stopped working
+
+- **Seen in the lab, once — and what broke tap was not the expiry.** With the tap API server's serving certificate expired, `linkerd viz tap` kept returning live events for 29½ minutes, through 59 consecutive observations, and the tap APIService stayed `Available=True` for every one of them. Tap broke four seconds after we restarted the tap pod and the API server had to open a new connection: from then on the CLI answered `503` and the APIService read `Available=False` with `FailedDiscoveryCheck`. That is the same pattern the webhook runs found, in a different component — see [Expired serving certificates keep working until something reconnects](#expired-serving-certificates-keep-working-until-something-reconnects).
+- **`linkerd viz check` is the exception, and the one signal that told the truth at the expiry.** It went fatal on `× tap API server has valid cert`, quoting the expiry time, at the first observation after the certificate expired — 10 seconds later, with nothing sampled in between — and its output never changed again for the rest of the run. No reconnect was needed. Plain `linkerd check` went fatal the same way, because it runs the installed extension's checks too. *From Linkerd's code:* that row inspects the certificate rather than calling the tap API, which is why reconnecting makes no difference to it.
+- **Being fatal, it also blanks the rest of the section.** `linkerd viz check` stops at that row, so the eight `linkerd-viz` rows that followed it in the healthy output — `tap API service is running`, `linkerd-viz pods are injected`, `viz extension pods are running`, `viz extension proxies are healthy`, `viz extension proxies are up-to-date`, `viz extension proxies and cli versions match`, `prometheus is installed and configured correctly`, `viz extension self-check` — never appeared again. One expired tap certificate doesn't merely report itself: it hides everything you would look at next while debugging viz.
+- **What the CLI tells you is a `503`, and it never mentions a certificate.** Every failing capture read `HTTP error, status Code [503] (unexpected API response: service unavailable)`. The x509 explanation lives in `kubectl get apiservice v1alpha1.tap.linkerd.io -o yaml`, in the `Available` condition's message, and in the API server's own log — not in tap's output.
+- **Mesh traffic was untouched.** Of 5,490 probe outcomes, 5,489 succeeded, and the one exception is the line that opens a long-lived connection rather than a failure. That held-open TCP connection survived both the expiry and the tap restart, and pods created after the expiry were still injected and became ready. An expired tap certificate is an observability outage, not a data-plane one.
+- **The 29½ minutes is a lower bound, not a measurement.** We forced the reconnect at a moment we chose, while the APIService was still `Available=True`. Nothing here says how long it would have lasted otherwise, or whether a cluster's API server would have reopened the connection sooner on its own. Don't quote it as how long tap survives.
+- **A related real-world report** has a different cause: tap stopped working after the Kubernetes API server's request-header client CA, which it uses for aggregated APIs, was rotated, until the tap pod was restarted ([linkerd2 #13196](https://github.com/linkerd/linkerd2/issues/13196)).
+- **Caveat, on everything above:** our lab supplied the tap serving certificate itself, static and never rotated, so that it could be made to expire on schedule. `linkerd viz install` normally issues and owns that certificate. This run replaced no credential and had no recovery phase, so it says nothing about how a default installation rotates it, or what recovery looks like. The full record is in [notes/lab-evidence-tap-expiry.md](notes/lab-evidence-tap-expiry.md).
+
+[Back to the triage table](#triage-table)
+
+---
+
+## Expired serving certificates keep working until something reconnects
+
+Two of these experiments ran into the same thing, in parts of Linkerd that have nothing else in common: a serving certificate expired, and everything carried on working exactly as before — until the Kubernetes API server had to open a fresh connection.
+
+- **Admission webhooks.** The proxy injector kept injecting proxies for about 29.6 minutes past its own expiry, and the ServiceProfile validator kept validating for about 9.6 minutes past its. Both failed from the first attempt after we restarted their backing pods (see [Pods without a proxy](#new-pods-run-without-a-proxy) and [Validation skipped](#policy-and-serviceprofile-resources-arent-validated)). The policy validator was the exception: its calls failed at its own expiry, and why it differed is *still open*.
+- **The tap aggregated API.** The tap APIService stayed `Available=True` and `linkerd viz tap` kept streaming live events for 29½ minutes past the tap certificate's expiry, through 59 consecutive observations, then flipped to `Available=False` four seconds after a `rollout restart` of the tap pod (see [Tap and viz](#tap-and-other-viz-features-stopped-working)).
+- **Our inference, the same in both cases:** the API server keeps using a connection it opened before the certificate expired, and only validates the certificate when it opens a new one. The cluster's own logs fit — no failed webhook call, and not one expired-certificate entry for the tap API, until seconds after the respective restarts — but we did not instrument the API server's connection handling.
+- **None of those durations is a measurement.** In every case we forced the reconnect at a moment we chose, while the component was still working. They are lower bounds on how long an expired serving certificate can stay invisible, not how long it will.
+- **What it means for triage.** "It was working an hour ago" is not evidence that a certificate is still valid, and the thing that turns an expired serving certificate into an incident is whatever restarts a pod next — an upgrade, a node drain, an eviction. When `linkerd check` or `linkerd viz check` calls a serving certificate expired, believe it even though nothing appears to be broken yet.
+
 ---
 
 ## Three failures that look alike: issuer expired, identity service down, trust anchor expired
@@ -180,23 +196,6 @@ All three leave you with a mesh where some calls fail, new pods won't start, and
 | **What `linkerd check` showed** | `× issuer cert is within its validity period` after the expiry; all issuer rows green again the moment the new issuer loaded — while fresh connections were still failing ten out of ten. | Not measured: we did not run `linkerd check` during this experiment. | `× trust anchors are within their validity period`, naming the exact expiry, and a non-zero exit; clean again after the full recovery. |
 
 **Telling them apart.** Run `linkerd check` first: it names an expired issuer and an expired anchor directly, in different rows, and quotes the date. If both rows are fine, look at the identity service itself — during an outage it has no running pods and no endpoints, and new pods' proxies log a name-resolution failure for the identity service's address rather than a certificate error. The identity service's own log separates the first two as well, but only if you read the whole line: its CA validation failure quotes the failing credential's expiry right after `current time … is after`, and then prints the *issuer's* own `Invalid before … Invalid After …` window at the end. With an expired issuer those two dates are the same. With an expired anchor the first is the anchor's date and the second is still in the future, alongside `IssuerValidationFailed` events on the identity deployment. And note which direction is failing: an expired issuer or anchor stops proxies from getting certificates *from the identity service*, while what an application sees is two proxies failing to reach *each other*. The second follows from the first, and only the first tells you which credential is at fault.
-
----
-
-## Details: expected from Linkerd's code, not yet tested
-
-This has not been reproduced. It says what the code or documentation states, what is our own inference, and what experiment would confirm it. The detail behind it is in [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md).
-
-### Tap and other viz features stopped working
-
-- **What the code says:**
-  - `linkerd viz tap` is served through a Kubernetes aggregated API with its own serving certificate.
-  - `linkerd viz check` checks that certificate. No check covers the viz tap-injector's certificate.
-- **Our inference:** when the tap API's certificate expires, Kubernetes marks that aggregated API unavailable, and tap stops working.
-- **A related real-world report** has a different cause: tap stopped working after the Kubernetes API server's request-header client CA, which it uses for aggregated APIs, was rotated, until the tap pod was restarted ([linkerd2 #13196](https://github.com/linkerd/linkerd2/issues/13196)).
-- **What would confirm it:** install viz in the lab and expire the tap API certificate.
-
-[Back to the triage table](#triage-table)
 
 ---
 
@@ -222,6 +221,7 @@ These signals were all *seen in the lab*, in roughly the order an operator runs 
 - **Expired trust anchor:** `linkerd check` reports `× trust anchors are within their validity period` and names the expiry. The identity service's log shows the same CA validation failure as for an expired issuer — but in our run the date after `current time … is after` was the anchor's, while the `Invalid After` field at the end of the same line was the issuer's own expiry, set 100 minutes later and still in the future. A future `Invalid After` does not mean the chain is healthy. `IssuerValidationFailed` events appear on the identity deployment. Traffic is still fine at that point; it fails when each workload's certificate runs out.
 - **Identity service down:** the identity deployment has no ready pods and its service has no endpoints. New pods stay `Pending` with their `linkerd-proxy` container restarting and logging that it cannot resolve `linkerd-identity-headless`. Existing traffic keeps working until certificates expire.
 - **Expired webhook certificate:** in our runs, the first webhook certificate to expire was reported as `× proxy-injector webhook has valid cert` with its expiry date, at the moment of expiry and before anything had started failing. The check stops at the first failing row in that category, so we could not see whether a second or third expired certificate is reported at its own expiry — with more than one expired, expect to be shown only the first, and inspect the others' certificates directly. On the cluster side, the API server's log records `failed calling webhook … x509: certificate has expired`, and the timing of those entries is the clue to whether it has reconnected yet.
+- **Expired tap API certificate:** `linkerd viz check` reports `× tap API server has valid cert` with the expiry date, at the first check after the expiry and with nothing else needed — and then stops, so every `linkerd-viz` row that would have followed it is simply absent from the output. Plain `linkerd check` shows the same row. Tap itself may still be working at that point, so don't read a working `linkerd viz tap` as a reason to dismiss the row; when tap does fail it says `HTTP error, status Code [503] (unexpected API response: service unavailable)` and never mentions a certificate. `kubectl get apiservice v1alpha1.tap.linkerd.io -o yaml` carries the x509 text in its `Available` condition.
 
 ---
 
@@ -286,15 +286,21 @@ Linkerd's ["Replacing expired certificates"](https://linkerd.io/docs/tasks/repla
 
 - *From Linkerd's code:* the warning threshold is 60 days, and it can't be configured.
 - *Seen in the lab:* the headline `‼ issuer cert is valid for at least 60 days` looked exactly the same for an issuer with about 15 minutes to live (in two runs) as for one about 10 minutes short of 60 days. Only the date in the detail line showed how close expiry was.
-- *Also seen in the lab, and worth knowing:* an issuer with about **nine minutes more** than 60 days of life left still got that same warning, in both checks we ran against that issuer, with and without `--proxy`. So this row is not a precise 60-day boundary, and the check wants more margin than a plain countdown would suggest. Exactly where above 60 days it clears is *still open* — our evidence run never saw it clear, and we won't quote a figure we didn't establish.
-- **So:** alert on the issuer's expiry date, or on the metric, not on whether this row is green, and don't read a warning as proof that you have less than 60 days. The measurements are in [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md).
+- *Measured in the lab:* the warning starts **before** the 60-day mark, not at it. An issuer with **58 minutes 58 seconds more** than 60 days of validity remaining still drew it, on both transcripts, with and without `--proxy`; the same check first cleared to `√` at **1 hour 4 minutes 3 seconds more**. The threshold is a quantity of remaining validity somewhere between those two figures — a 305-second bracket, about an hour's worth of validity past 60 days. So a certificate crosses it roughly an hour of calendar time before its 60-days-left moment arrives: expect the row by then, and certainly at the mark itself. Those two figures are the bracket; anything inside it would be a number we made up, and it rests on eight bisect runs on one cluster at one version.
+- *Why the check wants that extra margin is still open.* The bisect located the flip and explained nothing: every artifact is the check's own output, and nothing we recorded shows what comparison it performs. That the bracket happens to straddle the one-hour mark is worth noticing and not worth over-reading.
+- **So:** alert on the issuer's expiry date, or on the metric, not on whether this row is green, and don't read a warning as proof that you have less than 60 days left. The measurements are in [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md).
 
 #### Treat webhook certificates as first-class
 
 - Webhook serving certificates are separate credentials with their own trust chain; Linkerd's documentation is explicit that they are not part of proxy-to-proxy TLS.
-- *Seen in the lab:* an expired webhook certificate was silent for a long time. The proxy injector kept injecting for about 29.6 minutes past its own expiry and the ServiceProfile validator kept validating for about 9.6 minutes past its, both on connections the API server had already opened; the policy validator failed at its own expiry. All three failed once their pods were restarted and the API server had to reconnect. So an expired webhook certificate can sit unnoticed until the next restart of anything in that path — and then fail everywhere at once.
-- *Seen in the lab:* `linkerd check` warns about the proxy-injector, ServiceProfile-validator and policy-validator certificates at 60 days, and reports the first expired one as fatal straight away — but it stops at that row, so a second expired webhook certificate stays hidden. Nothing checks the viz tap-injector's certificate.
+- *Seen in the lab:* an expired webhook certificate was silent for a long time. The proxy injector kept injecting for about 29.6 minutes past its own expiry and the ServiceProfile validator kept validating for about 9.6 minutes past its, both on connections the API server had already opened; the policy validator failed at its own expiry. All three failed once their pods were restarted and the API server had to reconnect. So an expired webhook certificate can sit unnoticed until the next restart of anything in that path — and then fail everywhere at once. The tap API server's certificate did the same thing; the pattern is described once, in [Expired serving certificates keep working until something reconnects](#expired-serving-certificates-keep-working-until-something-reconnects).
+- *Seen in the lab:* `linkerd check` warns about the proxy-injector, ServiceProfile-validator and policy-validator certificates at 60 days, and reports the first expired one as fatal straight away — but it stops at that row, so a second expired webhook certificate stays hidden.
 - *Seen in the lab, with a caveat that matters:* recovery took more than a plain `linkerd upgrade`. In both of our runs, re-running `linkerd upgrade` re-rendered the same, still-expired certificates; the webhooks only recovered once we supplied freshly generated credentials explicitly. **That is a fact about our setup, not about default Linkerd:** our lab supplied its own static webhook serving certificates, whereas Linkerd normally rotates these itself. Treat it as a warning about externally supplied webhook credentials, not as a claim about a default installation.
+
+#### One expired tap certificate blanks the rest of `linkerd viz check`
+
+- *Seen in the lab:* `linkerd viz check` goes fatal on `tap API server has valid cert` at the first check after that certificate expires, and stops there — the eight `linkerd-viz` rows after it, from `tap API service is running` through the extension's pods and proxies, prometheus and the self-check, never appear. So the one row that tells you the truth is also the row that hides the rest of the section. Fix or replace the certificate, then re-run the check to see what else viz has to say; don't read the missing rows as healthy.
+- *Seen in the lab:* tap itself may still be answering normally at that point, for a long while (see [Tap and viz](#tap-and-other-viz-features-stopped-working)). A working `linkerd viz tap` is not a reason to dismiss the row.
 
 #### Trust-anchor rotation needs restarts
 
@@ -319,7 +325,7 @@ The timing is the trap. *Our inference, not tested:* at production certificate l
 
 ### From Linkerd's code, not yet tested
 
-- **Nothing checks the viz tap-injector's certificate,** and we have not tested what an expired tap API certificate does (see [Tap and viz](#tap-and-other-viz-features-stopped-working)).
+- **Nothing checks the viz tap-injector's certificate.** That is a different credential from the tap API server's serving certificate, which we did expire (see [Tap and viz](#tap-and-other-viz-features-stopped-working)); no check covers the injector's, and we have not tested what an expired one does.
 
 ---
 
@@ -332,10 +338,12 @@ The timing is the trap. *Our inference, not tested:* at production certificate l
 - Why traffic stayed broken after our identity-service outage even once every meshed workload had been restarted and both ends held fresh certificates. The control plane's own proxies were never restarted in that run and their logs weren't captured, so we can't attribute it.
 - Why the three webhooks behaved so differently — one failing at its own expiry, two carrying on for very different lengths of time until the API server reconnected.
 - Whether the second and third expired webhook certificates independently go fatal in `linkerd check` at their own expiry. The check stops at the first failing row in that category, so our runs couldn't see.
-- Where above 60 days the `linkerd check` issuer warning actually clears. Our evidence run showed it still warning at 60 days plus about nine minutes.
+- Why `linkerd check` demands about an hour more validity than 60 days before it clears the issuer row. We located where the row flips — between 58 m 58 s and 1 h 4 m 3 s of validity past 60 days — but every artifact is the check's own output, and nothing we recorded shows the comparison it makes. Reading that code path is what would settle it, not more runs. Where inside that 305-second window the flip actually falls is also unlocated, and we won't invent a number for it.
 - Whether recovery from an expired trust anchor needs the identity service restarted separately. The documented procedure restarted it itself, so our run couldn't isolate the question.
 - Whether trust-anchor expiry would stagger failures across a fleet whose pods were started at different times. In our lab every workload was deployed at the same moment, and they all failed together.
-- The viz/tap scenario, which we have not run at all.
+- How long the tap APIService would have stayed `Available` if we hadn't forced a reconnect, and whether a cluster's API server reopens that connection by itself. Our 29½ minutes is a lower bound: we restarted the tap pod at a moment we chose, while the APIService was still available.
+- How a default installation rotates the tap API server's certificate, and what recovery from an expired one looks like. Our run supplied that certificate itself, never replaced it, and had no recovery phase.
+- What an expired viz *tap-injector* certificate does. Nothing checks it, and we expired the tap API server's certificate, not the injector's.
 
 ---
 
@@ -345,8 +353,9 @@ The timing is the trap. *Our inference, not tested:* at production certificate l
 - [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) — two repeats of that experiment with fuller recording: which restarts are needed, how the handshake fails, and how long an open connection lasted.
 - [notes/lab-evidence-webhook-expiry.md](notes/lab-evidence-webhook-expiry.md) — three webhook certificates expiring ten minutes apart, under each failure policy, and what recovery took.
 - [notes/lab-evidence-identity-outage.md](notes/lab-evidence-identity-outage.md) — what happened while the identity service was down, and what did and didn't recover when it came back.
-- [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — what `linkerd check`'s 60-day issuer warning did just under, and just over, the boundary.
+- [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md) — where `linkerd check`'s 60-day issuer warning actually starts: the bisect that narrowed a day-wide guess to a 305-second bracket about an hour's validity past 60 days.
 - [notes/lab-evidence-anchor-expiry.md](notes/lab-evidence-anchor-expiry.md) — a trust anchor expiring: when failures appeared, and what recovery took.
 - [notes/lab-evidence-anchor-rotation.md](notes/lab-evidence-anchor-rotation.md) — rotating a trust anchor by Linkerd's staged procedure, and replacing it in one step.
+- [notes/lab-evidence-tap-expiry.md](notes/lab-evidence-tap-expiry.md) — the tap API server's certificate expiring: what kept working, for how long, and what finally broke it.
 - [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md) — the source reading behind every "from Linkerd's code" statement, with links to the exact lines of code.
 - [sources.md](sources.md) — what to cite for each claim, and which claims need careful wording.
