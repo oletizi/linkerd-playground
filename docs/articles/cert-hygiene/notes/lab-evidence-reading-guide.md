@@ -2,6 +2,21 @@
 
 How to read a run directory under `demos/cert-hygiene/runs/<scenario>/<UTC>/` when writing an evidence note. It covers runs recorded from the second round of experiments on; the section "Older runs" covers the first issuer run. The helpers named here are in `demos/cert-hygiene/scripts/` and only read files.
 
+## Where the runs live
+
+The recorded runs are not in this repository — they are tens of thousands of files, and this repository is meant to stay small enough to clone and run the demos from. What stays here is one manifest per run (`runs/<scenario>/<UTC>.manifest.txt`), listing every file with its size and SHA-256.
+
+Every path in this guide, and every citation in the evidence notes, is a path *within* a run. Resolve one with:
+
+```
+tools/evidence.sh cat   runs/06-anchor-expiry/20260912T125027Z logs/pre-recover/identity.txt
+tools/evidence.sh fetch runs/06-anchor-expiry/20260912T125027Z
+```
+
+`cat` prints one file and checks it against the manifest. `fetch` downloads the whole run in a single request, verifies every file against the manifest, and puts it where this guide says it lives — after which the `scripts/` helpers work exactly as described below.
+
+Reads go through a CDN, never Backblaze's API, which is rate-limited; see `tools/evidence-cdn/README.md`.
+
 ## Before anything else
 
 - Read `validity.txt`. A run that says `evidence_valid=no` is never evidence for a hypothesis. It can be described as a failed attempt, with its reasons. A run holding `discovery.txt` (under `runs/_discovery/`) is a discovery run and never evidence, whatever else it shows.
