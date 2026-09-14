@@ -27,8 +27,13 @@ load_profile() {
   # shellcheck source=/dev/null
   . "$f"
   set +a
+  # Both loops ask the FILE, not the environment. Profiles are sourced with `set -a`,
+  # so a value left over from an earlier load_profile call — or exported by whatever
+  # ran before this script — would satisfy a bare `[ -n "$v" ]` and let a profile that
+  # never defines the key through, silently running on someone else's lifetime.
   for v in ANCHOR_LIFETIME ISSUER_LIFETIME LEAF_LIFETIME; do
-    [ -n "${!v:-}" ] || die "$f does not set $v"
+    grep -q "^$v=" "$f" || die "$f does not set $v"
+    [ -n "${!v:-}" ] || die "$f sets $v empty; it needs a duration"
   done
   for v in WEBHOOK_CERT_LIFETIMES EXTRA_INSTALL_FLAGS TAP_CERT_LIFETIME; do
     grep -q "^$v=" "$f" || die "$f does not define $v (define it empty when unused)"
