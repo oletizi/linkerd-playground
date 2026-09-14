@@ -32,7 +32,7 @@ Across all thirty-two bisect transcripts (eight runs × two steps × `linkerd ch
 
 **The threshold lies above 60 days + 58 m 58 s and at or below 60 days + 1 h 4 m 3 s** — between 5,187,538 s and 5,187,843 s of remaining validity. The width is 5,187,843 − 5,187,538 = **305 s, 5 m 5 s**.
 
-That replaces the roughly 24-hour bracket this note carried before. The lower bound no longer comes from the first run at all: `20260914T104930Z` warns at 3,538 s over 60 days, where the first run's warn proves only 553 s. The upper bound no longer comes from the non-evidence supplementary run: `20260914T104509Z` passes at 3,843 s over 60 days, where that run proves only 88,173 s over 60 days.
+That replaces the roughly 24-hour bracket this note carried before. The lower bound no longer comes from the first run at all: `20260914T104930Z` warns at 3,538 s over 60 days, where the first run's warn proves only 553 s. The upper bound no longer comes from the non-evidence supplementary run: `20260914T104509Z` passes at 3,843 s over 60 days, where that run proves only 88,169 s over 60 days.
 
 ## Acceptance condition (design § 13)
 
@@ -62,13 +62,13 @@ One row per transcript. `config_K_PLUS_ISSUER_LIFETIME` is from each run's `vers
 | Run (2026-09-14) | Plus lifetime | Command | Started / ended (UTC) | Remaining at start | Remaining at end | Headline |
 | --- | --- | --- | --- | --- | --- | --- |
 | `20260914T101656Z` | `1452h` | `linkerd check` | 10:19:51Z / 10:19:54Z | 5,227,152 s (+11 h 59 m 12 s) | 5,227,149 s (+11 h 59 m 9 s) | `√` |
-| `20260914T101656Z` | `1452h` | `linkerd check --proxy` | 10:19:54Z / 10:19:59Z | 5,227,149 s (+11 h 59 m 9 s) | 5,227,144 s (+11 h 59 m 4 s) | `√` |
+| `20260914T101656Z` | `1452h` | `linkerd check --proxy` | 10:19:54Z / 10:19:59Z | **5,227,149 s (+11 h 59 m 9 s)** | 5,227,144 s (+11 h 59 m 4 s) | `√` |
 | `20260914T102104Z` | `1446h` | `linkerd check` | 10:24:00Z / 10:24:04Z | 5,205,568 s (+5 h 59 m 28 s) | 5,205,564 s (+5 h 59 m 24 s) | `√` |
-| `20260914T102104Z` | `1446h` | `linkerd check --proxy` | 10:24:04Z / 10:24:09Z | 5,205,564 s (+5 h 59 m 24 s) | 5,205,559 s (+5 h 59 m 19 s) | `√` |
+| `20260914T102104Z` | `1446h` | `linkerd check --proxy` | 10:24:04Z / 10:24:09Z | **5,205,564 s (+5 h 59 m 24 s)** | 5,205,559 s (+5 h 59 m 19 s) | `√` |
 | `20260914T102506Z` | `1443h5m` | `linkerd check` | 10:28:04Z / 10:28:08Z | 5,195,052 s (+3 h 4 m 12 s) | 5,195,048 s (+3 h 4 m 8 s) | `√` |
-| `20260914T102506Z` | `1443h5m` | `linkerd check --proxy` | 10:28:08Z / 10:28:13Z | 5,195,048 s (+3 h 4 m 8 s) | 5,195,043 s (+3 h 4 m 3 s) | `√` |
+| `20260914T102506Z` | `1443h5m` | `linkerd check --proxy` | 10:28:08Z / 10:28:13Z | **5,195,048 s (+3 h 4 m 8 s)** | 5,195,043 s (+3 h 4 m 3 s) | `√` |
 | `20260914T102908Z` | `1441h38m` | `linkerd check` | 10:31:54Z / 10:31:58Z | 5,189,847 s (+1 h 37 m 27 s) | 5,189,843 s (+1 h 37 m 23 s) | `√` |
-| `20260914T102908Z` | `1441h38m` | `linkerd check --proxy` | 10:31:58Z / 10:32:03Z | 5,189,843 s (+1 h 37 m 23 s) | 5,189,838 s (+1 h 37 m 18 s) | `√` |
+| `20260914T102908Z` | `1441h38m` | `linkerd check --proxy` | 10:31:58Z / 10:32:03Z | **5,189,843 s (+1 h 37 m 23 s)** | 5,189,838 s (+1 h 37 m 18 s) | `√` |
 | `20260914T103638Z` | `1440h54m` | `linkerd check` | 10:39:29Z / 10:39:33Z | 5,187,207 s (+53 m 27 s) | **5,187,203 s (+53 m 23 s)** | `‼` |
 | `20260914T103638Z` | `1440h54m` | `linkerd check --proxy` | 10:39:33Z / 10:39:38Z | 5,187,203 s (+53 m 23 s) | 5,187,198 s (+53 m 18 s) | `‼` |
 | `20260914T104117Z` | `1441h16m` | `linkerd check` | 10:44:01Z / 10:44:05Z | 5,188,538 s (+1 h 15 m 38 s) | 5,188,534 s (+1 h 15 m 34 s) | `√` |
@@ -78,7 +78,7 @@ One row per transcript. `config_K_PLUS_ISSUER_LIFETIME` is from each run's `vers
 | `20260914T104930Z` | `1440h59m35s` | `linkerd check` | 10:52:33Z / 10:52:37Z | 5,187,542 s (+59 m 2 s) | **5,187,538 s (+58 m 58 s)** | `‼` |
 | `20260914T104930Z` | `1440h59m35s` | `linkerd check --proxy` | 10:52:37Z / 10:52:43Z | 5,187,538 s (+58 m 58 s) | 5,187,532 s (+58 m 52 s) | `‼` |
 
-Bold marks the value each transcript contributes under the rule above — an end value for a `‼` row, a start value for a `√` row — in the runs that tightened the bracket. The bracket's two bounds are the bold 5,187,538 s (warn) and the bold 5,187,843 s (pass).
+Bold marks the one value each run contributes under the rule above: the `--proxy` start value in a passing run, the `check` end value in a warning run — in each case the tighter of that run's two transcripts, for the reason given at the end of "The measured bracket". All eight tightened one side when they were recorded — runs 1, 2, 3, 4, 6 and 7 each lowering the pass bound in turn, runs 5 and 8 each raising the warn bound. The two that survived to the end are the bracket: 5,187,538 s (warn, `20260914T104930Z`) and 5,187,843 s (pass, `20260914T104509Z`).
 
 The bisect walked down from a 12-hour margin: pass at +11 h 59 m, pass at +6 h, pass at +3 h 4 m, pass at +1 h 37 m, **warn** at +53 m — the first crossing — then pass at +1 h 16 m, pass at +1 h 4 m, **warn** at +59 m.
 
@@ -176,7 +176,7 @@ RA and RB `checks/baseline-check.txt` (identical headline text, different expiry
 
 `demos/cert-hygiene/runs/20-check-threshold/20260912T143709Z` was ordered by the controller with a wider margin — a 1464h30m issuer (61 days + 30 minutes), `config_K_PLUS_ISSUER_LIFETIME=1464h30m` in its `versions.txt` — set through a git-ignored local config override. Its `git-state.txt` records `demo_repo_dirty=true`, so `validity.txt` reads `evidence_valid=no`: **the harness marks any run dirty whenever that override file exists on disk, regardless of what it changed.** That override is gone: the plus lifetime is now an argument to the scenario, so the bisect runs varied it with a clean tree.
 
-For a while this was the only run in which `linkerd check` had ever been seen to pass the issuer row, and this note's upper bound depended on it. **It no longer does.** Its plus checks passed at 5,272,173 s and 5,272,169 s remaining at their starts — 24 h 29 m 33 s and 24 h 29 m 29 s past 60 days (`k-remaining.txt`: `plus check had 5272169s left at its end (> 5184000s)`) — an upper bound of 88,173 s over 60 days, 84,330 s looser than `20260914T104509Z`'s 3,843 s. Its minus rows warned at 5,183,373 s / 5,183,369 s remaining at their starts, the same `‼` headline as every other minus step. It is kept here as history; nothing above rests on it.
+For a while this was the only run in which `linkerd check` had ever been seen to pass the issuer row, and this note's upper bound depended on it. **It no longer does.** Both its plus commands passed, so the same rule applies to it as to every other run: the provable bound is the smaller of the two start values, `k/plus-check-proxy.txt`'s. From that run's `k/plus-calc.txt`, `issuer_not_after_epoch − check_proxy_started_epoch` = 1,794,496,177 − 1,789,224,008 = 5,272,169 s, i.e. 88,169 s — 24 h 29 m 29 s — over 60 days. (Its `k/plus-check.txt` started 4 s earlier and passed at 5,272,173 s, 24 h 29 m 33 s over, which is the weaker bound.) That is 84,326 s looser than `20260914T104509Z`'s 3,843 s. Its minus rows warned at 5,183,373 s / 5,183,369 s remaining at their starts, the same `‼` headline as every other minus step. It is kept here as history; nothing above rests on it.
 
 ```
 √ issuer cert is within its validity period
@@ -188,7 +188,7 @@ For a while this was the only run in which `linkerd check` had ever been seen to
 ## What this means for the article
 
 - **K is reproduced, in both directions.** Design § 13's K row — both measured remaining-validity values and both command transcripts on opposite sides of the boundary — is met in six of the eight bisect runs, all `evidence_valid=yes` at one frozen harness tree. The warning firing below 60 days and the check clearing above the boundary are now both observed in valid evidence; the reader-facing triage row can move to "reproduced" for the whole behaviour, not only the warning half.
-- **The article must not claim the warning fires at 60 days.** It fires later. The lab measured a certificate with 58 m 58 s *more* than 60 days of remaining validity still getting the fatal `‼` row on both transcripts (`20260914T104930Z`, `k/plus-check.txt`, `k/plus-check-proxy.txt`), and the same check clearing to `√` at 1 h 4 m 3 s over (`20260914T104509Z`, `k/plus-check-proxy.txt`). The boundary should be stated as **measured to lie between roughly 59 minutes and roughly 64 minutes past the 60-day mark in this lab** — or, for a reader who does not need the seconds, "about an hour past 60 days, not at 60 days".
+- **The article must not claim the warning fires at exactly 60 days.** It starts sooner — while the certificate still has about an hour more than 60 days left. The threshold is a quantity of *remaining validity*, about 60 days + 1 hour of it, so a certificate's remaining time crosses the threshold roughly an hour of calendar time before the 60-day mark arrives, and the operator sees the fatal row before that mark, not after. The lab measured a certificate with 58 m 58 s *more* than 60 days of remaining validity still getting the fatal `‼` row on both transcripts (`20260914T104930Z`, `k/plus-check.txt`, `k/plus-check-proxy.txt`), and the same check clearing to `√` at 1 h 4 m 3 s over (`20260914T104509Z`, `k/plus-check-proxy.txt`). The boundary should be stated as **measured to lie between roughly 59 and roughly 64 minutes' worth of validity beyond 60 days, in this lab** — or, for a reader who does not need the seconds, "it starts when a certificate has about 60 days and an hour left, roughly an hour before the 60-day mark, not at it".
 - **Quote the bracket, not a point.** 5,187,538 s and 5,187,843 s are the two provable ends; the check's exact flip is somewhere inside them and this lab did not locate it more precisely. Any single number would be invented.
 - **The 15-minute case (R) and the near-60-day case (K) together show the headline is stable and repeatable well under the boundary** (RA, RB, and every minus step print the identical wording), and the bisect adds that it is equally stable well over it.
 - **Eight runs, one afternoon, one version.** The bisect is eight runs of one scenario on one cluster at `edge-26.9.1`, with lifetimes chosen to converge, not repeated at any single lifetime. None of this generalises beyond this lab's version or these lifetimes, and nothing here says the boundary is the same for the trust anchor's own 60-day check.
