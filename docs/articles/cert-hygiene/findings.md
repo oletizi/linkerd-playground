@@ -204,7 +204,7 @@ All three leave you with a mesh where some calls fail, new pods won't start, and
 These signals were all *seen in the lab*, in roughly the order an operator runs into them. They go with the first two rows of the [triage table](#triage-table).
 
 - **Application errors:** fresh connections fail with `Connection reset by peer`. The message doesn't mention certificates. Other traffic may keep working (see [Traffic partly broken](#issuer-expired-traffic-partly-broken)).
-- **`linkerd check`:**
+- **`linkerd check`:** two marks matter here and they are not the same thing. `‼` is a warning: the command still ends `Status check results are √` and still exits 0, so nothing you have wired to the exit status will notice it. `×` is fatal: the section stops at that row and the command exits non-zero. Throughout this page, "warning" means `‼` and "fatal" means `×`.
   - Before expiry: `‼ issuer cert is valid for at least 60 days`, with the exact expiry time in the detail line.
   - Afterwards: `× issuer cert is within its validity period`, with `issuer certificate is not valid anymore. Expired on <time>`.
 - **Identity service log:** `could not process CSR because of CA cert validation failure: x509: certificate has expired or is not yet valid`.
