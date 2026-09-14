@@ -28,7 +28,7 @@ Slice 2's and slice 3's constraints carry over unchanged — the same Linkerd ve
 | # | Task | File | Deliverable |
 | --- | --- | --- | --- |
 | 1 | Harness debt from slice 3's final review | [task-01-harness-debt.md](task-01-harness-debt.md) | `control-at-tree` reads manifests; the duplicated reconnect block shared; `_v_backing` carries its namespace; unit tests for slice 3's collectors |
-| 2 | Scenario N: the webhook is unavailable | [task-02-scenario-n.md](task-02-scenario-n.md) | `40-webhook-unavailable` under both policies, rules, one discovery run |
+| 2 | Scenario N: the webhook is unavailable | [task-02-scenario-n.md](task-02-scenario-n.md) | `40-webhook-unavailable-ignore` and `-fail`, rules, one discovery run |
 | 3 | G feasibility (**stop gate**) | [task-03-g-feasibility.md](task-03-g-feasibility.md) | Whether any certificate is refused for its algorithm, and the exact error — or a documented dead end |
 | 4 | Scenario G: the certificate is refused | [task-04-scenario-g.md](task-04-scenario-g.md) | `41-webhook-algorithm`, rules, one discovery run |
 | 5 | Freeze and re-run the control | [task-05-control-rerun.md](task-05-control-rerun.md) | A valid control at the new harness tree |

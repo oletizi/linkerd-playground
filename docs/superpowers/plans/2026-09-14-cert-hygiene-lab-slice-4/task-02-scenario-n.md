@@ -5,7 +5,7 @@ Part of the [slice 4 plan](README.md). Read its Global Constraints first, then t
 **Goal:** a scenario that takes a healthy installation, removes the pods behind one webhook, probes the admission path it guards, and restores them — recording throughout that the webhook's certificate was valid the whole time.
 
 **Files:**
-- Create: `demos/cert-hygiene/scenarios/40-webhook-unavailable.sh`, `demos/cert-hygiene/lab/profiles/webhook-available.env` (long-lived credentials, both policies)
+- Create: `demos/cert-hygiene/scenarios/40-webhook-unavailable-ignore.sh` and `40-webhook-unavailable-fail.sh`, plus the matching profiles under `demos/cert-hygiene/lab/profiles/` — **mirroring how W is structured** (`02-webhook-expiry-ignore.sh` / `02-webhook-expiry-fail.sh`, `webhook-short.env` / `webhook-short-fail.env`), with long-lived credentials instead of short ones. N2 compares N's `Ignore` result directly against W's, so the two must be structurally identical; a shared timeline in `lab/` with two thin entry points is the shape W already uses.
 - Modify: `demos/cert-hygiene/lab/lib-evidence-rules.sh` (the `n-baseline` and `n-restored` rules, the rule list, required files), `lab/collect-state.sh` if replica state needs a collector
 - Test: `demos/cert-hygiene/lab/tests/test-rules.sh`
 

@@ -2,7 +2,7 @@
 
 Part of the [slice 4 plan](README.md). Read its Global Constraints first.
 
-**Goal:** two valid runs of `40-webhook-unavailable`, one under each failure policy, recorded at the frozen slice 4 harness tree and published.
+**Goal:** two valid runs, `40-webhook-unavailable-ignore` and `40-webhook-unavailable-fail`, recorded at the frozen slice 4 harness tree and published.
 
 **The control these are judged against:** the run Task 5 recorded. Both runs' `git-state.txt` must carry its harness tree hash, or `control-at-tree` fails and they are not evidence.
 
