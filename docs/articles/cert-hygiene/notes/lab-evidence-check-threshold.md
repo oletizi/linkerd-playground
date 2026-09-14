@@ -19,7 +19,7 @@ That asymmetry decides which number each transcript is allowed to contribute:
 - **A transcript that warned (`‼`) proves the threshold is at least its END value.** The check might have evaluated at the last instant of the command, when the least validity remained; only that smallest value is certainly still on the warning side.
 - **A transcript that passed (`√`) proves the threshold is below its START value.** The check might have evaluated at the first instant, when the most validity remained; only that largest value is certainly still on the passing side.
 
-Taking the other value in either direction would claim a narrower bracket than the evidence supports. **This note applies that rule everywhere, including to the first run**: its plus step is quoted below at 5,184,553 s (its check's end), not the 5,184,557 s start value an earlier version of this note used. The point that run made — that a certificate with more than 60 days left still drew the fatal row — is unchanged by the four seconds; only the provable figure moves. A reader comparing this note to an older draft, or to the article, should expect warn figures to have shrunk by a few seconds and pass figures to have grown by a few, for this reason and no other.
+Taking the other value in either direction would claim a narrower bracket than the evidence supports. **This note applies that rule everywhere, including to the first run**: its plus step is quoted below at 5,184,553 s (its check's end), not the 5,184,557 s start value an earlier version of this note used. The point that run made — that a certificate with more than 60 days left still drew the `‼` row — is unchanged by the four seconds; only the provable figure moves. A reader comparing this note to an older draft, or to the article, should expect warn figures to have shrunk by a few seconds and pass figures to have grown by a few, for this reason and no other.
 
 The 15-minute comparison runs (RA, RB) record a single per-tick check with no start/end pair, so they are quoted as recorded; at about a quarter of an hour of remaining validity they sit nowhere near the boundary and bound nothing.
 
@@ -47,7 +47,7 @@ That replaces the roughly 24-hour bracket this note carried before. The lower bo
 | plus, `linkerd check` | 5,187,847 s (`k/plus-calc.txt`: 1,794,570,737 − 1,789,382,890) | over | `k/plus-check.txt`: `√` |
 | plus, `linkerd check --proxy` | 5,187,843 s (same subtraction against `check_proxy_started_epoch`) | over | `k/plus-check-proxy.txt`: `√` |
 
-Both measured values fall on the sides the condition requires, and both commands' transcripts flip with them: fatal below 60 days, clear above. Runs `20260914T101656Z`, `20260914T102104Z`, `20260914T102506Z`, `20260914T102908Z` and `20260914T104117Z` satisfy it the same way, at larger margins.
+Both measured values fall on the sides the condition requires, and both commands' transcripts flip with them: warning below 60 days, clear above. Runs `20260914T101656Z`, `20260914T102104Z`, `20260914T102506Z`, `20260914T102908Z` and `20260914T104117Z` satisfy it the same way, at larger margins.
 
 **Three runs do not satisfy it, and that is the interesting part.** In `20260914T103638Z`, `20260914T104930Z` and the first run `20260912T124246Z`, the plus step's measured value is *over* 5,184,000 s while both of its transcripts still print `‼`. Those are the runs that place the real boundary above 60 days, and they are why a run needs more than ten minutes of margin to meet the condition at all. § 13's condition is a test an individual run either meets or does not, and six valid runs at a single frozen harness tree meet it: **K's acceptance condition is met, and K is reproduced in both directions.** This reverses the earlier ruling in this note, which was made when the only run that had ever recorded a `√` was the non-evidence supplementary run below.
 
@@ -116,7 +116,7 @@ Every run installs `config_ISSUER_LIFETIME=1439h50m` at reset and checks it befo
 | ~15 minutes (RA, `05-issuer-expiry/20260912T075503Z`, notAfter `2026-09-12T08:11:54Z`) | `checks/baseline-check.txt`, tick `baseline` at `07:57:16Z` | — | 878 s (14 m 38 s) | `‼ issuer cert is valid for at least 60 days` |
 | ~15 minutes (RB, `05-issuer-expiry/20260912T085431Z`, notAfter `2026-09-12T09:11:24Z`) | `checks/baseline-check.txt`, tick `baseline` at `08:56:58Z` | — | 866 s (14 m 26 s) | `‼ issuer cert is valid for at least 60 days` |
 
-The first run's plus step is the figure this note used to quote as "60 days + 557 s". Under the rule above it is **60 days + 553 s**: the check ran for four seconds and could have evaluated at either end of that window, so only the end value is provably still on the warning side. The observation it supports is unchanged — a certificate with more than 60 days of validity left still drew the fatal `‼` row, quoting its own expiry, `2026-11-11T12:54:56Z` (`k/plus-check.txt`), matching `certs/issuer-plus.txt`'s `notAfter=Nov 11 12:54:56 2026 GMT` and `serial=7C35AE8349F9182EAAC64E0FF1888CDE`. It is simply no longer the bound that matters: `20260914T104930Z` warns 3,538 s over 60 days, six times further out.
+The first run's plus step is the figure this note used to quote as "60 days + 557 s". Under the rule above it is **60 days + 553 s**: the check ran for four seconds and could have evaluated at either end of that window, so only the end value is provably still on the warning side. The observation it supports is unchanged — a certificate with more than 60 days of validity left still drew the `‼` row, quoting its own expiry, `2026-11-11T12:54:56Z` (`k/plus-check.txt`), matching `certs/issuer-plus.txt`'s `notAfter=Nov 11 12:54:56 2026 GMT` and `serial=7C35AE8349F9182EAAC64E0FF1888CDE`. It is simply no longer the bound that matters: `20260914T104930Z` warns 3,538 s over 60 days, six times further out.
 
 ## Exact headline rows
 
@@ -138,7 +138,7 @@ A passing step, `k/plus-check.txt` and `k/plus-check-proxy.txt` of `20260914T104
 √ issuer cert is issued by the trust anchor
 ```
 
-A plus step that warned anyway, `k/plus-check.txt` and `k/plus-check-proxy.txt` of `20260914T104930Z` — 58 m 58 s past 60 days and still fatal:
+A plus step that warned anyway, `k/plus-check.txt` and `k/plus-check-proxy.txt` of `20260914T104930Z` — 58 m 58 s past 60 days and still warning:
 ```
 √ issuer cert is using supported crypto algorithm
 √ issuer cert is within its validity period
@@ -155,6 +155,31 @@ RA and RB `checks/baseline-check.txt` (identical headline text, different expiry
     issuer certificate will expire on 2026-09-12T09:11:24Z   [RB]
     see https://linkerd.io/2/checks/#l5d-identity-issuer-cert-not-expiring-soon for hints
 ```
+
+## The warning never fails the command
+
+The `‼` row is a warning, not a failure. **Every one of the forty transcripts this scenario recorded ends the same way**, whatever its issuer row said — the ten runs above (eight bisect, the first run, the superseded supplementary run) × two steps × `linkerd check` and `linkerd check --proxy`:
+
+```
+Status check results are √
+[exit 0]
+```
+
+`[exit N]` is the harness's own record of a captured command's exit status — the same line its validity rules read elsewhere (`demos/cert-hygiene/lab/lib-evidence-rules.sh`). Twenty-six of the forty transcripts printed `‼` on the issuer row; all twenty-six still end `Status check results are √` and `[exit 0]`. Spot checks, read from the transcripts' own tails:
+
+| Transcript | Issuer row | Remaining validity | Tail |
+| --- | --- | --- | --- |
+| `20260914T104930Z` `k/plus-check.txt` | `‼` | 5,187,538 s — 58 m 58 s *over* 60 days | `Status check results are √` / `[exit 0]` |
+| `20260914T104930Z` `k/minus-check.txt` | `‼` | 5,183,360 s — 10 m 40 s under 60 days | `Status check results are √` / `[exit 0]` |
+| `20260914T104509Z` `k/plus-check-proxy.txt` | `√` | 5,187,843 s at start — 1 h 4 m 3 s over 60 days | `Status check results are √` / `[exit 0]` |
+| RA `05-issuer-expiry/20260912T075503Z` `checks/baseline-check.txt` | `‼` | 878 s — **14 m 38 s from expiry** | `Status check results are √` / `[exit 0]` |
+| RB `05-issuer-expiry/20260912T085431Z` `checks/baseline-check.txt` | `‼` | 866 s — 14 m 26 s from expiry | `Status check results are √` / `[exit 0]` |
+
+The last two are the operationally sharp ones. An issuer **fifteen minutes from expiring** — with the outage that expiry causes already unavoidable — still produces `Status check results are √` and exit 0. At no margin this lab recorded a `‼` issuer row, from 3,538 s over the 60-day threshold down to 878 s before the certificate expired outright, did that row change the command's exit status.
+
+**So anything that watches `linkerd check` by its exit code never sees this warning at all** — a cron job, a CI gate, a container health probe, a `&&` in a shell script. The warning is only visible to something that reads the output.
+
+**How far this goes.** This is the exit status of `linkerd check` and `linkerd check --proxy` as these runs invoked them, at the margins these runs covered. It says nothing about the many other rows those commands print: the lab did not drive any other check to failure here, so this note cannot say which rows *do* fail the command. One contrast is recorded elsewhere in the lab, and it is a different command: in [`lab-evidence-tap-expiry.md`](lab-evidence-tap-expiry.md), `linkerd viz check` prints `×` and `[exit 1]` once the tap certificate expires — and that same note records the 60-day issuer warning sitting alongside `[exit 0]` before the expiry, which is this finding seen from another scenario.
 
 ## K1 — verdict
 
@@ -188,7 +213,8 @@ For a while this was the only run in which `linkerd check` had ever been seen to
 ## What this means for the article
 
 - **K is reproduced, in both directions.** Design § 13's K row — both measured remaining-validity values and both command transcripts on opposite sides of the boundary — is met in six of the eight bisect runs, all `evidence_valid=yes` at one frozen harness tree. The warning firing below 60 days and the check clearing above the boundary are now both observed in valid evidence; the reader-facing triage row can move to "reproduced" for the whole behaviour, not only the warning half.
-- **The article must not claim the warning fires at exactly 60 days.** It starts sooner — while the certificate still has about an hour more than 60 days left. The threshold is a quantity of *remaining validity*, about 60 days + 1 hour of it, so a certificate's remaining time crosses the threshold roughly an hour of calendar time before the 60-day mark arrives, and the operator sees the fatal row before that mark, not after. The lab measured a certificate with 58 m 58 s *more* than 60 days of remaining validity still getting the fatal `‼` row on both transcripts (`20260914T104930Z`, `k/plus-check.txt`, `k/plus-check-proxy.txt`), and the same check clearing to `√` at 1 h 4 m 3 s over (`20260914T104509Z`, `k/plus-check-proxy.txt`). The boundary should be stated as **measured to lie between roughly 59 and roughly 64 minutes' worth of validity beyond 60 days, in this lab** — or, for a reader who does not need the seconds, "it starts when a certificate has about 60 days and an hour left, roughly an hour before the 60-day mark, not at it".
+- **The article must not claim the warning fires at exactly 60 days.** It starts sooner — while the certificate still has about an hour more than 60 days left. The threshold is a quantity of *remaining validity*, about 60 days + 1 hour of it, so a certificate's remaining time crosses the threshold roughly an hour of calendar time before the 60-day mark arrives, and the operator sees the `‼` row before that mark, not after. The lab measured a certificate with 58 m 58 s *more* than 60 days of remaining validity still getting the `‼` row on both transcripts (`20260914T104930Z`, `k/plus-check.txt`, `k/plus-check-proxy.txt`), and the same check clearing to `√` at 1 h 4 m 3 s over (`20260914T104509Z`, `k/plus-check-proxy.txt`). The boundary should be stated as **measured to lie between roughly 59 and roughly 64 minutes' worth of validity beyond 60 days, in this lab** — or, for a reader who does not need the seconds, "it starts when a certificate has about 60 days and an hour left, roughly an hour before the 60-day mark, not at it".
+- **The warning does not fail the command, and that is worth saying out loud.** Every `linkerd check` and `linkerd check --proxy` transcript this scenario recorded ends `Status check results are √` and `[exit 0]`, including all twenty-six whose issuer row printed `‼` — and including RA's and RB's checks against an issuer fourteen and a half minutes from expiry. An operator should act on the `‼` row, but a cron job, CI gate or health probe watching the command's exit code never sees it. If the article tells a reader to monitor certificate expiry with `linkerd check`, it must say that the exit code is not the signal: the output is. (Scope: these steps and runs, and only the issuer row — the lab did not drive the command's other checks to failure, so it cannot say which rows *do* exit non-zero. `linkerd viz check` does exit 1 when the tap certificate expires; see [`lab-evidence-tap-expiry.md`](lab-evidence-tap-expiry.md).)
 - **Quote the bracket, not a point.** 5,187,538 s and 5,187,843 s are the two provable ends; the check's exact flip is somewhere inside them and this lab did not locate it more precisely. Any single number would be invented.
 - **The 15-minute case (R) and the near-60-day case (K) together show the headline is stable and repeatable well under the boundary** (RA, RB, and every minus step print the identical wording), and the bisect adds that it is equally stable well over it.
 - **Eight runs, one afternoon, one version.** The bisect is eight runs of one scenario on one cluster at `edge-26.9.1`, with lifetimes chosen to converge, not repeated at any single lifetime. None of this generalises beyond this lab's version or these lifetimes, and nothing here says the boundary is the same for the trust anchor's own 60-day check.
