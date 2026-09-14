@@ -148,7 +148,7 @@ write_versions() { # SCENARIO CERT_SET: runs once, before baseline; dies naming 
     || die "write_versions: cannot read retry_config_count"
   routes="$(kubectl get httproutes.policy.linkerd.io -A --no-headers)" \
     || die "write_versions: cannot read linkerd_httproutes"
-  cfg="$(env | grep -E '^(LAB_|LINKERD_|GATEWAY_|ANCHOR_|ISSUER_|LEAF_|CONTROL_|REPLACEMENT_|PROBE_|OBSERVE_|POST_|RECOVER_|IMAGE_|PROFILE=|WEBHOOK_|EXTRA_|GATE_|OUTAGE_|FAULT_|S_HARD_|K_|POLICY_|SP_|NEW_|W_|DISCOVERY_)' | sort)" \
+  cfg="$(env | grep -E '^(LAB_|LINKERD_|GATEWAY_|ANCHOR_|ISSUER_|LEAF_|CONTROL_|REPLACEMENT_|PROBE_|OBSERVE_|POST_|RECOVER_|IMAGE_|PROFILE=|WEBHOOK_|EXTRA_|GATE_|OUTAGE_|FAULT_|S_HARD_|K_|POLICY_|SP_|NEW_|W_|N_|DISCOVERY_)' | sort)" \
     || die "write_versions: cannot read config_* (no lab settings in the environment)"
   {
     printf 'scenario=%s\ncert_set=%s\nwritten_at=%s\n' "$1" "$2" "$(_utc)"

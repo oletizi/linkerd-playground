@@ -20,7 +20,7 @@ V=edge-26.9.1
 reason() { cat "$1/validity.txt"; }
 
 # ---- the table itself ----
-assert_eq "${#LAB_SCENARIOS[@]}" 10 "ten scenarios"
+assert_eq "${#LAB_SCENARIOS[@]}" 12 "twelve scenarios"
 assert_fails "unknown scenario dies (rules)" scenario_rules 99-nope
 assert_fails "unknown scenario dies (plan)" credential_plan_for 99-nope
 assert_fails "unknown scenario dies (files)" scenario_required_files 99-nope
@@ -34,6 +34,8 @@ assert_eq "$(scenario_rules 06-anchor-expiry | paste -sd' ' -)" "recovery-apply 
 assert_eq "$(scenario_rules 07-anchor-rotation-staged | paste -sd' ' -)" "control-at-tree" "S-staged rules"
 assert_eq "$(scenario_rules 08-anchor-rotation-hard | paste -sd' ' -)" "s-hard-stage1 control-at-tree" "S-hard rules"
 assert_eq "$(scenario_rules 30-tap-expiry | paste -sd' ' -)" "v-baseline v-reconnect control-at-tree" "V rules"
+assert_eq "$(scenario_rules 40-webhook-unavailable-ignore | paste -sd' ' -)" "n-baseline n-restored control-at-tree" "N-ignore rules"
+assert_eq "$(scenario_rules 40-webhook-unavailable-fail | paste -sd' ' -)" "n-baseline n-restored control-at-tree" "N-fail rules"
 assert_eq "$(credential_plan_for 07-anchor-rotation-staged | grep '^plan')" "plan A/I1 A+B/I1 A+B/I2 B/I2" "S-staged plan"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^plan')" "plan A/I1/W1 A/I1/W2" "W: the webhook certificates change once across ticks"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^components')" "components trust issuer webhooks" "W components"
@@ -42,10 +44,16 @@ assert_eq "$(credential_plan_for 06-anchor-expiry | grep '^plan')" "plan A/I1 B/
 assert_eq "$(credential_plan_for 08-anchor-rotation-hard | grep '^plan')" "plan A/I1 B/I2" "S-hard plan"
 assert_eq "$(credential_plan_for 20-check-threshold | grep '^plan')" "plan A/I1 A/I2" "K plan"
 assert_eq "$(credential_plan_for 30-tap-expiry | grep '^plan')" "plan A/I1" "V: one state; the tap cert is not part of the credential plan"
+assert_eq "$(credential_plan_for 40-webhook-unavailable-ignore | grep '^plan')" "plan A/I1/W1" "N: one state; nothing rotates"
+assert_eq "$(credential_plan_for 40-webhook-unavailable-ignore | grep '^components')" "components trust issuer webhooks" "N components"
 assert_contains "$(scenario_required_files 20-check-threshold)" certs/issuer-plus.pem "K requires the +10m issuer"
 assert_contains "$(scenario_required_files 30-tap-expiry)" tap-baseline.txt "V requires tap-baseline.txt"
 for f in backing restart rollout; do
   assert_contains "$(scenario_required_files 30-tap-expiry)" "reconnect/$f.txt" "V requires reconnect/$f.txt"
+done
+assert_contains "$(scenario_required_files 40-webhook-unavailable-ignore)" admission-restored.txt "N requires admission-restored.txt"
+for f in backing scale-down rollout-down scale-up rollout-up; do
+  assert_contains "$(scenario_required_files 40-webhook-unavailable-fail)" "scale/$f.txt" "N requires scale/$f.txt"
 done
 
 # ---- every scenario: a complete fixture is valid ----
@@ -179,6 +187,14 @@ make_run "$T/wk3" 02-webhook-expiry-fail c2 h1 false
 printf '$ bash -c ... capture_rollouts linkerd-destination\nerror: timed out waiting for the condition\n[exit 1]\n' > "$T/wk3/reconnect/rollout.txt"
 assert_fails "W whose reconnect rollout failed is invalid" evaluate_validity "$T/wk3" 02-webhook-expiry-fail "$V" "$T/ctl"
 assert_contains "$(reason "$T/wk3")" "reason=forced reconnect: reconnect/rollout.txt does not end [exit 0]" "reason names the rollout"
+make_run "$T/nb" 40-webhook-unavailable-ignore c2 h1 false
+printf 'result=fail\nfail: policy-invalid-baseline was not rejected by the policy validator\n' > "$T/nb/admission-baseline.txt"
+assert_fails "N without a proving baseline is invalid" evaluate_validity "$T/nb" 40-webhook-unavailable-ignore "$V" "$T/ctl"
+assert_contains "$(reason "$T/nb")" "reason=N: the healthy baseline did not prove every admission probe" "reason names the baseline"
+make_run "$T/nr" 40-webhook-unavailable-fail c2 h1 false
+printf 'result=fail\nfail: inject-probe-verify was not created with a linkerd-proxy container\n' > "$T/nr/admission-restored.txt"
+assert_fails "N without a proving restore is invalid" evaluate_validity "$T/nr" 40-webhook-unavailable-fail "$V" "$T/ctl"
+assert_contains "$(reason "$T/nr")" "reason=N: admission did not work again after the replicas were restored" "reason names the restore"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"

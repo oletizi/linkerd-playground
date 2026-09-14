@@ -7,7 +7,7 @@
 # shellcheck disable=SC2034
 LAB_SCENARIOS=(00-baseline-control 05-issuer-expiry 02-webhook-expiry-ignore 02-webhook-expiry-fail
   09-identity-outage 20-check-threshold 06-anchor-expiry 07-anchor-rotation-staged 08-anchor-rotation-hard
-  30-tap-expiry)
+  30-tap-expiry 40-webhook-unavailable-ignore 40-webhook-unavailable-fail)
 
 # scenario_rules SCENARIO: the rule ids that apply beyond the common rules and the plan.
 scenario_rules() {
@@ -19,6 +19,7 @@ scenario_rules() {
     20-check-threshold) echo k-remaining ;;
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
     30-tap-expiry) printf '%s\n' v-baseline v-reconnect control-at-tree ;;
+    40-webhook-unavailable-ignore|40-webhook-unavailable-fail) printf '%s\n' n-baseline n-restored control-at-tree ;;
     *) die "scenario_rules: unknown scenario '$1'" ;;
   esac
 }
@@ -44,6 +45,10 @@ scenario_required_files() {
     07-anchor-rotation-staged) _certs trust-anchor-new trust-bundle issuer-new ;;
     08-anchor-rotation-hard) _certs trust-anchor-new issuer-new; echo s-hard/stage1-condition.txt ;;
     30-tap-expiry) printf '%s\n' tap-baseline.txt reconnect/backing.txt reconnect/restart.txt reconnect/rollout.txt ;;
+    40-webhook-unavailable-*)
+      _certs webhook-ca webhook-proxyInjector webhook-policyValidator webhook-profileValidator
+      printf '%s\n' admission-baseline.txt admission-restored.txt \
+        scale/backing.txt scale/scale-down.txt scale/rollout-down.txt scale/scale-up.txt scale/rollout-up.txt ;;
   esac
 }
 
@@ -57,6 +62,7 @@ credential_plan_for() {
     05-issuer-expiry|20-check-threshold) printf 'components trust issuer\nplan A/I1 A/I2\n' ;;
     06-anchor-expiry|08-anchor-rotation-hard) printf 'components trust issuer\nplan A/I1 B/I2\n' ;;
     07-anchor-rotation-staged) printf 'components trust issuer\nplan A/I1 A+B/I1 A+B/I2 B/I2\n' ;;
+    40-webhook-unavailable-ignore|40-webhook-unavailable-fail) printf 'components trust issuer webhooks\nplan A/I1/W1\n' ;;
   esac
 }
 
@@ -192,6 +198,12 @@ evaluate_validity() {
       control-at-tree)
         tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
         _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree") ;;
+      n-baseline)
+        _first_is "$run/admission-baseline.txt" result=ok \
+          || reasons+=("N: the healthy baseline did not prove every admission probe") ;;
+      n-restored)
+        _first_is "$run/admission-restored.txt" result=ok \
+          || reasons+=("N: admission did not work again after the replicas were restored") ;;
       *) die "evaluate_validity: rule '$rule' has no check" ;;
     esac
   done
