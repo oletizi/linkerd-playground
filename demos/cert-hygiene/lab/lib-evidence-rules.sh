@@ -113,6 +113,21 @@ _missing_proxy_logs() {
 
 _first_is() { [ "$(head -n 1 "$1" 2>/dev/null)" = "$2" ]; } # FILE LINE
 
+# _reconnect_exit_reasons RUN_DIR: one reason line per reconnect/{restart,rollout}.txt
+# that does not end "[exit 0]" -- the forced-reconnect exit check w-reconnect and
+# v-reconnect share byte for byte (only the backing.txt check that precedes it differs
+# per scenario, so that check stays in each caller). Prints nothing and is silent
+# (never fails) when both end [exit 0]; callers append each printed line to reasons,
+# the way _missing_proxy_logs's callers do.
+_reconnect_exit_reasons() {
+  local run="$1" f
+  for f in restart rollout; do
+    [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
+      || echo "forced reconnect: reconnect/$f.txt does not end [exit 0]"
+  done
+  return 0
+}
+
 # evaluate_validity RUN_DIR SCENARIO EXPECTED_LINKERD_VERSION [CONTROL_RUNS_DIR]:
 # decide mechanically whether a run is valid evidence and write RUN_DIR/validity.txt.
 evaluate_validity() {
@@ -160,10 +175,7 @@ evaluate_validity() {
           awk -v c="component=$comp" '$1 == c && $3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' \
             "$run/reconnect/backing.txt" 2>/dev/null || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment for $comp")
         done
-        for f in restart rollout; do
-          [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
-            || reasons+=("forced reconnect: reconnect/$f.txt does not end [exit 0]")
-        done ;;
+        while read -r f; do reasons+=("$f"); done < <(_reconnect_exit_reasons "$run") ;;
       k-remaining)
         _first_is "$run/k-remaining.txt" result=ok || reasons+=("K measurements are not on opposite sides of 60 days at check time") ;;
       s-hard-stage1)
@@ -176,10 +188,7 @@ evaluate_validity() {
         # run time from the live APIService, never a fixed table (Task 3b)
         awk '$3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' "$run/reconnect/backing.txt" 2>/dev/null \
           || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment")
-        for f in restart rollout; do
-          [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
-            || reasons+=("forced reconnect: reconnect/$f.txt does not end [exit 0]")
-        done ;;
+        while read -r f; do reasons+=("$f"); done < <(_reconnect_exit_reasons "$run") ;;
       control-at-tree)
         tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
         _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree") ;;

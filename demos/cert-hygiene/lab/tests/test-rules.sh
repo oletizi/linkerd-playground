@@ -215,6 +215,42 @@ printf '$ bash -c ... capture_rollouts linkerd-viz tap\nerror: timed out waiting
 assert_fails "V whose reconnect rollout failed is invalid" evaluate_validity "$T/vk3" 30-tap-expiry "$V" "$T/ctl"
 assert_contains "$(reason "$T/vk3")" "reason=forced reconnect: reconnect/rollout.txt does not end [exit 0]" "reason names the rollout"
 
+# ---- control-at-tree: a committed manifest satisfies it exactly like an on-disk run ----
+# This is the case that broke slice 3's task 5: the control was published and its local
+# run directory removed, exactly as the publish workflow says to, and the next run's
+# control-at-tree check failed even though the control itself was fine.
+mkdir -p "$T/ctlmf"
+manifest() { # DIR TS EVIDENCE_VALID TREE
+  printf 'run=runs/00-baseline-control/%s\nfiles=3\nuploaded_utc=2026-09-14T08:08:34Z\nvalidity_evidence_valid=%s\nharness_tree_sha256=%s\narchive=runs/00-baseline-control/%s.tar.gz\n---\n' \
+    "$2" "$3" "$4" "$2" > "$1/$2.manifest.txt"
+}
+manifest "$T/ctlmf" 20260914T071125Z yes h1
+assert_eq "$(ls "$T/ctlmf")" 20260914T071125Z.manifest.txt "fixture: a manifest with no run directory beside it"
+make_run "$T/mfr" 05-issuer-expiry c9 h1 false
+assert_succeeds "R: a manifest-only control (no run directory on disk) satisfies control-at-tree" \
+  evaluate_validity "$T/mfr" 05-issuer-expiry "$V" "$T/ctlmf"
+make_run "$T/mfo" 09-identity-outage c9 h1 false
+assert_succeeds "O: the same manifest-only control satisfies control-at-tree" \
+  evaluate_validity "$T/mfo" 09-identity-outage "$V" "$T/ctlmf"
+make_run "$T/mfwrong" 05-issuer-expiry c9 h9 false
+assert_fails "R: a manifest control at a different harness tree does not satisfy control-at-tree" \
+  evaluate_validity "$T/mfwrong" 05-issuer-expiry "$V" "$T/ctlmf"
+mkdir -p "$T/ctlmfbad"
+manifest "$T/ctlmfbad" 20260914T080000Z no h1
+make_run "$T/mfbad" 05-issuer-expiry c9 h1 false
+assert_fails "R: a manifest recording evidence_valid=no does not satisfy control-at-tree" \
+  evaluate_validity "$T/mfbad" 05-issuer-expiry "$V" "$T/ctlmfbad"
+# Both sources are checked: an on-disk run and an unrelated manifest, side by side, in a
+# directory whose manifest alone would not satisfy the tree -- the on-disk run still does.
+mkdir -p "$T/ctlboth"
+manifest "$T/ctlboth" 20260914T090000Z yes h-other
+make_run "$T/ctlboth/r1" 00-baseline-control c1 h1 false
+assert_succeeds "control run fixture at h1 in a mixed control dir is valid" \
+  evaluate_validity "$T/ctlboth/r1" 00-baseline-control "$V"
+make_run "$T/mfboth" 05-issuer-expiry c9 h1 false
+assert_succeeds "R: an on-disk control still satisfies control-at-tree beside an unrelated manifest" \
+  evaluate_validity "$T/mfboth" 05-issuer-expiry "$V" "$T/ctlboth"
+
 # ---- credential_plan_check ----
 state() { printf 'trust_roots_sha256=%s\nissuer_sha256=%s\n' "$2" "$3" > "$1"; }
 make_run "$T/pc" 05-issuer-expiry c2 h1 false

@@ -34,15 +34,18 @@ scenario_recover() { # V has no credential recovery: the tap certificate is neve
   mark v-recover "no recovery: the tap certificate is never replaced; only the forced-reconnect phase (above) ran"
 }
 
-# _v_backing: reconnect/backing.txt, "component=tap service=<svc> deployment=<d|-> [error=...]"
-# -- the Deployment behind the Service the tap APIService actually points at, derived now
-# from that Service's selector (w_backing_line, reused unchanged from the webhook phase).
-# Unlike W's fixed webhook_service table, the Service name and its namespace both come from
-# the live APIService: this is one component, not three, but neither the Service nor its
-# Deployment is ever hardcoded (Task 3b; slice 2 review finding on taking a mapping on
-# trust). A failed read at any step is recorded, never fatal.
+# _v_backing: reconnect/backing.txt, "component=tap service=<svc> deployment=<d|-> [error=...]
+# namespace=<ns|->" -- the Deployment behind the Service the tap APIService actually points
+# at, derived now from that Service's selector (w_backing_line, reused unchanged from the
+# webhook phase), plus the namespace that selector was read in. Unlike W's fixed
+# webhook_service table, the Service name and its namespace both come from the live
+# APIService: this is one component, not three, but neither the Service, its namespace nor
+# its Deployment is ever hardcoded (Task 3b; slice 2 review finding on taking a mapping on
+# trust; slice 3 review finding on deriving the namespace and then hardcoding it anyway --
+# _v_reconnect below reads it back from this line instead). A failed read at any step is
+# recorded, never fatal; "-" marks a namespace that read never resolved.
 _v_backing() {
-  local f="$RUN_DIR/reconnect/backing.txt" tmp svc="" ns="" err=""
+  local f="$RUN_DIR/reconnect/backing.txt" tmp svc="" ns="" err="" line
   tmp="$(mktemp -d)"
   mkdir -p "$RUN_DIR/reconnect"
   if ! _record "tap APIService read" kubectl get apiservice v1alpha1.tap.linkerd.io -o json > "$tmp/a.json"; then
@@ -53,33 +56,47 @@ _v_backing() {
     [ -n "$svc" ] && [ -n "$ns" ] || err="tap APIService names no backing Service"
   fi
   if [ -n "$err" ]; then
-    w_backing_line tap "${svc:-<none>}" "$tmp/a.json" "$tmp/a.json" "$err" > "$f"
+    line="$(w_backing_line tap "${svc:-<none>}" "$tmp/a.json" "$tmp/a.json" "$err")"
   elif ! _record "Service $ns/$svc read" kubectl -n "$ns" get svc "$svc" -o json > "$tmp/s.json"; then
-    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/s.json" "$(cat "$tmp/s.json")" > "$f"
+    line="$(w_backing_line tap "$svc" "$tmp/s.json" "$tmp/s.json" "$(cat "$tmp/s.json")")"
   elif ! _record "$ns Deployment listing" kubectl -n "$ns" get deploy -o json > "$tmp/d.json"; then
-    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/d.json")" > "$f"
+    line="$(w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/d.json")")"
   else
-    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json" > "$f"
+    line="$(w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json")"
   fi
+  printf '%s namespace=%s\n' "$line" "${ns:--}" > "$f"
   rm -rf "$tmp"
+}
+
+# _v_backing_namespace BACKING_FILE: the namespace= field _v_backing wrote to
+# reconnect/backing.txt, or empty when the file holds none (a fixture written before
+# this field existed, or a line _v_backing never got to write).
+_v_backing_namespace() {
+  awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^namespace=/) { print substr($i, 11); exit } }' "${1:?}"
 }
 
 _v_reconnect() { # the forced-reconnect phase (design section 8, added by Task 3b): restart
   # the Deployment behind the tap Service once, so the API server must open a new connection
   # to it, then probe. No lab workload is restarted and no credential changes: the new pod
-  # still mounts the expired tap certificate.
-  local ds=()
+  # still mounts the expired tap certificate. The namespace comes back from
+  # reconnect/backing.txt (_v_backing derived it once, from the live APIService); it falls
+  # back to linkerd-viz -- tap's namespace whenever it exists at all -- only when backing.txt
+  # names none, which happens only when the Deployment listing below is empty too and the
+  # restart is skipped regardless.
+  local ds=() ns
   snap_viz reconnect-before
   _v_backing
   mark reconnect-backing "$(cat "$RUN_DIR/reconnect/backing.txt")"
   mapfile -t ds < <(w_backing_deployments "$RUN_DIR/reconnect/backing.txt")
+  ns="$(_v_backing_namespace "$RUN_DIR/reconnect/backing.txt")"
+  [ -n "$ns" ] && [ "$ns" != - ] || ns=linkerd-viz
   mark reconnect-restart "kubectl rollout restart: ${ds[*]:-no backing Deployment}"
   if [ "${#ds[@]}" -gt 0 ]; then
-    capture reconnect/restart.txt kubectl -n linkerd-viz rollout restart "${ds[@]/#/deploy/}"
+    capture reconnect/restart.txt kubectl -n "$ns" rollout restart "${ds[@]/#/deploy/}"
   else
     capture reconnect/restart.txt bash -c 'echo "no backing Deployment derived; see reconnect/backing.txt"; exit 1'
   fi
-  capture_rollouts reconnect/rollout.txt linkerd-viz "${ds[@]}"
+  capture_rollouts reconnect/rollout.txt "$ns" "${ds[@]}"
   V_RECONNECT_EPOCH="$(date -u +%s)"
   mark reconnect-rolled-out "rollout.txt $(tail -n 1 "$RUN_DIR/reconnect/rollout.txt")"
   snap_viz reconnect-after

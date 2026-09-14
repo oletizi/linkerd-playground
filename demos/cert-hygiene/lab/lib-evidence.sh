@@ -78,13 +78,25 @@ _kv() { # KEY FILE: the value of KEY=... in FILE, or nothing
   grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-
 }
 
-_control_passed() { # CONTROL_RUNS_DIR HARNESS_TREE_SHA
-  local dir="$1" tree="$2" v
+_control_passed() { # CONTROL_RUNS_DIR HARNESS_TREE_SHA: a valid 00-baseline-control at
+  # HARNESS_TREE_SHA, proved either from a run directory still on disk or from a
+  # committed manifest (tools/evidence-upload.sh). Both are checked because the publish
+  # workflow deletes a control's local copy once it is uploaded -- so a control that was
+  # published and whose directory is gone must still satisfy this rule from its
+  # manifest's header alone, with nothing materialised -- while a control still on disk
+  # (not yet published, or Task 5's own directory-moved-aside check) must keep working
+  # exactly as before. Neither source is required when the other already proves it.
+  local dir="$1" tree="$2" v m
   [ -n "$dir" ] && [ -d "$dir" ] || return 1
   for v in "$dir"/*/validity.txt; do
     [ -f "$v" ] || continue
     [ "$(head -n 1 "$v")" = evidence_valid=yes ] || continue
     [ "$(_kv harness_tree_sha256 "$(dirname "$v")/git-state.txt")" = "$tree" ] && return 0
+  done
+  for m in "$dir"/*.manifest.txt; do
+    [ -f "$m" ] || continue
+    [ "$(_kv validity_evidence_valid "$m")" = yes ] || continue
+    [ "$(_kv harness_tree_sha256 "$m")" = "$tree" ] && return 0
   done
   return 1
 }
