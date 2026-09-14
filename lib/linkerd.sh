@@ -57,3 +57,11 @@ linkerd_install() {
     | kubectl apply -f -
   wait_rollouts linkerd
 }
+
+# linkerd_viz_install [linkerd viz install flags...]: install Viz into the linkerd-viz
+# namespace and wait for its rollouts. The control plane must already be installed and
+# serving -- Viz's own pods are meshed, so this runs after linkerd_install, never before.
+linkerd_viz_install() {
+  linkerd viz install "$@" | kubectl apply -f -
+  wait_rollouts linkerd-viz
+}

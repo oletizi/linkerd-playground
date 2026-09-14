@@ -4,7 +4,9 @@
 # Usage: reset.sh <profile> <cert-set-name>
 # Every image is pulled BEFORE the certificates are generated, so pulls never eat into a
 # short lifetime. When the profile sets WEBHOOK_CERT_LIFETIMES, the three webhook serving
-# certificates are lab-supplied through --set-file instead of Linkerd-generated.
+# certificates are lab-supplied through --set-file instead of Linkerd-generated. When the
+# profile sets TAP_CERT_LIFETIME, Viz is installed after the control plane is serving,
+# with a lab-supplied tap serving certificate signed by the same lab webhook CA.
 set -euo pipefail
 # shellcheck source=/dev/null
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-lab.sh"
@@ -36,4 +38,13 @@ fi
 read -r -a extra_args <<< "$EXTRA_INSTALL_FLAGS"
 install_args+=("${extra_args[@]}")
 linkerd_install "$certs/ca.crt" "$certs/issuer.crt" "$certs/issuer.key" "${install_args[@]}"
+
+if [ -n "$TAP_CERT_LIFETIME" ]; then
+  # The webhook CA may already exist (WEBHOOK_CERT_LIFETIMES set too); make_webhook_certs
+  # also reuses it rather than dying on make_webhook_ca's overwrite guard.
+  [ -f "$certs/webhooks/ca.crt" ] || make_webhook_ca "$certs/webhooks"
+  make_tap_cert "$certs/webhooks" "$TAP_CERT_LIFETIME"
+  mapfile -t tap_args < <(tap_install_args "$certs/webhooks")
+  linkerd_viz_install "${tap_args[@]}"
+fi
 log "reset complete: profile=$profile certs=$certs"

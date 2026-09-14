@@ -30,7 +30,7 @@ load_profile() {
   for v in ANCHOR_LIFETIME ISSUER_LIFETIME LEAF_LIFETIME; do
     [ -n "${!v:-}" ] || die "$f does not set $v"
   done
-  for v in WEBHOOK_CERT_LIFETIMES EXTRA_INSTALL_FLAGS; do
+  for v in WEBHOOK_CERT_LIFETIMES EXTRA_INSTALL_FLAGS TAP_CERT_LIFETIME; do
     grep -q "^$v=" "$f" || die "$f does not define $v (define it empty when unused)"
   done
   PROFILE="$p"

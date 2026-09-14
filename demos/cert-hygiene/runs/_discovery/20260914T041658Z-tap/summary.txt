@@ -1,0 +1,9 @@
+cert_set=/home/orion/cert-hygiene-certs/tap-discover-20260914T040954Z/
+apiservice_backing_service=tap.linkerd-viz.svc
+tap_cert_san=tap.linkerd-viz.svc
+san_matches_apiservice_service=yes
+secret_matches_supplied=yes
+cabundle_matches_supplied_ca=yes
+apiservice_available=True
+√ tap API server has valid cert
+tap_event_count=2

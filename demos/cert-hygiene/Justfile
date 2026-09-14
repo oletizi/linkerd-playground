@@ -57,6 +57,10 @@ discover-gates:
 discover-admission:
     bash scripts/in-lab.sh lab/discover-admission.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-admission
 
+# Discovery: does the current lab serve the lab-supplied tap certificate, and does tap work?
+discover-tap:
+    bash scripts/in-lab.sh lab/discover-tap.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-tap
+
 # Launch a scenario as a discovery run (runs/_discovery/; never evidence)
 run-discovery SCENARIO:
     bash scripts/run.sh --discovery {{SCENARIO}}

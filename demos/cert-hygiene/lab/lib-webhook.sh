@@ -4,6 +4,9 @@
 # webhook Service's DNS name as its SAN. RSA 2048, the key type Linkerd's own
 # generated webhook certificates use. Source after lib/common.sh; do not execute.
 # Keys stay in the VM under $CERTS_ROOT; only certificates ever reach evidence.
+#
+# The tap serving credential (slice 3 Task 1) is a fourth lab-supplied credential of
+# the same shape, signed by this same lab CA rather than a second CA mechanism.
 
 # Helm value prefixes of Linkerd's three webhooks, in the fixed order every file uses.
 WEBHOOK_COMPONENTS=(proxyInjector policyValidator profileValidator)
@@ -49,7 +52,9 @@ make_webhook_cert() { # DIR COMPONENT LIFETIME: DIR/COMPONENT.{crt,key}, signed 
 
 make_webhook_certs() { # DIR SPEC: the lab webhook CA plus one serving certificate per component
   local dir="${1:?}" spec="${2:?make_webhook_certs: SPEC required}" comp life
-  make_webhook_ca "$dir"
+  # Reuse an already-created CA (e.g. one Task 1's tap certificate made first in the
+  # same DIR) instead of dying on make_webhook_ca's overwrite guard.
+  [ -f "$dir/ca.crt" ] || make_webhook_ca "$dir"
   for comp in "${WEBHOOK_COMPONENTS[@]}"; do
     life="$(webhook_lifetime "$spec" "$comp")" || die "make_webhook_certs: no lifetime for $comp"
     make_webhook_cert "$dir" "$comp" "$life"
@@ -62,4 +67,22 @@ webhook_install_args() { # DIR: linkerd install/upgrade arguments passing DIR's 
     printf -- '--set-file\n%s.crtPEM=%s,%s.keyPEM=%s,%s.caBundle=%s\n' \
       "$comp" "$dir/$comp.crt" "$comp" "$dir/$comp.key" "$comp" "$dir/ca.crt"
   done
+}
+
+# make_tap_cert DIR LIFETIME: DIR/tap.{crt,key}, signed by DIR/ca.*, SAN tap.linkerd-viz.svc
+# (the tap APIService's backing Service; discover-tap.sh checks that name against it).
+make_tap_cert() {
+  local dir="${1:?make_tap_cert: DIR required}" life="${2:?make_tap_cert: LIFETIME required}"
+  local host="tap.linkerd-viz.svc"
+  if [ ! -f "$dir/ca.crt" ] || [ ! -f "$dir/ca.key" ]; then die "make_tap_cert: no webhook CA in $dir"; fi
+  [ ! -e "$dir/tap.crt" ] || die "make_tap_cert: $dir/tap.crt exists; refusing to overwrite"
+  step certificate create "$host" "$dir/tap.crt" "$dir/tap.key" --profile leaf \
+    --ca "$dir/ca.crt" --ca-key "$dir/ca.key" --san "$host" --kty RSA --size 2048 \
+    --not-after "$life" --no-password --insecure
+}
+
+tap_install_args() { # DIR: linkerd viz install arguments passing DIR's tap cert, one per line
+  local dir="${1:?}"
+  printf -- '--set-file\ntap.crtPEM=%s,tap.keyPEM=%s,tap.caBundle=%s\n' \
+    "$dir/tap.crt" "$dir/tap.key" "$dir/ca.crt"
 }
