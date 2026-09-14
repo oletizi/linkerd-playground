@@ -15,3 +15,10 @@ site/.astro/
 # JetBrains IDE settings
 .idea/
 demos/cert-hygiene/.lab-logs/
+
+# Recorded lab runs live in the bucket and the evidence release, not here; only
+# their manifests are committed. The current control run is the exception that
+# must stay on disk, because the control-at-tree validity rule reads it from
+# there, so it is ignored rather than deleted. Discovery runs are still tracked.
+/demos/cert-hygiene/runs/*/*/
+!/demos/cert-hygiene/runs/_discovery/*/
