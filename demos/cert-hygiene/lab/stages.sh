@@ -52,16 +52,18 @@ matrix_restart_stages() {
   tick stage4-all
 }
 
-# capture_rollouts FILE DEPLOY...: wait for each named linkerd-namespace Deployment's
-# rollout, recorded to FILE with capture. The one rollout-status loop. FILE ends [exit 0]
-# only when at least one Deployment was named and every rollout completed: an empty list
-# would otherwise wait for nothing.
+# capture_rollouts FILE NAMESPACE DEPLOY...: wait for each named Deployment's rollout in
+# NAMESPACE, recorded to FILE with capture. The one rollout-status loop, shared by every
+# namespace a scenario restarts into (the control plane's linkerd, W's own; linkerd-viz,
+# V's, Task 3b). FILE ends [exit 0] only when at least one Deployment was named and every
+# rollout completed: an empty list would otherwise wait for nothing.
 capture_rollouts() {
-  local f="${1:?capture_rollouts: FILE required}"
-  shift
+  local f="${1:?capture_rollouts: FILE required}" ns="${2:?capture_rollouts: NAMESPACE required}"
+  shift 2
   # shellcheck disable=SC2016
-  capture "$f" bash -c '[ $# -ge 1 ] || { echo "no Deployment named"; exit 1; }
-    for d in "$@"; do kubectl -n linkerd rollout status "deploy/$d" --timeout=300s || exit 1; done' capture_rollouts "$@"
+  capture "$f" bash -c 'ns="$1"; shift
+    [ $# -ge 1 ] || { echo "no Deployment named"; exit 1; }
+    for d in "$@"; do kubectl -n "$ns" rollout status "deploy/$d" --timeout=300s || exit 1; done' capture_rollouts "$ns" "$@"
 }
 
 # capture_cp_rollouts FILE: capture_rollouts over every control-plane Deployment (the
@@ -78,5 +80,5 @@ capture_cp_rollouts() {
     return 0
   fi
   # shellcheck disable=SC2086
-  capture_rollouts "$1" ${ds//deployment.apps\//}
+  capture_rollouts "$1" linkerd ${ds//deployment.apps\//}
 }

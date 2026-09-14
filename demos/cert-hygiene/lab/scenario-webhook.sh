@@ -164,7 +164,7 @@ _w_reconnect() { # the forced-reconnect phase (design section 3): restart each D
   else
     capture reconnect/restart.txt bash -c 'echo "no backing Deployment derived; see reconnect/backing.txt"; exit 1'
   fi
-  capture_rollouts reconnect/rollout.txt "${ds[@]}"
+  capture_rollouts reconnect/rollout.txt linkerd "${ds[@]}"
   W_RECONNECT_EPOCH="$(date -u +%s)"
   mark reconnect-rolled-out "rollout.txt $(tail -n 1 "$RUN_DIR/reconnect/rollout.txt")"
   snap_controlplane reconnect-after

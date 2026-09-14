@@ -29,11 +29,19 @@ make_run() {
   printf 'result=ok\nok: tap events observed while the certificate was valid\n' > "$d/tap-baseline.txt"
   mkdir -p "$d/s-hard" "$d/recover" "$d/reconnect"
   printf 'result=met\n' > "$d/s-hard/stage1-condition.txt"
-  printf 'component=%s service=%s deployment=%s\n' proxyInjector linkerd-proxy-injector linkerd-proxy-injector \
-    policyValidator linkerd-policy-validator linkerd-destination profileValidator linkerd-sp-validator linkerd-destination \
-    > "$d/reconnect/backing.txt"
-  printf '$ kubectl -n linkerd rollout restart deploy/linkerd-proxy-injector deploy/linkerd-destination\ndeployment.apps/linkerd-destination restarted\n[exit 0]\n' > "$d/reconnect/restart.txt"
-  printf '$ bash -c ... capture_rollouts linkerd-proxy-injector linkerd-destination\n[exit 0]\n' > "$d/reconnect/rollout.txt"
+  if [ "$scenario" = 30-tap-expiry ]; then
+    # V's reconnect has one component (tap), whose Service and namespace are derived from
+    # the live APIService rather than a fixed table, so the fixture names them directly.
+    printf 'component=tap service=tap deployment=tap\n' > "$d/reconnect/backing.txt"
+    printf '$ kubectl -n linkerd-viz rollout restart deploy/tap\ndeployment.apps/tap restarted\n[exit 0]\n' > "$d/reconnect/restart.txt"
+    printf '$ bash -c ... capture_rollouts linkerd-viz tap\n[exit 0]\n' > "$d/reconnect/rollout.txt"
+  else
+    printf 'component=%s service=%s deployment=%s\n' proxyInjector linkerd-proxy-injector linkerd-proxy-injector \
+      policyValidator linkerd-policy-validator linkerd-destination profileValidator linkerd-sp-validator linkerd-destination \
+      > "$d/reconnect/backing.txt"
+    printf '$ kubectl -n linkerd rollout restart deploy/linkerd-proxy-injector deploy/linkerd-destination\ndeployment.apps/linkerd-destination restarted\n[exit 0]\n' > "$d/reconnect/restart.txt"
+    printf '$ bash -c ... capture_rollouts linkerd linkerd-proxy-injector linkerd-destination\n[exit 0]\n' > "$d/reconnect/rollout.txt"
+  fi
   printf '$ linkerd upgrade ... | kubectl apply -f -\nsecret/linkerd-identity-issuer configured\n[exit 0]\n' > "$d/recover/linkerd-upgrade.txt"
   printf '$ bash -o pipefail -c linkerd upgrade > m.yaml\n[exit 0]\n' > "$d/recover/plain-render.txt"
   printf '$ kubectl apply -f m.yaml\nsecret/linkerd-proxy-injector-k8s-tls created\n[exit 0]\n' > "$d/recover/plain-apply.txt"

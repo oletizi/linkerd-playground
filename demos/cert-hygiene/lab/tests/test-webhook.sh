@@ -219,10 +219,13 @@ assert_eq "$(cp_last "$T/cp4" ok deployment.apps/linkerd-identity 1)" "[exit 1]"
 assert_eq "$(grep -c 'control-plane Deployment listing failed' "$T/cp3/rollout.txt")" 1 "a failed listing is recorded once, not also in the command line"
 two="$(printf 'deployment.apps/linkerd-identity\ndeployment.apps/linkerd-destination')"
 assert_eq "$(cp_last "$T/cp5" ok "$two" 0 'Warning: v1 ComponentStatus is deprecated')" "[exit 0]" "a kubectl warning on stderr does not fail a healthy listing"
-assert_contains "$(cat "$T/cp5/rollout.txt")" "$(printf '; done capture_rollouts linkerd-identity linkerd-destination\n[exit 0]')" "only the real Deployment names are waited for"
-cr_last() { RUN_DIR="$1" STUB_ROLLOUT="$2" PATH="$T/bin:$PATH" capture_rollouts rollout.txt "${@:3}"; tail -n 1 "$1/rollout.txt"; } # RUN ROLLOUT DEPLOY...
+assert_contains "$(cat "$T/cp5/rollout.txt")" "$(printf '; done capture_rollouts linkerd linkerd-identity linkerd-destination\n[exit 0]')" "only the real Deployment names are waited for, in the control-plane namespace"
+cr_last() { RUN_DIR="$1" STUB_ROLLOUT="$2" PATH="$T/bin:$PATH" capture_rollouts rollout.txt linkerd "${@:3}"; tail -n 1 "$1/rollout.txt"; } # RUN ROLLOUT DEPLOY...
 assert_eq "$(cr_last "$T/cr1" 0)" "[exit 1]" "capture_rollouts with no Deployment named: non-zero"
 assert_eq "$(cr_last "$T/cr2" 0 linkerd-destination linkerd-proxy-injector)" "[exit 0]" "capture_rollouts: every named rollout completed"
+RUN_DIR="$T/cr3" STUB_ROLLOUT=0 PATH="$T/bin:$PATH" capture_rollouts rollout.txt linkerd-viz linkerd-web
+assert_contains "$(cat "$T/cr3/rollout.txt")" "capture_rollouts linkerd-viz linkerd-web" "capture_rollouts records the namespace it was given, not always linkerd"
+assert_eq "$(tail -n 1 "$T/cr3/rollout.txt")" "[exit 0]" "and still waits for the rollout in that namespace"
 
 # ---- w_backing_line, w_backing_deployments: reconnect/backing.txt ----
 dep() { printf '{"metadata":{"name":"%s"},"spec":{"template":{"metadata":{"labels":%s}}}}' "$1" "$2"; } # NAME LABELS

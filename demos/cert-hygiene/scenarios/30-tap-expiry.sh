@@ -3,10 +3,13 @@
 # the trust anchor and issuer stay valid (profile tap-short: a 15-minute tap
 # certificate). T_mark is the tap certificate's notAfter, exactly as the webhook
 # scenarios take theirs from their own serving certificate (lab/scenario-webhook.sh).
-# Unlike W, nothing is deleted, scaled or replaced -- V has no recovery branch. The run
-# only RECORDS what tap, the tap APIService and `linkerd viz check` do before, at and
-# after the expiry; V1 is judged later, in the write-up, never here. Launch with
-# scripts/run.sh.
+# Unlike W, no credential is ever deleted, scaled or replaced -- V has no recovery branch.
+# The run only RECORDS what tap, the tap APIService and `linkerd viz check` do before, at
+# and after the expiry; V1 is judged later, in the write-up, never here. After the
+# post-expiry window, a forced-reconnect phase (Task 3b, the same shape and reason as W's
+# own) restarts the tap Deployment once, so the API server must open a new connection to it
+# rather than reuse one from before the expiry, and probes continue through that window too.
+# Launch with scripts/run.sh.
 set -euo pipefail
 # shellcheck source=/dev/null
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lab" && pwd)/scenario-common.sh"
@@ -20,9 +23,71 @@ scenario_mark_epoch() { # T_mark: the tap certificate's notAfter
   cert_not_after_epoch "$CERTS/webhooks/tap.crt"
 }
 
-scenario_recover() { # V has no recovery branch: the tap certificate is never replaced,
-  # so there is nothing to apply, delete or restart (design section 8 is record-only).
-  mark v-recover "no recovery: V records tap and APIService state through the expiry; the tap certificate is never replaced"
+V_RECONNECT_EPOCH=""   # when the reconnect rollout finished; reconnect-0000 is relative to it
+
+scenario_recover() { # V has no credential recovery: the tap certificate is never replaced.
+  # It does force a new API-server connection first (Task 3b), the same reason and shape as
+  # W's own reconnect phase: a certificate that has already expired does not bite while the
+  # API server is still using a connection it opened before that (design section 8's basis,
+  # confirmed by Task 3's throwaway run).
+  _v_reconnect
+  mark v-recover "no recovery: the tap certificate is never replaced; only the forced-reconnect phase (above) ran"
+}
+
+# _v_backing: reconnect/backing.txt, "component=tap service=<svc> deployment=<d|-> [error=...]"
+# -- the Deployment behind the Service the tap APIService actually points at, derived now
+# from that Service's selector (w_backing_line, reused unchanged from the webhook phase).
+# Unlike W's fixed webhook_service table, the Service name and its namespace both come from
+# the live APIService: this is one component, not three, but neither the Service nor its
+# Deployment is ever hardcoded (Task 3b; slice 2 review finding on taking a mapping on
+# trust). A failed read at any step is recorded, never fatal.
+_v_backing() {
+  local f="$RUN_DIR/reconnect/backing.txt" tmp svc="" ns="" err=""
+  tmp="$(mktemp -d)"
+  mkdir -p "$RUN_DIR/reconnect"
+  if ! _record "tap APIService read" kubectl get apiservice v1alpha1.tap.linkerd.io -o json > "$tmp/a.json"; then
+    err="$(cat "$tmp/a.json")"
+  else
+    svc="$(jq -r '.spec.service.name // empty' "$tmp/a.json")"
+    ns="$(jq -r '.spec.service.namespace // empty' "$tmp/a.json")"
+    [ -n "$svc" ] && [ -n "$ns" ] || err="tap APIService names no backing Service"
+  fi
+  if [ -n "$err" ]; then
+    w_backing_line tap "${svc:-<none>}" "$tmp/a.json" "$tmp/a.json" "$err" > "$f"
+  elif ! _record "Service $ns/$svc read" kubectl -n "$ns" get svc "$svc" -o json > "$tmp/s.json"; then
+    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/s.json" "$(cat "$tmp/s.json")" > "$f"
+  elif ! _record "$ns Deployment listing" kubectl -n "$ns" get deploy -o json > "$tmp/d.json"; then
+    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json" "$(cat "$tmp/d.json")" > "$f"
+  else
+    w_backing_line tap "$svc" "$tmp/s.json" "$tmp/d.json" > "$f"
+  fi
+  rm -rf "$tmp"
+}
+
+_v_reconnect() { # the forced-reconnect phase (design section 8, added by Task 3b): restart
+  # the Deployment behind the tap Service once, so the API server must open a new connection
+  # to it, then probe. No lab workload is restarted and no credential changes: the new pod
+  # still mounts the expired tap certificate.
+  local ds=()
+  snap_viz reconnect-before
+  _v_backing
+  mark reconnect-backing "$(cat "$RUN_DIR/reconnect/backing.txt")"
+  mapfile -t ds < <(w_backing_deployments "$RUN_DIR/reconnect/backing.txt")
+  mark reconnect-restart "kubectl rollout restart: ${ds[*]:-no backing Deployment}"
+  if [ "${#ds[@]}" -gt 0 ]; then
+    capture reconnect/restart.txt kubectl -n linkerd-viz rollout restart "${ds[@]/#/deploy/}"
+  else
+    capture reconnect/restart.txt bash -c 'echo "no backing Deployment derived; see reconnect/backing.txt"; exit 1'
+  fi
+  capture_rollouts reconnect/rollout.txt linkerd-viz "${ds[@]}"
+  V_RECONNECT_EPOCH="$(date -u +%s)"
+  mark reconnect-rolled-out "rollout.txt $(tail -n 1 "$RUN_DIR/reconnect/rollout.txt")"
+  snap_viz reconnect-after
+  capture "viz-check/reconnect-0000.txt" linkerd viz check --wait 20s
+  _v_tap_probe reconnect-0000
+  _v_conditions_snapshot reconnect-0000
+  observe_until $(( V_RECONNECT_EPOCH + V_RECONNECT_WINDOW_S )) reconnect
+  mark reconnect-end "after ${V_RECONNECT_WINDOW_S}s of reconnect probes; V has no recovery to follow"
 }
 
 _v_tap_probe() { # NAME: a bounded tap capture against live traffic, recorded whole --

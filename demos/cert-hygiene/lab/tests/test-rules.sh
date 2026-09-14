@@ -33,7 +33,7 @@ assert_eq "$(scenario_rules 20-check-threshold | paste -sd' ' -)" "k-remaining" 
 assert_eq "$(scenario_rules 06-anchor-expiry | paste -sd' ' -)" "recovery-apply control-at-tree" "A rules"
 assert_eq "$(scenario_rules 07-anchor-rotation-staged | paste -sd' ' -)" "control-at-tree" "S-staged rules"
 assert_eq "$(scenario_rules 08-anchor-rotation-hard | paste -sd' ' -)" "s-hard-stage1 control-at-tree" "S-hard rules"
-assert_eq "$(scenario_rules 30-tap-expiry | paste -sd' ' -)" "v-baseline control-at-tree" "V rules"
+assert_eq "$(scenario_rules 30-tap-expiry | paste -sd' ' -)" "v-baseline v-reconnect control-at-tree" "V rules"
 assert_eq "$(credential_plan_for 07-anchor-rotation-staged | grep '^plan')" "plan A/I1 A+B/I1 A+B/I2 B/I2" "S-staged plan"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^plan')" "plan A/I1/W1 A/I1/W2" "W: the webhook certificates change once across ticks"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^components')" "components trust issuer webhooks" "W components"
@@ -44,6 +44,9 @@ assert_eq "$(credential_plan_for 20-check-threshold | grep '^plan')" "plan A/I1 
 assert_eq "$(credential_plan_for 30-tap-expiry | grep '^plan')" "plan A/I1" "V: one state; the tap cert is not part of the credential plan"
 assert_contains "$(scenario_required_files 20-check-threshold)" certs/issuer-plus.pem "K requires the +10m issuer"
 assert_contains "$(scenario_required_files 30-tap-expiry)" tap-baseline.txt "V requires tap-baseline.txt"
+for f in backing restart rollout; do
+  assert_contains "$(scenario_required_files 30-tap-expiry)" "reconnect/$f.txt" "V requires reconnect/$f.txt"
+done
 
 # ---- every scenario: a complete fixture is valid ----
 make_run "$T/ctl/r1" 00-baseline-control c1 h1 false
@@ -197,6 +200,20 @@ make_run "$T/vmiss" 30-tap-expiry c2 h1 false
 rm "$T/vmiss/tap-baseline.txt"
 assert_fails "V without tap-baseline.txt at all is invalid" evaluate_validity "$T/vmiss" 30-tap-expiry "$V" "$T/ctl"
 assert_contains "$(reason "$T/vmiss")" "reason=missing tap-baseline.txt" "reason names the missing file"
+# v-reconnect: the forced-reconnect restart and its rollout succeeded (design section 8,
+# Task 3b), the same shape as W's own w-reconnect but for tap's one component.
+make_run "$T/vk1" 30-tap-expiry c2 h1 false
+printf 'component=tap service=tap deployment=- error=[Service tap read failed: exit 1] refused\n' > "$T/vk1/reconnect/backing.txt"
+assert_fails "V without a backing Deployment is invalid" evaluate_validity "$T/vk1" 30-tap-expiry "$V" "$T/ctl"
+assert_contains "$(reason "$T/vk1")" "reason=forced reconnect: reconnect/backing.txt names no Deployment" "reason names the missing deployment"
+make_run "$T/vk2" 30-tap-expiry c2 h1 false
+printf '$ kubectl -n linkerd-viz rollout restart deploy/tap\nerror: connection refused\n[exit 1]\n' > "$T/vk2/reconnect/restart.txt"
+assert_fails "V whose reconnect restart failed is invalid" evaluate_validity "$T/vk2" 30-tap-expiry "$V" "$T/ctl"
+assert_contains "$(reason "$T/vk2")" "reason=forced reconnect: reconnect/restart.txt does not end [exit 0]" "reason names the restart"
+make_run "$T/vk3" 30-tap-expiry c2 h1 false
+printf '$ bash -c ... capture_rollouts linkerd-viz tap\nerror: timed out waiting for the condition\n[exit 1]\n' > "$T/vk3/reconnect/rollout.txt"
+assert_fails "V whose reconnect rollout failed is invalid" evaluate_validity "$T/vk3" 30-tap-expiry "$V" "$T/ctl"
+assert_contains "$(reason "$T/vk3")" "reason=forced reconnect: reconnect/rollout.txt does not end [exit 0]" "reason names the rollout"
 
 # ---- credential_plan_check ----
 state() { printf 'trust_roots_sha256=%s\nissuer_sha256=%s\n' "$2" "$3" > "$1"; }

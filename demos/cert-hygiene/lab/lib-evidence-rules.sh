@@ -18,7 +18,7 @@ scenario_rules() {
     09-identity-outage|07-anchor-rotation-staged) echo control-at-tree ;;
     20-check-threshold) echo k-remaining ;;
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
-    30-tap-expiry) printf '%s\n' v-baseline control-at-tree ;;
+    30-tap-expiry) printf '%s\n' v-baseline v-reconnect control-at-tree ;;
     *) die "scenario_rules: unknown scenario '$1'" ;;
   esac
 }
@@ -43,7 +43,7 @@ scenario_required_files() {
     06-anchor-expiry) _certs trust-anchor-new issuer-replacement; echo recover/linkerd-upgrade.txt ;;
     07-anchor-rotation-staged) _certs trust-anchor-new trust-bundle issuer-new ;;
     08-anchor-rotation-hard) _certs trust-anchor-new issuer-new; echo s-hard/stage1-condition.txt ;;
-    30-tap-expiry) echo tap-baseline.txt ;;
+    30-tap-expiry) printf '%s\n' tap-baseline.txt reconnect/backing.txt reconnect/restart.txt reconnect/rollout.txt ;;
   esac
 }
 
@@ -172,6 +172,14 @@ evaluate_validity() {
       v-baseline)
         _first_is "$run/tap-baseline.txt" result=ok \
           || reasons+=("tap was never proved working while its certificate was valid: tap-baseline.txt") ;;
+      v-reconnect)   # V has one component (tap); its Service and Deployment are derived at
+        # run time from the live APIService, never a fixed table (Task 3b)
+        awk '$3 ~ /^deployment=[^-]/ { found = 1 } END { exit !found }' "$run/reconnect/backing.txt" 2>/dev/null \
+          || reasons+=("forced reconnect: reconnect/backing.txt names no Deployment")
+        for f in restart rollout; do
+          [ "$(tail -n 1 "$run/reconnect/$f.txt" 2>/dev/null)" = "[exit 0]" ] \
+            || reasons+=("forced reconnect: reconnect/$f.txt does not end [exit 0]")
+        done ;;
       control-at-tree)
         tree="$(_kv harness_tree_sha256 "$run/git-state.txt")"
         _control_passed "$control_dir" "$tree" || reasons+=("no valid 00-baseline-control run with harness tree $tree") ;;
