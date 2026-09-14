@@ -2,9 +2,11 @@
 # Runs on the macOS HOST. Launches a scenario detached inside the lab machine, after
 # recording the harness's git state (the VM never runs git). The harness is lib/ plus
 # demos/cert-hygiene/ excluding runs/. Prints the demo-relative run dir last.
-# Usage: run.sh [--discovery [--short]] <scenario>, e.g. run.sh 00-baseline-control. With
-# --discovery the run goes under runs/_discovery/, carries discovery.txt and is never
-# evidence; --short (discovery only) shortens its observation windows.
+# Usage: run.sh [--discovery [--short]] <scenario> [scenario-args...], e.g.
+# run.sh 00-baseline-control. With --discovery the run goes under runs/_discovery/,
+# carries discovery.txt and is never evidence; --short (discovery only) shortens its
+# observation windows. Any arguments after <scenario> are passed through to the
+# scenario script, after the run directory it is always given.
 set -euo pipefail
 DEMO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$DEMO/../.." && pwd)"
@@ -21,8 +23,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ "$short" = no ] || [ "$discovery" = yes ] || die "--short is discovery-only: evidence runs refuse shortened windows"
-scenario="${1:?usage: run.sh [--discovery [--short]] <scenario>}"
+scenario="${1:?usage: run.sh [--discovery [--short]] <scenario> [scenario-args...]}"
 [ -f "$DEMO/scenarios/$scenario.sh" ] || die "no scenario '$scenario' in $DEMO/scenarios/"
+shift
 if [ "$discovery" = yes ]; then
   rel="runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-$scenario"
 else
@@ -47,6 +50,6 @@ if [ "$dirty" = true ]; then
 fi
 printf 'orbstack_version=%s\nhost_os=%s\n' "$(orb version 2>/dev/null | head -n 1)" "$(sw_vers -productVersion 2>/dev/null || uname -sr)" > "$run/host.txt"
 
-bash "$DEMO/scripts/in-lab.sh" --detach "$rel/harness.log" "scenarios/$scenario.sh" "$rel"
+bash "$DEMO/scripts/in-lab.sh" --detach "$rel/harness.log" "scenarios/$scenario.sh" "$rel" "$@"
 log "follow: tail -f $DEMO/$rel/timeline.log"
 echo "$rel"

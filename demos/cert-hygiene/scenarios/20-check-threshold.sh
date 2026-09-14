@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Scenario K (design section 5): linkerd check's 60-day issuer warning, bracketed. The
 # profile installs an issuer valid for 1440h - 10m; K then applies one valid for
-# 1440h + 10m. Each step records both checks with their start and end times and the
-# issuer's notAfter, so the remaining validity at check time can be computed.
+# K_PLUS_ISSUER_LIFETIME (default from config.example.env, 1440h + 10m). Each step
+# records both checks with their start and end times and the issuer's notAfter, so the
+# remaining validity at check time can be computed.
+# Usage: 20-check-threshold.sh <run-dir> [k-plus-issuer-lifetime]
+# The second argument, if given, overrides K_PLUS_ISSUER_LIFETIME for this run only (a
+# bisect is then a series of runs, not a series of commits); omitted, behaviour is
+# unchanged. Either way the value used is recorded in versions.txt's config_ dump.
 # Launch with scripts/run.sh.
 set -euo pipefail
 # shellcheck source=/dev/null
@@ -33,4 +38,9 @@ scenario_steps() {
   _write_result k-remaining.txt k_remaining_check "$RUN_DIR" || true
 }
 
-run_steps_scenario 20-check-threshold check-threshold "${1:?usage: 20-check-threshold.sh <run-dir>}"
+if [ -n "${2:-}" ]; then
+  K_PLUS_ISSUER_LIFETIME="$2"
+  export K_PLUS_ISSUER_LIFETIME
+fi
+
+run_steps_scenario 20-check-threshold check-threshold "${1:?usage: 20-check-threshold.sh <run-dir> [k-plus-issuer-lifetime]}"
