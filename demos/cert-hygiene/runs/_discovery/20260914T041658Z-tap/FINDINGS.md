@@ -19,13 +19,14 @@ Yes, by every check this discovery ran:
 - The `v1alpha1.tap.linkerd.io` APIService is `Available=True`
   (`apiservice_available=True`).
 - `linkerd viz check` reports `tap API server has valid cert` and
-  `tap API service is running` both passing. The one non-passing tap row,
-  `tap API server cert is valid for at least 60 days`, is expected and not a
-  failure: `tap-long`'s certificate is deliberately 24 hours, far short of 60
-  days, exactly as the equivalent webhook-discovery warning is expected for
-  `webhook-long`.
-- Every other `linkerd viz check` row passes; the run ends
-  `Status check results are OK`.
+  `tap API service is running` both passing. One tap row is not a pass:
+  `tap API server cert is valid for at least 60 days` prints `‼`. That is
+  what we expected of a deliberately 24-hour certificate, just as the
+  equivalent webhook-discovery warning was expected for `webhook-long` --
+  but what this run observed is narrower than "it is not a failure": the
+  `‼` did not stop the check or change its outcome line.
+- Every other `linkerd viz check` row prints `√`, and the transcript
+  (`check.txt`) ends `Status check results are √`.
 
 **SAN versus the actual backing Service** (the task step's instruction to
 check before trusting the name): the `v1alpha1.tap.linkerd.io` APIService's
