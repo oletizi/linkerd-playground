@@ -34,7 +34,7 @@ Every experiment below has been run, written up, and carried into [findings.md](
 
 ## The test lab
 
-The experiments run in [`demos/cert-hygiene/`](../../../demos/cert-hygiene/): a throwaway single-machine Kubernetes cluster with Linkerd. It makes certificates expire on purpose and records everything that happens. Raw recordings of each run are kept under `demos/cert-hygiene/runs/`.
+The experiments run in [`demos/cert-hygiene/`](../../../demos/cert-hygiene/): a throwaway single-machine Kubernetes cluster with Linkerd. It makes certificates expire on purpose and records everything that happens. Raw recordings of each run are kept outside this repository, so that cloning it stays cheap for anyone who just wants to run the demos. What stays here is a manifest per run listing every file with its checksum; `tools/evidence.sh` prints any single recorded file, or downloads a whole run and verifies it against that manifest.
 
 How the lab works is in its [first design](../../superpowers/specs/2026-09-10-cert-hygiene-demo-lab-design.md) and [first implementation plan](../../superpowers/plans/2026-09-10-cert-hygiene-demo-lab/README.md). The second round of experiments — every scenario, credential profile, restart stage and validity rule behind the evidence on these pages — is specified in its [second design](../../superpowers/specs/2026-09-11-cert-hygiene-lab-slice-2-design.md) and [second implementation plan](../../superpowers/plans/2026-09-11-cert-hygiene-lab-slice-2/README.md). All four use internal shorthand that the pages above avoid.
 
