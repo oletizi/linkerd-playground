@@ -20,7 +20,7 @@ V=edge-26.9.1
 reason() { cat "$1/validity.txt"; }
 
 # ---- the table itself ----
-assert_eq "${#LAB_SCENARIOS[@]}" 12 "twelve scenarios"
+assert_eq "${#LAB_SCENARIOS[@]}" 13 "thirteen scenarios"
 assert_fails "unknown scenario dies (rules)" scenario_rules 99-nope
 assert_fails "unknown scenario dies (plan)" credential_plan_for 99-nope
 assert_fails "unknown scenario dies (files)" scenario_required_files 99-nope
@@ -36,6 +36,7 @@ assert_eq "$(scenario_rules 08-anchor-rotation-hard | paste -sd' ' -)" "s-hard-s
 assert_eq "$(scenario_rules 30-tap-expiry | paste -sd' ' -)" "v-baseline v-reconnect control-at-tree" "V rules"
 assert_eq "$(scenario_rules 40-webhook-unavailable-ignore | paste -sd' ' -)" "n-baseline n-restored control-at-tree" "N-ignore rules"
 assert_eq "$(scenario_rules 40-webhook-unavailable-fail | paste -sd' ' -)" "n-baseline n-restored control-at-tree" "N-fail rules"
+assert_eq "$(scenario_rules 41-webhook-algorithm | paste -sd' ' -)" "g-baseline g-timevalid control-at-tree" "G rules"
 assert_eq "$(credential_plan_for 07-anchor-rotation-staged | grep '^plan')" "plan A/I1 A+B/I1 A+B/I2 B/I2" "S-staged plan"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^plan')" "plan A/I1/W1 A/I1/W2" "W: the webhook certificates change once across ticks"
 assert_eq "$(credential_plan_for 02-webhook-expiry-ignore | grep '^components')" "components trust issuer webhooks" "W components"
@@ -46,6 +47,8 @@ assert_eq "$(credential_plan_for 20-check-threshold | grep '^plan')" "plan A/I1 
 assert_eq "$(credential_plan_for 30-tap-expiry | grep '^plan')" "plan A/I1" "V: one state; the tap cert is not part of the credential plan"
 assert_eq "$(credential_plan_for 40-webhook-unavailable-ignore | grep '^plan')" "plan A/I1/W1" "N: one state; nothing rotates"
 assert_eq "$(credential_plan_for 40-webhook-unavailable-ignore | grep '^components')" "components trust issuer webhooks" "N components"
+assert_eq "$(credential_plan_for 41-webhook-algorithm | grep '^plan')" "plan A/I1/W1 A/I1/W2 A/I1/W1" "G: baseline, swapped, restored -- three states, back where it started"
+assert_eq "$(credential_plan_for 41-webhook-algorithm | grep '^components')" "components trust issuer webhooks" "G components"
 assert_contains "$(scenario_required_files 20-check-threshold)" certs/issuer-plus.pem "K requires the +10m issuer"
 assert_contains "$(scenario_required_files 30-tap-expiry)" tap-baseline.txt "V requires tap-baseline.txt"
 for f in backing restart rollout; do
@@ -54,6 +57,11 @@ done
 assert_contains "$(scenario_required_files 40-webhook-unavailable-ignore)" admission-restored.txt "N requires admission-restored.txt"
 for f in backing scale-down rollout-down pods-gone scale-up rollout-up; do
   assert_contains "$(scenario_required_files 40-webhook-unavailable-fail)" "scale/$f.txt" "N requires scale/$f.txt"
+done
+assert_contains "$(scenario_required_files 41-webhook-algorithm)" certs/webhook-profileValidator-algorithm.pem "G requires the algorithm-refused candidate cert"
+assert_contains "$(scenario_required_files 41-webhook-algorithm)" admission-restored.txt "G requires admission-restored.txt"
+for f in backing patch-fault restart-fault rollout-fault pods-gone-fault patch-restore restart-restore rollout-restore pods-gone-restore; do
+  assert_contains "$(scenario_required_files 41-webhook-algorithm)" "swap/$f.txt" "G requires swap/$f.txt"
 done
 
 # ---- every scenario: a complete fixture is valid ----
@@ -206,6 +214,35 @@ make_run "$T/nsd" 40-webhook-unavailable-fail c2 h1 false
 printf '$ kubectl -n linkerd scale deploy/linkerd-proxy-injector --replicas=0\nerror: connection refused\n[exit 1]\n' > "$T/nsd/scale/scale-down.txt"
 assert_fails "N whose scale-down failed is invalid even with both probes ok" evaluate_validity "$T/nsd" 40-webhook-unavailable-fail "$V" "$T/ctl"
 assert_contains "$(reason "$T/nsd")" "reason=N fault/recovery: scale/scale-down.txt does not end [exit 0]" "reason names scale-down.txt"
+# g-baseline
+make_run "$T/gb" 41-webhook-algorithm c2 h1 false
+printf 'result=fail\nfail: serviceprofile-invalid-baseline was not denied by the sp-validator\n' > "$T/gb/admission-baseline.txt"
+assert_fails "G without a proving baseline is invalid" evaluate_validity "$T/gb" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gb")" "reason=G: the healthy baseline did not prove every admission probe" "reason names the baseline"
+# g-timevalid: the rule this task exists to prove has teeth. A missing per-tick record,
+# an unreadable certificate, a swap command that never ran, and -- the one the rule is
+# actually FOR -- a certificate that had already expired at a recorded tick, constructed
+# here rather than assumed to fail.
+make_run "$T/gtm" 41-webhook-algorithm c2 h1 false
+rm "$T/gtm/timevalidity/verify.txt"
+assert_fails "G missing a tick's timevalidity record is invalid" evaluate_validity "$T/gtm" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gtm")" "reason=G: timevalidity/verify.txt missing" "reason names the missing tick"
+make_run "$T/gtu" 41-webhook-algorithm c2 h1 false
+printf 'observed_epoch=100\nobserved_utc=2026-01-01T00:00:00Z\n[profileValidator certificate unreadable]\n' > "$T/gtu/timevalidity/baseline.txt"
+assert_fails "G with an unreadable certificate at a tick is invalid" evaluate_validity "$T/gtu" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gtu")" "reason=G: timevalidity/baseline.txt: certificate unreadable at tick baseline" "reason names the tick"
+make_run "$T/gtx" 41-webhook-algorithm c2 h1 false
+printf '$ kubectl -n linkerd patch secret linkerd-sp-validator-k8s-tls --type merge --patch-file p.json\nerror: connection refused\n[exit 1]\n' > "$T/gtx/swap/patch-fault.txt"
+assert_fails "G whose certificate-swap patch failed is invalid even with a clean timevalidity record" evaluate_validity "$T/gtx" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gtx")" "reason=G cert swap: swap/patch-fault.txt does not end [exit 0]" "reason names the failed patch"
+# The certificate expiring mid-run: constructed, not assumed. A run whose refused
+# certificate had already expired by its verify tick cannot be told apart from an expiry
+# run -- design section 4's own statement of why this rule exists.
+make_run "$T/gexp" 41-webhook-algorithm c2 h1 false
+printf 'observed_epoch=2000\nobserved_utc=2026-01-01T00:33:20Z\nnotAfter=Jan  1 00:16:40 2026 GMT\nnotAfter_epoch=1000\nseconds_until_notAfter=-1000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=1\n' \
+  > "$T/gexp/timevalidity/verify.txt"
+assert_fails "G whose certificate expired mid-run is invalid (constructed fixture, not assumed)" evaluate_validity "$T/gexp" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gexp")" "reason=G: timevalidity/verify.txt: certificate not time-valid at tick verify (seconds_until_notAfter=-1000)" "reason names the tick and the negative remaining validity"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"
@@ -298,5 +335,17 @@ wst "$T/wpc/credentials/verify.txt" w2
 assert_succeeds "W: reconnect ticks keep the supplied webhook certificates; the plan walks W1 -> W2" credential_plan_check "$T/wpc" 02-webhook-expiry-ignore
 wst "$T/wpc/credentials/reconnect-2.txt" w9
 assert_fails "W: a webhook credential change during reconnect breaks the plan" credential_plan_check "$T/wpc" 02-webhook-expiry-ignore
+
+# G: baseline (W1) -> swapped (W2) -> restored (back to W1) -- three states, the last
+# equal to the first, distinguishing it from W's one-directional plan above.
+make_run "$T/gpc" 41-webhook-algorithm c2 h1 false
+printf '2026-09-10T10:00:00Z tick baseline\n2026-09-10T10:05:00Z tick fault-0001\n2026-09-10T10:10:00Z tick verify\n2026-09-10T10:11:00Z done\n' > "$T/gpc/timeline.log"
+wst "$T/gpc/credentials/baseline.txt" w1
+wst "$T/gpc/credentials/fault-0001.txt" w2
+wst "$T/gpc/credentials/verify.txt" w1
+assert_succeeds "G: baseline, swap, restore walks the declared plan" credential_plan_check "$T/gpc" 41-webhook-algorithm
+assert_contains "$(credential_plan_check "$T/gpc" 41-webhook-algorithm)" "declared: plan A/I1/W1 A/I1/W2 A/I1/W1" "prints the declared plan"
+wst "$T/gpc/credentials/verify.txt" w9
+assert_fails "G: a restore that lands on a third, different webhook state breaks the plan" credential_plan_check "$T/gpc" 41-webhook-algorithm
 
 finish test-rules

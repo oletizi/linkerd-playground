@@ -136,6 +136,38 @@ w_cert_state_line() {
   w_fact_line "$comp" "$sfp" "$tmp/$comp.crt" "$tmp/$comp-ca.pem" "$now"
 }
 
+# deploy_selector NAMESPACE DEPLOY: DEPLOY's own .spec.selector.matchLabels as a
+# "k=v,k=v" -l value, never a hardcoded label -- a caller's backing Deployment is itself
+# derived (w_backing_write/w_backing_deployments), so the label wait_pods_gone waits on
+# has to be derived too. Shared by N (scale/pods-gone.txt) and G (swap/pods-gone-*.txt).
+deploy_selector() {
+  local ns="${1:?deploy_selector: NAMESPACE required}" d="${2:?deploy_selector: DEPLOY required}" json
+  json="$(kubectl -n "$ns" get deploy "$d" -o jsonpath='{.spec.selector.matchLabels}')" \
+    || die "deploy_selector: cannot read $d's selector"
+  [ -n "$json" ] || die "deploy_selector: $d's selector is empty"
+  jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")' <<< "$json" \
+    || die "deploy_selector: cannot parse $d's selector: $json"
+}
+
+# wait_pods_gone FILE NAMESPACE DEPLOY...: FILE (run-relative, passed to capture) --
+# wait for every named Deployment's pre-change pods to actually be gone. `kubectl
+# rollout status` alone is not enough: it can report success while the old pod is still
+# Running and a live, Ready endpoint (seen in N's first discovery run,
+# controlplane/fault-after.txt, sampled 2s after T_mark, after rollout-down.txt had
+# already recorded [exit 0]). Without this, a probe landing in that gap would record a
+# wrong observation with nothing in the artifacts flagging it. Shared by N's scale-to-
+# zero fault and recovery and G's certificate-swap restart and restore.
+wait_pods_gone() {
+  local f="${1:?wait_pods_gone: FILE required}" ns="${2:?wait_pods_gone: NAMESPACE required}" d sels=()
+  shift 2
+  [ $# -ge 1 ] || die "wait_pods_gone: at least one DEPLOY required"
+  for d in "$@"; do sels+=("$(deploy_selector "$ns" "$d")"); done
+  # shellcheck disable=SC2016
+  capture "$f" bash -c 'ns="$1"; shift
+    for sel in "$@"; do kubectl -n "$ns" wait --for=delete pod -l "$sel" --timeout=120s || exit 1; done' \
+    pods-gone "$ns" "${sels[@]}"
+}
+
 _webhook_lines() { # CONFIG JSON_FILE: one line per webhook, with the caBundle hashed
   local cfg="$1" name policy b64 hash
   while read -r name policy b64; do

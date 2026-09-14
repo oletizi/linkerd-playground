@@ -38,6 +38,15 @@ printf '$ kubectl create\nError from server: admission webhook "%s" denied the r
 assert_fails "denied by a different validator does not count" admission_denied_by "$SW" "$T/dby-wrong.txt"
 assert_fails "a missing file is not denied" admission_denied_by "$SW" "$T/dby-missing.txt"
 
+# ---- admission_refused_by_algorithm (design section 4, G1) ----
+printf '$ kubectl create --dry-run=server -f x\nError from server (InternalError): error when creating "x": Internal error occurred: failed calling webhook "%s": failed to call webhook: Post "https://linkerd-sp-validator.linkerd.svc:443/?timeout=10s": tls: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "x509: cannot verify signature: insecure algorithm SHA1-RSA" while trying to verify candidate authority certificate "lab-webhook-ca")\n[exit 1]\n' "$SW" > "$T/alg-ok.txt"
+assert_succeeds "the exact refusal Task 3 recorded is classified as refused by algorithm" admission_refused_by_algorithm "$T/alg-ok.txt"
+printf '$ kubectl create\ncreated\n[exit 0]\n' > "$T/alg-accepted.txt"
+assert_fails "an accepted object is not a refusal at all" admission_refused_by_algorithm "$T/alg-accepted.txt"
+printf '$ kubectl create\nError from server: admission webhook "%s" denied the request: bad ttl\n[exit 1]\n' "$SW" > "$T/alg-denied.txt"
+assert_fails "the validator's own denial is not an algorithm refusal" admission_refused_by_algorithm "$T/alg-denied.txt"
+assert_fails "a missing file is not a refusal" admission_refused_by_algorithm "$T/alg-missing.txt"
+
 # ---- admission_proof_check ----
 proof() { # DIR: a probe set (suffix s1) that proves all three webhooks
   local d="$1"

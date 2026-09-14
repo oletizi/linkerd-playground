@@ -49,6 +49,21 @@ make_run() {
     printf '$ kubectl -n linkerd rollout restart deploy/linkerd-proxy-injector deploy/linkerd-destination\ndeployment.apps/linkerd-destination restarted\n[exit 0]\n' > "$d/reconnect/restart.txt"
     printf '$ bash -c ... capture_rollouts linkerd linkerd-proxy-injector linkerd-destination\n[exit 0]\n' > "$d/reconnect/rollout.txt"
   fi
+  if [ "$scenario" = 41-webhook-algorithm ]; then
+    # G's certificate swap (design section 4): every swap/*.txt must end [exit 0]
+    # (g-timevalid's own _exit0_reasons check), and every recorded tick's live
+    # certificate must show time remaining -- both ticks here (baseline, verify) get a
+    # timevalidity file with a ten-year certificate, matching the profile's own scale.
+    mkdir -p "$d/swap" "$d/timevalidity"
+    printf 'component=profileValidator service=linkerd-sp-validator deployment=linkerd-destination\n' > "$d/swap/backing.txt"
+    for f in patch-fault restart-fault rollout-fault pods-gone-fault patch-restore restart-restore rollout-restore pods-gone-restore; do
+      printf '$ kubectl ...\ndone\n[exit 0]\n' > "$d/swap/$f.txt"
+    done
+    for t in baseline verify; do
+      printf 'observed_epoch=1000000000\nobserved_utc=2001-09-09T01:46:40Z\nnotAfter=Sep  9 01:46:40 2036 GMT\nnotAfter_epoch=2103292000\nseconds_until_notAfter=1103292000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=0\n' \
+        > "$d/timevalidity/$t.txt"
+    done
+  fi
   printf '$ linkerd upgrade ... | kubectl apply -f -\nsecret/linkerd-identity-issuer configured\n[exit 0]\n' > "$d/recover/linkerd-upgrade.txt"
   printf '$ bash -o pipefail -c linkerd upgrade > m.yaml\n[exit 0]\n' > "$d/recover/plain-render.txt"
   printf '$ kubectl apply -f m.yaml\nsecret/linkerd-proxy-injector-k8s-tls created\n[exit 0]\n' > "$d/recover/plain-apply.txt"

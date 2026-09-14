@@ -74,31 +74,10 @@ scenario_post_actions() { # T_mark + 60s: admission probes instead of new worklo
   mark admission-probes post-actions
 }
 
-# _n_selector DEPLOY: DEPLOY's own .spec.selector.matchLabels as a "k=v,k=v" -l value,
-# never a hardcoded label -- unlike O's fixed identity-component label, N's backing
-# Deployment is itself derived (_n_backing), so the label it waits on has to be too.
-_n_selector() {
-  local d="${1:?_n_selector: DEPLOY required}" json
-  json="$(kubectl -n linkerd get deploy "$d" -o jsonpath='{.spec.selector.matchLabels}')" \
-    || die "_n_selector: cannot read $d's selector"
-  [ -n "$json" ] || die "_n_selector: $d's selector is empty"
-  jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")' <<< "$json" \
-    || die "_n_selector: cannot parse $d's selector: $json"
-}
-
 # _n_wait_gone: scale/pods-gone.txt -- wait for every backing Deployment's pods to
-# actually be gone. capture_rollouts alone is not enough: `kubectl rollout status` can
-# report success while the old pod is still Running and a live, Ready endpoint (seen in
-# the first discovery run's controlplane/fault-after.txt, sampled 2s after T_mark, after
-# rollout-down.txt had already recorded [exit 0]). Without this, a probe landing in that
-# gap would record a wrong observation with nothing in the artifacts flagging it.
+# actually be gone (wait_pods_gone, collect-state.sh, shared with G's certificate swap).
 _n_wait_gone() {
-  local d sels=()
-  for d in "${N_BACKING_DEPLOYS[@]}"; do sels+=("$(_n_selector "$d")"); done
-  # shellcheck disable=SC2016
-  capture scale/pods-gone.txt bash -c 'ns="$1"; shift
-    for sel in "$@"; do kubectl -n "$ns" wait --for=delete pod -l "$sel" --timeout=120s || exit 1; done' \
-    pods-gone linkerd "${sels[@]}"
+  wait_pods_gone scale/pods-gone.txt linkerd "${N_BACKING_DEPLOYS[@]}"
 }
 
 scenario_fault() { # scale the derived Deployment(s) to zero, wait for the rollout AND

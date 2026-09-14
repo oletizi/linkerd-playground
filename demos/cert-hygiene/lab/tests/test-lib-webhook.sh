@@ -82,6 +82,24 @@ assert_fails "make_webhook_certs dies when SPEC omits one component's lifetime" 
 assert_contains "$(make_webhook_certs "$T/ca6" 'proxyInjector=15m policyValidator=20m' 2>&1)" \
   "no lifetime for profileValidator" "make_webhook_certs names the component SPEC omitted"
 
+# ---- make_webhook_cert_sha1 (design section 4, slice 4 Task 3/4): the refused leaf ----
+make_webhook_cert_sha1 "$T/ca1" policyValidator 15m
+assert_succeeds "make_webhook_cert_sha1 writes the component's cert" test -s "$T/ca1/policyValidator.crt"
+assert_contains "$(openssl x509 -noout -subject -in "$T/ca1/policyValidator.crt")" linkerd-policy-validator.linkerd.svc \
+  "the leaf's subject is the webhook Service's DNS name, exactly like make_webhook_cert"
+assert_contains "$(openssl x509 -noout -text -in "$T/ca1/policyValidator.crt")" DNS:linkerd-policy-validator.linkerd.svc \
+  "the leaf's SAN is the webhook Service's DNS name"
+assert_contains "$(openssl x509 -noout -text -in "$T/ca1/policyValidator.crt")" "Signature Algorithm: sha1WithRSAEncryption" \
+  "the leaf is signed with the refused algorithm -- the one thing make_webhook_cert cannot produce"
+assert_succeeds "the leaf still verifies against the CA that signed it (everything but the algorithm is correct)" \
+  openssl verify -CAfile "$T/ca1/ca.crt" "$T/ca1/policyValidator.crt"
+assert_fails "make_webhook_cert_sha1 refuses to overwrite an existing cert" make_webhook_cert_sha1 "$T/ca1" policyValidator 15m
+assert_contains "$(make_webhook_cert_sha1 "$T/ca1" policyValidator 15m 2>&1)" "policyValidator.crt exists; refusing to overwrite" \
+  "make_webhook_cert_sha1's overwrite refusal names the reason"
+assert_fails "make_webhook_cert_sha1 dies without a CA in DIR" make_webhook_cert_sha1 "$T/noca3" policyValidator 15m
+assert_contains "$(make_webhook_cert_sha1 "$T/noca3" policyValidator 15m 2>&1)" "no webhook CA in" \
+  "make_webhook_cert_sha1 dies naming the missing CA, not a step failure"
+
 # ---- webhook_install_args / tap_install_args: pure formatting ----
 assert_eq "$(webhook_install_args /d | wc -l | tr -d ' ')" 6 "one --set-file pair per component, 3 components"
 assert_contains "$(webhook_install_args /d)" \

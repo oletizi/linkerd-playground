@@ -61,6 +61,41 @@ make_webhook_cert() { # DIR COMPONENT LIFETIME: DIR/COMPONENT.{crt,key}, signed 
     --not-after "$life" --no-password --insecure
 }
 
+# _SHA1_LEAF_TEMPLATE: the step certificate template that makes step emit a leaf whose
+# signature algorithm the API server refuses (design section 4; slice 4 Task 3's
+# finding). `step certificate create`'s own flags cannot ask for this: there is no
+# -signature-algorithm flag, and an undersized RSA key is refused by Go itself before
+# step ever gets to sign anything. But a certificate template is not a flag -- step
+# honors whatever "signatureAlgorithm" a template names, without complaint. So step's
+# flags are not a safeguard against emitting an insecure certificate; only their own,
+# narrower policy is. SHA-1 is the one Task 3 proved this cluster's API server refuses.
+_SHA1_LEAF_TEMPLATE='{
+  "subject": {{ toJson .Subject }},
+  "sans": {{ toJson .SANs }},
+  "keyUsage": ["keyEncipherment", "digitalSignature"],
+  "extKeyUsage": ["serverAuth"],
+  "signatureAlgorithm": "SHA1-RSA"
+}'
+
+# make_webhook_cert_sha1 DIR COMPONENT LIFETIME: DIR/COMPONENT.{crt,key}, signed by
+# DIR/ca.*, shaped exactly like make_webhook_cert (SAN, chain, lifetime) except its
+# signature algorithm, produced through _SHA1_LEAF_TEMPLATE above rather than
+# --profile leaf. Never overwrites. Used by scenario G (lab/scenario-g.sh) for its
+# refused webhook credential -- everything about it correct except the thing under test.
+make_webhook_cert_sha1() {
+  local dir="${1:?}" comp="${2:?}" life="${3:?}" host tpl rc=0
+  host="$(webhook_service "$comp").linkerd.svc"
+  if [ ! -f "$dir/ca.crt" ] || [ ! -f "$dir/ca.key" ]; then die "make_webhook_cert_sha1: no webhook CA in $dir"; fi
+  [ ! -e "$dir/$comp.crt" ] || die "make_webhook_cert_sha1: $dir/$comp.crt exists; refusing to overwrite"
+  tpl="$(mktemp)"
+  printf '%s\n' "$_SHA1_LEAF_TEMPLATE" > "$tpl"
+  step certificate create "$host" "$dir/$comp.crt" "$dir/$comp.key" --template "$tpl" \
+    --ca "$dir/ca.crt" --ca-key "$dir/ca.key" --san "$host" --kty RSA --size 2048 \
+    --not-after "$life" --no-password --insecure || rc=$?
+  rm -f "$tpl"
+  return "$rc"
+}
+
 make_webhook_certs() { # DIR SPEC: the lab webhook CA plus one serving certificate per component
   local dir="${1:?}" spec="${2:?make_webhook_certs: SPEC required}" comp life
   # Reuse an already-created CA (e.g. one Task 1's tap certificate made first in the

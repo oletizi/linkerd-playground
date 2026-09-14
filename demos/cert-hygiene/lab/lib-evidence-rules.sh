@@ -7,7 +7,7 @@
 # shellcheck disable=SC2034
 LAB_SCENARIOS=(00-baseline-control 05-issuer-expiry 02-webhook-expiry-ignore 02-webhook-expiry-fail
   09-identity-outage 20-check-threshold 06-anchor-expiry 07-anchor-rotation-staged 08-anchor-rotation-hard
-  30-tap-expiry 40-webhook-unavailable-ignore 40-webhook-unavailable-fail)
+  30-tap-expiry 40-webhook-unavailable-ignore 40-webhook-unavailable-fail 41-webhook-algorithm)
 
 # scenario_rules SCENARIO: the rule ids that apply beyond the common rules and the plan.
 scenario_rules() {
@@ -20,6 +20,7 @@ scenario_rules() {
     08-anchor-rotation-hard) printf '%s\n' s-hard-stage1 control-at-tree ;;
     30-tap-expiry) printf '%s\n' v-baseline v-reconnect control-at-tree ;;
     40-webhook-unavailable-ignore|40-webhook-unavailable-fail) printf '%s\n' n-baseline n-restored control-at-tree ;;
+    41-webhook-algorithm) printf '%s\n' g-baseline g-timevalid control-at-tree ;;
     *) die "scenario_rules: unknown scenario '$1'" ;;
   esac
 }
@@ -50,6 +51,11 @@ scenario_required_files() {
       printf '%s\n' admission-baseline.txt admission-restored.txt \
         scale/backing.txt scale/scale-down.txt scale/rollout-down.txt scale/pods-gone.txt \
         scale/scale-up.txt scale/rollout-up.txt ;;
+    41-webhook-algorithm)
+      _certs webhook-ca webhook-proxyInjector webhook-policyValidator webhook-profileValidator webhook-profileValidator-algorithm
+      printf '%s\n' admission-baseline.txt admission-restored.txt \
+        swap/backing.txt swap/patch-fault.txt swap/restart-fault.txt swap/rollout-fault.txt swap/pods-gone-fault.txt \
+        swap/patch-restore.txt swap/restart-restore.txt swap/rollout-restore.txt swap/pods-gone-restore.txt ;;
   esac
 }
 
@@ -64,6 +70,7 @@ credential_plan_for() {
     06-anchor-expiry|08-anchor-rotation-hard) printf 'components trust issuer\nplan A/I1 B/I2\n' ;;
     07-anchor-rotation-staged) printf 'components trust issuer\nplan A/I1 A+B/I1 A+B/I2 B/I2\n' ;;
     40-webhook-unavailable-ignore|40-webhook-unavailable-fail) printf 'components trust issuer webhooks\nplan A/I1/W1\n' ;;
+    41-webhook-algorithm) printf 'components trust issuer webhooks\nplan A/I1/W1 A/I1/W2 A/I1/W1\n' ;;
   esac
 }
 
@@ -208,6 +215,26 @@ evaluate_validity() {
           || reasons+=("N: admission did not work again after the replicas were restored")
         while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "N fault/recovery" \
           scale/scale-down.txt scale/rollout-down.txt scale/pods-gone.txt scale/scale-up.txt scale/rollout-up.txt) ;;
+      g-baseline)
+        _first_is "$run/admission-baseline.txt" result=ok \
+          || reasons+=("G: the healthy baseline did not prove every admission probe") ;;
+      g-timevalid)   # design section 4: without this, a G run cannot be told apart from
+        # the expiry runs it exists to contrast with -- every recorded tick's live
+        # certificate must still show time remaining, and the swap that put the refused
+        # certificate in place (and the swap back) must itself have succeeded.
+        while read -r tick; do
+          f="$run/timevalidity/$tick.txt"
+          if [ ! -s "$f" ]; then reasons+=("G: timevalidity/$tick.txt missing"); continue; fi
+          if grep -q '^\[' "$f"; then reasons+=("G: timevalidity/$tick.txt: certificate unreadable at tick $tick"); continue; fi
+          comp="$(_kv seconds_until_notAfter "$f")"
+          case "$comp" in
+            ''|*[!0-9-]*) reasons+=("G: timevalidity/$tick.txt: seconds_until_notAfter unreadable at tick $tick") ;;
+            *) [ "$comp" -gt 0 ] || reasons+=("G: timevalidity/$tick.txt: certificate not time-valid at tick $tick (seconds_until_notAfter=$comp)") ;;
+          esac
+        done < <(awk '$2 == "tick" { print $3 }' "$run/timeline.log" 2>/dev/null)
+        while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "G cert swap" \
+          swap/patch-fault.txt swap/restart-fault.txt swap/rollout-fault.txt swap/pods-gone-fault.txt \
+          swap/patch-restore.txt swap/restart-restore.txt swap/rollout-restore.txt swap/pods-gone-restore.txt) ;;
       *) die "evaluate_validity: rule '$rule' has no check" ;;
     esac
   done

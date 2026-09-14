@@ -14,6 +14,16 @@ admission_denied_by() {
   [ -f "$f" ] && [ "$(_last_line "$f")" != "[exit 0]" ] && grep -qF "admission webhook \"$name\" denied the request" "$f"
 }
 
+# admission_refused_by_algorithm FILE: was the object recorded in response FILE refused
+# because the API server would not verify its signing CA certificate's signature
+# algorithm (design section 4, G1; slice 4 Task 3's exact wording, "insecure algorithm")?
+# A refusal for any other reason -- a CRD-schema error, the validator's own denial --
+# does not count. Lives beside admission_denied_by: the same shape, a different question.
+admission_refused_by_algorithm() {
+  local f="${1:?admission_refused_by_algorithm: FILE required}"
+  [ -f "$f" ] && [ "$(_last_line "$f")" != "[exit 0]" ] && grep -qF 'insecure algorithm' "$f"
+}
+
 # admission_proof_check DIR SUFFIX POLICY_WEBHOOK SP_WEBHOOK: did the probe set with this
 # SUFFIX exercise all three webhooks (design section 3)? Rejections count only when the
 # validator itself denied the request, never a CRD-schema rejection.
