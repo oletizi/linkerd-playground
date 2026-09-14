@@ -61,6 +61,13 @@ for rel in "$@"; do
   rclone copyto "$archive" "$REMOTE/$rel.tar.gz" "${RCLONE_OPTS[@]}"
   rclone copyto "$manifest" "$REMOTE/$rel.manifest.txt" "${RCLONE_OPTS[@]}"
 
-  rm -f "$archive"
+  # The archive is also what gets attached to the GitHub release, so keep it when
+  # asked rather than making the caller rebuild it from a directory they are about
+  # to delete.
+  if [ -n "${KEEP_ARCHIVE:-}" ]; then
+    echo "   archive kept: $archive"
+  else
+    rm -f "$archive"
+  fi
   echo "   done"
 done
