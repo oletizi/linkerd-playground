@@ -150,11 +150,35 @@ _g_settle() {
   done
 }
 
-# _g_wait_gone LABEL: swap/pods-gone-LABEL.txt (wait_pods_gone, collect-state.sh, shared
-# with N: `kubectl rollout status` can report success while the old pod is still Running
-# and serving the old certificate).
+# _g_backing_pods: the current pod name(s) of every Deployment in G_BACKING_DEPLOYS
+# (deploy_selector, collect-state.sh, shared with N), one per line. Read BEFORE a
+# restart, so _g_wait_gone can wait for exactly those names -- unlike N's scale-to-zero
+# fault, a rolling restart always leaves a live replacement pod matching the same
+# selector, so waiting on the selector itself (wait_pods_gone, N's own shared helper)
+# would wait on a pod that is never going to be deleted. Pinning to captured names is
+# what N's scale-to-zero case gets for free from having no replacement at all.
+_g_backing_pods() {
+  local d
+  for d in "${G_BACKING_DEPLOYS[@]}"; do
+    kubectl -n linkerd get pods -l "$(deploy_selector linkerd "$d")" \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null
+  done
+}
+
+# _g_wait_gone LABEL PODS: swap/pods-gone-LABEL.txt -- wait for exactly the pod names in
+# PODS (one per line, captured by _g_backing_pods before the restart that is meant to
+# replace them) to actually be deleted. `kubectl rollout status` alone is not enough: it
+# can report success while the old pod is still Running and serving the old certificate
+# (the same gap N's own review required wait_pods_gone to close).
 _g_wait_gone() {
-  wait_pods_gone "swap/pods-gone-$1.txt" linkerd "${G_BACKING_DEPLOYS[@]}"
+  local label="$1" pods="$2"
+  local f="swap/pods-gone-$label.txt" p args=()
+  while IFS= read -r p; do [ -n "$p" ] && args+=("pod/$p"); done <<< "$pods"
+  if [ "${#args[@]}" -eq 0 ]; then
+    capture "$f" bash -c 'echo "no pre-restart pod recorded; nothing to wait for"'
+    return 0
+  fi
+  capture "$f" kubectl -n linkerd wait --for=delete "${args[@]}" --timeout=120s
 }
 
 # _g_apply_cert LABEL DIR: swap/patch-LABEL.txt -- patch profileValidator's Secret to
@@ -175,7 +199,7 @@ _g_apply_cert() {
 scenario_fault() { # build the refused certificate, patch it into the live Secret, and
   # restart the backing Deployment so it is actually served (a Secret update alone does
   # not make a running container re-read its mounted certificate)
-  local dir="$CERTS/webhooks-algorithm"
+  local dir="$CERTS/webhooks-algorithm" before_pods
   snap_controlplane fault-before
   mkdir -p "$dir"
   cp "$CERTS/webhooks/ca.crt" "$CERTS/webhooks/ca.key" "$dir/"
@@ -188,24 +212,26 @@ scenario_fault() { # build the refused certificate, patch it into the live Secre
   mapfile -t G_BACKING_DEPLOYS < <(w_backing_deployments "$RUN_DIR/swap/backing.txt")
   [ "${#G_BACKING_DEPLOYS[@]}" -ge 1 ] \
     || die "scenario_fault: profileValidator backing derivation named no Deployment; see swap/backing.txt"
+  before_pods="$(_g_backing_pods)"
   _g_apply_cert fault "$dir"
   mark swap-restart "restarting ${G_BACKING_DEPLOYS[*]} so the new certificate is actually served"
   capture swap/restart-fault.txt kubectl -n linkerd rollout restart "${G_BACKING_DEPLOYS[@]/#/deploy/}"
   capture_rollouts swap/rollout-fault.txt linkerd "${G_BACKING_DEPLOYS[@]}"
-  _g_wait_gone fault
+  _g_wait_gone fault "$before_pods"
   snap_controlplane fault-after
   _g_settle fault refused
 }
 
 scenario_recover() { # patch the original, normally-signed certificate back in, restart,
   # and settle before the verify tick judges it
-  local orig="$CERTS/webhooks"
+  local orig="$CERTS/webhooks" before_pods
   mark swap-restore "restoring profileValidator's original, normally-signed certificate"
+  before_pods="$(_g_backing_pods)"
   _g_apply_cert restore "$orig"
   mark swap-restart-restore "restarting ${G_BACKING_DEPLOYS[*]} so the original certificate is served again"
   capture swap/restart-restore.txt kubectl -n linkerd rollout restart "${G_BACKING_DEPLOYS[@]/#/deploy/}"
   capture_rollouts swap/rollout-restore.txt linkerd "${G_BACKING_DEPLOYS[@]}"
-  _g_wait_gone restore
+  _g_wait_gone restore "$before_pods"
   snap_controlplane recover-restore
   _g_settle restore serving
 }
