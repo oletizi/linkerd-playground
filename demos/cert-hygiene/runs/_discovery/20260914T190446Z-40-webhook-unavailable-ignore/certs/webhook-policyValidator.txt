@@ -1,0 +1,67 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 77698872228776183415786257918404297116 (0x3a74422ae58e839949279ca45fcf819c)
+        Signature Algorithm: SHA256-RSA
+        Issuer: CN=lab-webhook-ca
+        Validity
+            Not Before: Sep 14 19:06:13 2026 UTC
+            Not After : Sep 15 19:06:13 2026 UTC
+        Subject: CN=linkerd-policy-validator.linkerd.svc
+        Subject Public Key Info:
+            Public Key Algorithm: RSA
+                Public-Key: (2048 bit)
+                Modulus:
+                    db:3b:33:93:fa:73:63:04:48:04:35:16:5e:d1:04:
+                    fe:ed:52:b2:6f:03:ad:d4:5e:dc:50:46:21:93:8a:
+                    08:e5:00:f2:a0:e2:4d:cb:be:e6:80:43:97:e0:38:
+                    9b:cf:b2:17:73:3a:98:32:a3:53:51:07:b4:6b:0d:
+                    7c:c0:4f:e0:2d:1a:a4:27:b9:c8:29:3a:81:ac:60:
+                    c5:bc:a7:73:31:15:51:c2:09:f1:6f:10:77:bf:66:
+                    85:bb:d3:1b:70:fc:a4:da:35:54:db:8d:21:9e:cc:
+                    88:c3:b4:76:34:d8:e8:89:bc:04:88:bd:3a:65:57:
+                    e0:f4:07:51:fe:f9:3a:6c:b4:a6:2b:9f:6e:c4:68:
+                    a7:28:ea:b2:ef:06:26:1e:21:b9:98:a8:e3:5d:24:
+                    24:46:62:0b:1d:13:53:45:16:18:1f:29:c3:9b:98:
+                    e9:ca:c8:6d:fc:88:11:76:42:0f:ee:2c:f9:4c:fd:
+                    c9:4f:e4:e9:1e:30:01:fa:a6:d9:6f:13:57:d2:02:
+                    82:9a:56:96:a1:7f:64:4c:e1:a5:3b:88:53:66:b8:
+                    51:8c:e4:e8:37:e8:78:ed:29:f8:03:db:67:ad:b4:
+                    41:de:22:e3:91:e3:9e:9a:9f:5d:40:3e:ee:e1:0b:
+                    c1:83:c8:08:6d:af:bc:a2:f2:30:10:20:53:5f:7e:
+                    cb
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Extended Key Usage:
+                Server Authentication, Client Authentication
+            X509v3 Subject Key Identifier:
+                27:DE:69:22:71:0E:1E:10:B1:0E:6C:33:EE:86:E1:FF:0B:B5:2E:47
+            X509v3 Authority Key Identifier:
+                2F:6D:65:85:24:66:CC:B3:9E:56:B4:E0:FF:A1:00:AF:26:58:CB:5F
+            X509v3 Subject Alternative Name:
+                DNS:linkerd-policy-validator.linkerd.svc
+    Signature Algorithm: SHA256-RSA
+         bb:63:12:ad:64:3f:35:9c:83:0e:4f:bb:ae:41:f2:e2:e1:10:
+         dc:da:7e:a1:70:b2:0d:3d:4f:a7:51:f4:db:93:9b:64:2f:3d:
+         1d:6e:bc:8c:b9:a7:ca:c4:1b:c6:ab:f3:f1:b4:73:43:9b:45:
+         65:03:b6:4e:08:be:75:92:70:21:81:5c:da:b5:6c:98:5d:5a:
+         b4:4a:d6:72:f7:dc:bd:7c:6a:ee:ad:87:cc:ba:77:d2:e9:df:
+         5a:e4:b7:4d:ea:c8:f4:fd:77:db:c5:60:b6:1f:4d:09:da:73:
+         80:ca:43:0f:3d:f1:54:f0:56:41:41:94:5b:a6:ec:fb:14:ce:
+         44:c8:95:e1:54:f9:3f:c9:c5:71:5b:66:48:d3:52:91:1d:ee:
+         e5:6b:3f:2a:77:eb:e7:fb:e7:87:ec:48:2c:a6:92:0e:ec:c1:
+         23:58:79:cd:6f:70:e4:90:7b:ee:f4:1f:b6:d1:0a:97:3f:87:
+         60:fb:6c:9a:07:39:02:8d:71:91:36:9f:09:4f:98:c1:af:6e:
+         cd:ca:0c:d3:8f:ad:79:e2:26:07:c5:78:3c:80:25:6a:be:9f:
+         5a:16:f7:ff:9c:16:95:2a:47:64:dd:4c:20:ee:4d:f2:d8:c8:
+         05:10:e5:c0:b8:91:ea:d5:ce:0d:c0:7f:c3:74:53:3e:3a:47:
+         9d:cb:bf:e1
+
+serial=3A74422AE58E839949279CA45FCF819C
+sha256 Fingerprint=99:20:60:18:AD:B9:0C:80:A3:01:03:84:2A:F1:7E:2A:1B:A3:7B:61:5E:53:17:8B:88:7A:57:78:52:CB:EB:35
+notBefore=Sep 14 19:06:13 2026 GMT
+notAfter=Sep 15 19:06:13 2026 GMT
+subject=CN=linkerd-policy-validator.linkerd.svc
+issuer=CN=lab-webhook-ca

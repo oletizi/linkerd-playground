@@ -1,0 +1,8 @@
+apiVersion: policy.linkerd.io/v1alpha1
+kind: NetworkAuthentication
+metadata:
+  name: policy-valid-fault-minus10
+  namespace: lab
+spec:
+  networks:
+    - cidr: 10.255.0.0/16

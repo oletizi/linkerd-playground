@@ -1,0 +1,2 @@
+discovery=yes
+short_windows=no

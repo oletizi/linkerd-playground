@@ -1,0 +1,3 @@
+$ kubectl -n lab logs probe-tcp-new-b-64dbdd7f5c-5gsjc -c probe --previous
+Error from server (BadRequest): previous terminated container "probe" in pod "probe-tcp-new-b-64dbdd7f5c-5gsjc" not found
+[exit 1]

@@ -1,0 +1,15 @@
+$ kubectl get pods -A -o wide
+NAMESPACE     NAME                                      READY   STATUS    RESTARTS   AGE     IP           NODE               NOMINATED NODE   READINESS GATES
+kube-system   coredns-54996dc9b4-qcblv                  1/1     Running   0          6m23s   10.42.0.3    cert-hygiene-lab   <none>           <none>
+kube-system   local-path-provisioner-77b9867795-d7k8z   1/1     Running   0          6m23s   10.42.0.2    cert-hygiene-lab   <none>           <none>
+kube-system   metrics-server-6dc596dfb8-5s9ls           1/1     Running   0          6m23s   10.42.0.4    cert-hygiene-lab   <none>           <none>
+lab           probe-http-586cfdddb4-2xpg4               2/2     Running   0          5m17s   10.42.0.10   cert-hygiene-lab   <none>           <none>
+lab           probe-tcp-new-b-64dbdd7f5c-5gsjc          2/2     Running   0          5m17s   10.42.0.13   cert-hygiene-lab   <none>           <none>
+lab           probe-tcp-new-f6545f757-hx6lv             2/2     Running   0          5m17s   10.42.0.9    cert-hygiene-lab   <none>           <none>
+lab           probe-tcp-stream-5f4ccc76bc-gs892         2/2     Running   0          5m17s   10.42.0.11   cert-hygiene-lab   <none>           <none>
+lab           restart-target-554865b545-vgwcg           2/2     Running   0          5m17s   10.42.0.12   cert-hygiene-lab   <none>           <none>
+lab           server-577d5dfdbd-ddd2n                   3/3     Running   0          5m21s   10.42.0.8    cert-hygiene-lab   <none>           <none>
+linkerd       linkerd-destination-56c77b8c78-x59vm      4/4     Running   0          5m32s   10.42.0.6    cert-hygiene-lab   <none>           <none>
+linkerd       linkerd-identity-68469d87df-6lqqh         2/2     Running   0          5m32s   10.42.0.7    cert-hygiene-lab   <none>           <none>
+linkerd       linkerd-proxy-injector-5d44bdbbf-z7v46    2/2     Running   0          5m32s   10.42.0.5    cert-hygiene-lab   <none>           <none>
+[exit 0]

@@ -1,0 +1,18 @@
+$ kubectl -n lab logs restart-target-554865b545-vgwcg -c linkerd-proxy --timestamps
+2026-09-14T12:06:29.904778888-07:00 [     0.000047s]  INFO ThreadId(01) linkerd2_proxy: release 2.368.0 (a66af81) by linkerd on 2026-09-02T08:08:20Z
+2026-09-14T12:06:29.906668358-07:00 [     0.001964s]  INFO ThreadId(01) linkerd2_proxy::rt: Using single-threaded proxy runtime
+2026-09-14T12:06:29.908801371-07:00 [     0.002565s]  INFO ThreadId(01) linkerd2_proxy: Admin interface on 0.0.0.0:4191
+2026-09-14T12:06:29.908804830-07:00 [     0.002581s]  INFO ThreadId(01) linkerd2_proxy: Inbound interface on 0.0.0.0:4143
+2026-09-14T12:06:29.908805788-07:00 [     0.002585s]  INFO ThreadId(01) linkerd2_proxy: Outbound interface on 127.0.0.1:4140
+2026-09-14T12:06:29.908806913-07:00 [     0.002588s]  INFO ThreadId(01) linkerd2_proxy: Tap DISABLED
+2026-09-14T12:06:29.908808121-07:00 [     0.002592s]  INFO ThreadId(01) linkerd2_proxy: SNI is default.lab.serviceaccount.identity.linkerd.cluster.local
+2026-09-14T12:06:29.908809371-07:00 [     0.002596s]  INFO ThreadId(01) linkerd2_proxy: Local identity is default.lab.serviceaccount.identity.linkerd.cluster.local
+2026-09-14T12:06:29.908810413-07:00 [     0.002599s]  INFO ThreadId(01) linkerd2_proxy: Destinations resolved via linkerd-dst-headless.linkerd.svc.cluster.local:8086 (linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local)
+2026-09-14T12:06:29.908811621-07:00 [     0.003153s]  INFO ThreadId(01) dst:controller{addr=linkerd-dst-headless.linkerd.svc.cluster.local:8086}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.6:8086
+2026-09-14T12:06:29.908812663-07:00 [     0.003909s]  INFO ThreadId(02) identity:identity{server.addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:controller{addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.7:8080
+2026-09-14T12:06:29.960619191-07:00 [     0.056138s]  INFO ThreadId(01) policy:controller{addr=linkerd-policy.linkerd.svc.cluster.local:8090}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.6:8090
+2026-09-14T12:06:29.962772621-07:00 [     0.058494s]  INFO ThreadId(02) daemon:identity: linkerd_app: Certified identity id=default.lab.serviceaccount.identity.linkerd.cluster.local
+2026-09-14T12:10:13.293123213-07:00 [   223.388694s]  INFO ThreadId(02) identity:identity{server.addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:controller{addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.7:8080
+2026-09-14T12:13:57.095899581-07:00 [   447.191289s]  INFO ThreadId(02) identity:identity{server.addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:controller{addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.7:8080
+2026-09-14T12:17:41.033786565-07:00 [   671.128613s]  INFO ThreadId(02) identity:identity{server.addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}:controller{addr=linkerd-identity-headless.linkerd.svc.cluster.local:8080}: linkerd_pool_p2c: Adding endpoint addr=10.42.0.7:8080
+[exit 0]

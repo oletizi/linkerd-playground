@@ -1,0 +1,3 @@
+$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/inject-probe-pre-5.request.yaml --wait=false
+pod "inject-probe-pre-5" deleted from lab namespace
+[exit 0]

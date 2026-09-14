@@ -1,0 +1,14 @@
+$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-valid-pre-4.request.yaml -o yaml
+apiVersion: policy.linkerd.io/v1alpha1
+kind: NetworkAuthentication
+metadata:
+  creationTimestamp: "2026-09-14T19:08:20Z"
+  generation: 1
+  name: policy-valid-pre-4
+  namespace: lab
+  resourceVersion: "1195"
+  uid: 4c1c6c8e-5d4b-443c-935c-a542e5630bec
+spec:
+  networks:
+  - cidr: 10.255.0.0/16
+[exit 0]

@@ -1,0 +1,3 @@
+$ kubectl delete -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-valid-fault-minus60.request.yaml --wait=false
+networkauthentication.policy.linkerd.io "policy-valid-fault-minus60" deleted from lab namespace
+[exit 0]

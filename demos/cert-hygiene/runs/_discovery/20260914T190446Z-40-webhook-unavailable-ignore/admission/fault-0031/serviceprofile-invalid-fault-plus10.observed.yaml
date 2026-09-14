@@ -1,0 +1,3 @@
+$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/fault-0031/serviceprofile-invalid-fault-plus10.request.yaml -o yaml
+Error from server (NotFound): serviceprofiles.linkerd.io "serviceprofile-invalid-fault-plus10" not found
+[exit 1]

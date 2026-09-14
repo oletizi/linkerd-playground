@@ -1,0 +1,249 @@
+[1;34m[reset.sh][0m uninstalling k3s
++ id -u
++ [ 0 -eq 0 ]
++ K3S_DATA_DIR=/var/lib/rancher/k3s
++ /usr/local/bin/k3s-killall.sh
++ [ -s /etc/systemd/system/k3s.service ]
++ basename /etc/systemd/system/k3s.service
++ systemctl stop k3s.service
++ [ -x /etc/init.d/k3s* ]
++ killtree
++ kill -9
++ do_unmount_and_remove /run/k3s
++ set +x
++ do_unmount_and_remove /var/lib/kubelet/pods
++ set +x
+sh -c 'umount -f "$0" && rm -rf "$0"' /var/lib/kubelet/pods/a6ffab9b-b98e-4b21-8f08-1b47599bb68c/volumes/kubernetes.io~projected/kube-api-access-rrvbh
+sh -c 'umount -f "$0" && rm -rf "$0"' /var/lib/kubelet/pods/656e14df-98c9-4441-b3a2-d7d5b4d8ae91/volumes/kubernetes.io~projected/kube-api-access-sbq9c
+sh -c 'umount -f "$0" && rm -rf "$0"' /var/lib/kubelet/pods/485187c5-e61c-433e-aec0-7f27f31f52cd/volumes/kubernetes.io~projected/kube-api-access-tcdtp
++ do_unmount_and_remove /var/lib/kubelet/plugins
++ set +x
++ do_unmount_and_remove /run/netns/cni-
++ set +x
++ ip netns show+ 
+grep+  cni-xargs
+ -r -t -n 1 ip netns delete
++ remove_interfaces
++ ip link show
++ grep master cni0
++ read ignore iface ignore
++ ip link delete cni0
+Cannot find device "cni0"
++ ip link delete flannel.1
++ ip link delete flannel-v6.1
+Cannot find device "flannel-v6.1"
++ ip link delete kube-ipvs0
+Cannot find device "kube-ipvs0"
++ ip link delete flannel-wg
+Cannot find device "flannel-wg"
++ ip link delete flannel-wg-v6
+Cannot find device "flannel-wg-v6"
++ command -v tailscale
++ [ -n  ]
++ rm -rf /var/lib/cni/
++ iptables-save
++ grep -v KUBE-
++ grep -v CNI-
++ + iptables-restore
+grep -iv flannel
++ ip6tables-save
++ grep -v KUBE-
++ grep -v CNI-
++ + ip6tables-restoregrep
+ -iv flannel
++ command -v systemctl
+/usr/bin/systemctl
++ systemctl disable k3s
+Removed "/etc/systemd/system/multi-user.target.wants/k3s.service".
++ systemctl reset-failed k3s
+Failed to reset failed state of unit k3s.service: Unit k3s.service not loaded.
++ systemctl daemon-reload
++ command -v rc-update
++ rm -f /etc/systemd/system/k3s.service
++ rm -f /etc/systemd/system/k3s.service.env
++ trap remove_uninstall EXIT
++ [ -L /usr/local/bin/kubectl ]
++ rm -f /usr/local/bin/kubectl
++ [ -L /usr/local/bin/crictl ]
++ rm -f /usr/local/bin/crictl
++ [ -L /usr/local/bin/ctr ]
++ rm -f /usr/local/bin/ctr
++ rm -rf /etc/rancher/k3s
++ rm -rf /run/k3s
++ rm -rf /run/flannel
++ clean_mounted_directory /var/lib/rancher/k3s
++ grep -q  /var/lib/rancher/k3s /proc/mounts
++ rm -rf /var/lib/rancher/k3s
++ return 0
++ rm -rf /var/lib/kubelet
++ rm -f /usr/local/bin/k3s
++ rm -f /usr/local/bin/k3s-killall.sh
++ rpm_ostree_uninstall_cmd=rpm-ostree uninstall --idempotent k3s-selinux
++ [ -r /etc/os-release ]
++ . /etc/os-release
++ PRETTY_NAME=Ubuntu 24.04.5 LTS
++ NAME=Ubuntu
++ VERSION_ID=24.04
++ VERSION=24.04.5 LTS (Noble Numbat)
++ VERSION_CODENAME=noble
++ ID=ubuntu
++ ID_LIKE=debian
++ HOME_URL=https://www.ubuntu.com/
++ SUPPORT_URL=https://help.ubuntu.com/
++ BUG_REPORT_URL=https://bugs.launchpad.net/ubuntu/
++ PRIVACY_POLICY_URL=https://www.ubuntu.com/legal/terms-and-policies/privacy-policy
++ UBUNTU_CODENAME=noble
++ LOGO=ubuntu-logo
++ expr debian : .*suse.*
++ [ 0 != 0 ]
++ [ ubuntu = fedora ]
++ expr debian : .*fedora.*\|.*rhel.*\|.*centos.*
++ [ 0 != 0 ]
++ type rpm-ostree
++ type zypper
++ type yum
++ [ -d /usr/share/selinux ]
++ [ -d /etc/zypp/repos.d ]
++ [ -d /etc/yum.repos.d ]
++ remove_uninstall
++ rm -f /usr/local/bin/k3s-uninstall.sh
+[INFO]  Finding release for channel stable
+[INFO]  Using v1.36.4+k3s1 as release
+[INFO]  Downloading hash https://github.com/k3s-io/k3s/releases/download/v1.36.4%2Bk3s1/sha256sum-arm64.txt
+[INFO]  Downloading binary https://github.com/k3s-io/k3s/releases/download/v1.36.4%2Bk3s1/k3s-arm64
+[INFO]  Verifying binary download
+[INFO]  Installing k3s to /usr/local/bin/k3s
+[INFO]  Skipping installation of SELinux RPM
+[INFO]  Creating /usr/local/bin/kubectl symlink to k3s
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Creating /usr/local/bin/ctr symlink to k3s
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s.service
+[INFO]  systemd: Enabling k3s unit
+Created symlink /etc/systemd/system/multi-user.target.wants/k3s.service → /etc/systemd/system/k3s.service.
+[INFO]  Host iptables-save/iptables-restore tools not found
+[INFO]  Host ip6tables-save/ip6tables-restore tools not found
+[INFO]  systemd: Starting k3s
+NAME               STATUS   ROLES           AGE   VERSION        INTERNAL-IP       EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION                                CONTAINER-RUNTIME
+cert-hygiene-lab   Ready    control-plane   6s    v1.36.4+k3s1   192.168.139.228   <none>        Ubuntu 24.04.5 LTS   7.0.14-orbstack-00380-ga7e0a2dc9535 (arm64)   containerd://2.3.4-k3s1.36
+customresourcedefinition.apiextensions.k8s.io/backendtlspolicies.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/gatewayclasses.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/gateways.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/grpcroutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/httproutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/listenersets.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/referencegrants.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/tlsroutes.gateway.networking.k8s.io serverside-applied
+validatingadmissionpolicy.admissionregistration.k8s.io/safe-upgrades.gateway.networking.k8s.io serverside-applied
+validatingadmissionpolicybinding.admissionregistration.k8s.io/safe-upgrades.gateway.networking.k8s.io serverside-applied
+Rendering Linkerd CRDs...
+Next, run `linkerd install | kubectl apply -f -` to install the control plane.
+
+customresourcedefinition.apiextensions.k8s.io/authorizationpolicies.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/egressnetworks.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/httplocalratelimitpolicies.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/httproutes.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/meshtlsauthentications.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/networkauthentications.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serverauthorizations.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/servers.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serviceprofiles.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/externalworkloads.workload.linkerd.io created
+[1;34m[reset.sh][0m pulling cr.l5d.io/linkerd/controller:edge-26.9.1
+[1;34m[reset.sh][0m pulling cr.l5d.io/linkerd/proxy:edge-26.9.1
+[1;34m[reset.sh][0m pulling docker.io/curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+[1;34m[reset.sh][0m pulling docker.io/alpine/socat@sha256:ef6c281978dcd6927d9b3829484e4c4fdfc5d98de5acbd6312c04565d2d58cbf
+[1;34m[reset.sh][0m pulling docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/ca.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/ca.key.
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/issuer.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/issuer.key.
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/ca.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/ca.key.
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/proxyInjector.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/proxyInjector.key.
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/policyValidator.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/policyValidator.key.
+Your certificate has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/profileValidator.crt.
+Your private key has been saved in /home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore/webhooks/profileValidator.key.
+Rendering Linkerd CRDs...
+Next, run `linkerd install | kubectl apply -f -` to install the control plane.
+
+customresourcedefinition.apiextensions.k8s.io/authorizationpolicies.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/egressnetworks.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/httplocalratelimitpolicies.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/httproutes.policy.linkerd.io configured
+customresourcedefinition.apiextensions.k8s.io/meshtlsauthentications.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/networkauthentications.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/serverauthorizations.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/servers.policy.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/serviceprofiles.linkerd.io unchanged
+customresourcedefinition.apiextensions.k8s.io/externalworkloads.workload.linkerd.io unchanged
+namespace/linkerd created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+serviceaccount/linkerd-identity created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+serviceaccount/linkerd-destination created
+secret/linkerd-sp-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-sp-validator-webhook-config created
+secret/linkerd-policy-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-policy-validator-webhook-config created
+clusterrole.rbac.authorization.k8s.io/linkerd-policy created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-destination-policy created
+role.rbac.authorization.k8s.io/remote-discovery created
+rolebinding.rbac.authorization.k8s.io/linkerd-destination-remote-discovery created
+role.rbac.authorization.k8s.io/linkerd-heartbeat created
+rolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrole.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+serviceaccount/linkerd-heartbeat created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+serviceaccount/linkerd-proxy-injector created
+secret/linkerd-proxy-injector-k8s-tls created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-proxy-injector-webhook-config created
+configmap/linkerd-config created
+role.rbac.authorization.k8s.io/ext-namespace-metadata-linkerd-config created
+secret/linkerd-identity-issuer created
+configmap/linkerd-identity-trust-roots created
+service/linkerd-identity created
+service/linkerd-identity-headless created
+deployment.apps/linkerd-identity created
+service/linkerd-dst created
+service/linkerd-dst-headless created
+service/linkerd-sp-validator created
+service/linkerd-policy created
+service/linkerd-policy-validator created
+deployment.apps/linkerd-destination created
+cronjob.batch/linkerd-heartbeat created
+deployment.apps/linkerd-proxy-injector created
+service/linkerd-proxy-injector created
+secret/linkerd-config-overrides created
+[1;34m[reset.sh][0m waiting for linkerd workloads to become ready (this is where the install spends its time)
+Waiting for deployment "linkerd-destination" rollout to finish: 0 of 1 updated replicas are available...
+deployment "linkerd-destination" successfully rolled out
+deployment "linkerd-identity" successfully rolled out
+deployment "linkerd-proxy-injector" successfully rolled out
+[1;34m[reset.sh][0m reset complete: profile=webhook-unavailable certs=/home/orion/cert-hygiene-certs/40-webhook-unavailable-ignore-20260914T190446Z-40-webhook-unavailable-ignore
+namespace/lab created
+configmap/lab-probes created
+service/server created
+deployment.apps/server created
+Waiting for deployment "server" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "server" rollout to finish: 0 of 1 updated replicas are available...
+deployment "server" successfully rolled out
+deployment.apps/probe-http created
+deployment.apps/probe-tcp-new created
+deployment.apps/probe-tcp-new-b created
+deployment.apps/probe-tcp-stream created
+deployment.apps/restart-target created
+Waiting for deployment "probe-http" rollout to finish: 0 of 1 updated replicas are available...
+deployment "probe-http" successfully rolled out
+deployment "probe-tcp-new" successfully rolled out
+deployment "probe-tcp-new-b" successfully rolled out
+deployment "probe-tcp-stream" successfully rolled out
+deployment "restart-target" successfully rolled out

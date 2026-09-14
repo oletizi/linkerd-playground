@@ -1,0 +1,8 @@
+apiVersion: policy.linkerd.io/v1alpha1
+kind: NetworkAuthentication
+metadata:
+  name: policy-invalid-baseline
+  namespace: lab
+spec:
+  networks:
+    - cidr: not-a-cidr

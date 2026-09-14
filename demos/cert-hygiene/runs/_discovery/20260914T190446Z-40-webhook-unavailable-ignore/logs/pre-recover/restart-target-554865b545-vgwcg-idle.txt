@@ -1,0 +1,2 @@
+$ kubectl -n lab logs restart-target-554865b545-vgwcg -c idle --timestamps
+[exit 0]

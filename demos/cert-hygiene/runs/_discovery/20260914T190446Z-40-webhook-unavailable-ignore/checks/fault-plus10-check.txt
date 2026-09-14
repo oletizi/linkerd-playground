@@ -1,0 +1,26 @@
+$ linkerd check --wait 20s
+kubernetes-api
+--------------
+√ can initialize the client
+√ can query the Kubernetes API
+
+kubernetes-version
+------------------
+√ is running the minimum Kubernetes API version
+
+gateway-api-crd
+---------------
+√ Gateway API CRDs are installed
+
+linkerd-existence
+-----------------
+√ 'linkerd-config' config map exists
+√ heartbeat ServiceAccount exist
+√ control plane replica sets are ready
+√ no unschedulable pods
+× control plane pods are ready
+    No running pods for "linkerd-proxy-injector"
+    see https://linkerd.io/2/checks/#l5d-api-control-ready for hints
+
+Status check results are ×
+[exit 1]

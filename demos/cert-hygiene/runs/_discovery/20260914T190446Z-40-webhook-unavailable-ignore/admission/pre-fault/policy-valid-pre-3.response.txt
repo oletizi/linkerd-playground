@@ -1,0 +1,3 @@
+$ kubectl create -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/policy-valid-pre-3.request.yaml
+networkauthentication.policy.linkerd.io/policy-valid-pre-3 created
+[exit 0]

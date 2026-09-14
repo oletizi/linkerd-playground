@@ -1,0 +1,10 @@
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: serviceprofile-invalid-pre-3
+  namespace: lab
+spec:
+  retryBudget:
+    retryRatio: 0.2
+    minRetriesPerSecond: 10
+    ttl: not-a-duration

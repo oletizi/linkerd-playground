@@ -1,0 +1,4 @@
+evidence_valid=no
+reason=dirty harness tree, or git-state.txt missing
+reason=discovery run: never evidence
+reason=no valid 00-baseline-control run with harness tree 6e79250c058b15f30b8dccd03386b585d30562ad55941e9295d1c0898e27394e

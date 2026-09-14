@@ -1,0 +1,16 @@
+$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/pre-fault/serviceprofile-valid-pre-18.request.yaml -o yaml
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  creationTimestamp: "2026-09-14T19:15:19Z"
+  generation: 1
+  name: serviceprofile-valid-pre-18
+  namespace: lab
+  resourceVersion: "1787"
+  uid: 45b7a2bf-f9c6-4dbd-b09e-440c8f03cd1d
+spec:
+  retryBudget:
+    minRetriesPerSecond: 10
+    retryRatio: 0.2
+    ttl: 10s
+[exit 0]

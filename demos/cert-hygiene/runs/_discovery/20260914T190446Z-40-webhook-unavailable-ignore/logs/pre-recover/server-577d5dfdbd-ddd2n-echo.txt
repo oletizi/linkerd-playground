@@ -1,0 +1,12 @@
+$ kubectl -n lab logs server-577d5dfdbd-ddd2n -c echo --timestamps
+2026-09-14T12:08:01.499079420-07:00 2026/09/14 19:08:01 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:09:56.251146964-07:00 2026/09/14 19:09:56 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:11:28.844676408-07:00 2026/09/14 19:11:28 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:11:32.874698091-07:00 2026/09/14 19:11:32 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:11:50.973807314-07:00 2026/09/14 19:11:50 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:13:25.657235088-07:00 2026/09/14 19:13:25 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:14:30.082518549-07:00 2026/09/14 19:14:30 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:16:44.973663702-07:00 2026/09/14 19:16:44 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:17:15.184578504-07:00 2026/09/14 19:17:15 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+2026-09-14T12:18:29.660850381-07:00 2026/09/14 19:18:29 socat[1] W waitpid(-1, {}, WNOHANG): no (more) child has exited
+[exit 0]

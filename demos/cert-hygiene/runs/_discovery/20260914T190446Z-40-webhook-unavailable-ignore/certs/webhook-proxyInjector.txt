@@ -1,0 +1,67 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 130226070349777921470148891873903540951 (0x61f8a0fbd4fef9ddb02f9659862e7ad7)
+        Signature Algorithm: SHA256-RSA
+        Issuer: CN=lab-webhook-ca
+        Validity
+            Not Before: Sep 14 19:06:13 2026 UTC
+            Not After : Sep 15 19:06:13 2026 UTC
+        Subject: CN=linkerd-proxy-injector.linkerd.svc
+        Subject Public Key Info:
+            Public Key Algorithm: RSA
+                Public-Key: (2048 bit)
+                Modulus:
+                    b0:4b:30:db:17:02:e1:60:23:c0:8c:80:59:51:75:
+                    6c:46:d3:41:d5:1a:32:48:14:a2:24:f0:44:0c:b4:
+                    ed:ae:d4:19:77:e7:cf:9a:e2:f2:48:11:65:d1:b7:
+                    5c:09:57:0d:d0:59:30:d9:b5:66:de:57:05:42:e0:
+                    5d:f7:dc:2b:94:51:13:fc:d3:85:b9:0b:0c:78:42:
+                    00:c6:e0:62:38:b4:74:68:8a:92:3c:10:f1:4d:2a:
+                    80:51:76:8a:e6:94:2e:88:03:32:31:b6:94:06:7b:
+                    ad:91:53:82:3b:e2:67:83:81:c9:b1:c9:19:5a:02:
+                    d0:23:67:a2:c9:9f:6e:61:3d:13:62:33:3d:53:70:
+                    7e:2e:26:35:18:06:18:33:c5:af:3f:d2:ff:d2:c1:
+                    18:6d:ac:ca:f2:d0:ef:d8:a8:92:18:f8:93:f9:a2:
+                    94:73:af:e4:e2:18:eb:9e:ac:bf:e0:f1:21:d8:bf:
+                    91:f2:08:df:f7:a3:99:95:83:97:a4:21:ed:67:20:
+                    45:db:03:16:9c:2e:38:0b:63:c7:07:98:45:69:c0:
+                    e9:3f:60:5e:e8:80:5b:a7:e2:d8:c7:b6:d1:55:d2:
+                    ad:57:f8:f9:cc:be:d3:37:64:46:28:d8:e1:cb:d4:
+                    68:39:4d:92:45:ab:4a:47:80:21:d9:74:a2:12:ca:
+                    a3
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Extended Key Usage:
+                Server Authentication, Client Authentication
+            X509v3 Subject Key Identifier:
+                1D:DB:50:2D:EF:CA:E2:DC:F4:50:2C:B1:34:9C:D1:45:1E:1E:B0:A5
+            X509v3 Authority Key Identifier:
+                2F:6D:65:85:24:66:CC:B3:9E:56:B4:E0:FF:A1:00:AF:26:58:CB:5F
+            X509v3 Subject Alternative Name:
+                DNS:linkerd-proxy-injector.linkerd.svc
+    Signature Algorithm: SHA256-RSA
+         3e:2a:5a:91:9b:a4:14:ed:dc:c0:8f:da:00:b9:f2:36:6d:f0:
+         93:5f:af:d9:57:0d:29:f2:1e:a2:a6:8d:ba:1a:81:bd:29:03:
+         31:e6:0c:af:7d:7d:db:24:2c:5d:ac:42:fc:2e:33:03:fd:e3:
+         fa:da:55:e9:9a:20:02:ba:0c:d0:92:34:61:d7:f7:80:f3:f1:
+         b4:fa:8b:7b:db:99:d1:56:69:aa:42:c5:85:01:86:85:e2:64:
+         d5:ee:8c:6f:48:15:7b:bf:c6:79:d5:de:ab:fa:9f:63:58:73:
+         10:39:1d:32:86:a3:a4:31:cb:89:96:3a:a3:a0:9c:93:2a:81:
+         a6:3f:1c:17:19:52:48:65:1e:e9:af:1e:fd:8c:5e:fb:6c:2f:
+         6d:57:f0:b7:92:de:c0:be:a2:24:f0:01:66:35:f4:78:f3:2f:
+         5f:bd:f6:9d:33:1e:a3:bc:70:13:a5:62:2b:c8:3d:b7:73:02:
+         a6:3d:ab:b7:1f:d8:91:48:fc:4f:ce:a2:da:d6:ca:74:63:75:
+         ca:f9:31:ec:f9:c0:0e:41:02:bf:ce:44:ec:71:01:22:a4:b2:
+         7a:ec:7f:4b:d2:a8:65:d1:47:cf:95:d9:43:eb:ba:92:11:d3:
+         90:e4:6c:ff:95:37:99:77:55:c2:24:07:bb:6e:6d:45:4d:dd:
+         e2:aa:82:eb
+
+serial=61F8A0FBD4FEF9DDB02F9659862E7AD7
+sha256 Fingerprint=D4:0B:AE:5C:55:B9:72:2B:38:CB:CE:DF:30:8B:39:C9:A4:F7:EE:F5:5C:A2:90:F3:84:6D:78:4A:6B:85:A6:47
+notBefore=Sep 14 19:06:13 2026 GMT
+notAfter=Sep 15 19:06:13 2026 GMT
+subject=CN=linkerd-proxy-injector.linkerd.svc
+issuer=CN=lab-webhook-ca

@@ -1,0 +1,3 @@
+$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/restored/serviceprofile-invalid-verify.request.yaml -o yaml
+Error from server (NotFound): serviceprofiles.linkerd.io "serviceprofile-invalid-verify" not found
+[exit 1]

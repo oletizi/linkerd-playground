@@ -1,0 +1,3 @@
+$ kubectl -n linkerd scale deploy/linkerd-proxy-injector --replicas=0
+deployment.apps/linkerd-proxy-injector scaled
+[exit 0]

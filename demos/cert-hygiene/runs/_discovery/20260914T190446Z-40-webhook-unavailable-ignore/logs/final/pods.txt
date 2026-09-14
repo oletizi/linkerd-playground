@@ -1,0 +1,6 @@
+pod=probe-http-586cfdddb4-2xpg4 proxy=yes containers=linkerd-init,linkerd-proxy,probe
+pod=probe-tcp-new-b-64dbdd7f5c-5gsjc proxy=yes containers=linkerd-init,linkerd-proxy,probe
+pod=probe-tcp-new-f6545f757-hx6lv proxy=yes containers=linkerd-init,linkerd-proxy,probe
+pod=probe-tcp-stream-5f4ccc76bc-gs892 proxy=yes containers=linkerd-init,linkerd-proxy,probe
+pod=restart-target-554865b545-vgwcg proxy=yes containers=linkerd-init,linkerd-proxy,idle
+pod=server-577d5dfdbd-ddd2n proxy=yes containers=linkerd-init,linkerd-proxy,http,echo

@@ -1,0 +1,3 @@
+$ kubectl -n lab logs server-577d5dfdbd-ddd2n -c echo --timestamps --previous
+Error from server (BadRequest): previous terminated container "echo" in pod "server-577d5dfdbd-ddd2n" not found
+[exit 1]

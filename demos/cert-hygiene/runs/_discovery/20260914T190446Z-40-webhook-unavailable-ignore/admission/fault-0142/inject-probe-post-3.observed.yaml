@@ -1,0 +1,124 @@
+$ kubectl get -f runs/_discovery/20260914T190446Z-40-webhook-unavailable-ignore/admission/fault-0142/inject-probe-post-3.request.yaml -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: "2026-09-14T19:18:55Z"
+  generation: 1
+  labels:
+    app: inject-probe
+  name: inject-probe-post-3
+  namespace: lab
+  resourceVersion: "2094"
+  uid: 127900c8-75d2-48ea-923e-2b4a2e261a6c
+spec:
+  containers:
+  - command:
+    - sh
+    - -c
+    - sleep 3600
+    image: docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+    imagePullPolicy: IfNotPresent
+    name: idle
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-dgb52
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  nodeName: cert-hygiene-lab
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: Never
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 0
+  tolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - name: kube-api-access-dgb52
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-14T19:18:55Z"
+    observedGeneration: 1
+    status: "False"
+    type: PodReadyToStartContainers
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-14T19:18:55Z"
+    observedGeneration: 1
+    status: "True"
+    type: Initialized
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-14T19:18:55Z"
+    message: 'containers with unready status: [idle]'
+    observedGeneration: 1
+    reason: ContainersNotReady
+    status: "False"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-14T19:18:55Z"
+    message: 'containers with unready status: [idle]'
+    observedGeneration: 1
+    reason: ContainersNotReady
+    status: "False"
+    type: ContainersReady
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-14T19:18:55Z"
+    observedGeneration: 1
+    status: "True"
+    type: PodScheduled
+  containerStatuses:
+  - image: docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+    imageID: ""
+    lastState: {}
+    name: idle
+    ready: false
+    restartCount: 0
+    started: false
+    state:
+      waiting:
+        reason: ContainerCreating
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-dgb52
+      readOnly: true
+      recursiveReadOnly: Disabled
+  hostIP: 192.168.139.228
+  hostIPs:
+  - ip: 192.168.139.228
+  - ip: fd07:b51a:cc66:0:f498:a2ff:fea5:f530
+  observedGeneration: 1
+  phase: Pending
+  qosClass: BestEffort
+  resources: {}
+  startTime: "2026-09-14T19:18:55Z"
+[exit 0]

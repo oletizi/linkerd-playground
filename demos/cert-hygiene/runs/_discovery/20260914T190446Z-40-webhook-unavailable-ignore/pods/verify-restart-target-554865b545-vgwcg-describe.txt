@@ -1,0 +1,205 @@
+$ kubectl -n lab describe pod restart-target-554865b545-vgwcg
+Name:             restart-target-554865b545-vgwcg
+Namespace:        lab
+Priority:         0
+Service Account:  default
+Node:             cert-hygiene-lab/192.168.139.228
+Start Time:       Mon, 14 Sep 2026 12:06:29 -0700
+Labels:           app=restart-target
+                  linkerd.io/control-plane-ns=linkerd
+                  linkerd.io/proxy-deployment=restart-target
+                  linkerd.io/workload-ns=lab
+                  pod-template-hash=554865b545
+Annotations:      linkerd.io/created-by: linkerd/proxy-injector edge-26.9.1
+                  linkerd.io/inject: enabled
+                  linkerd.io/proxy-version: edge-26.9.1
+                  linkerd.io/trust-root-sha256: 2ebee04e7bb596330b50be971067e25bfd16370ed3b3957a9de217ae9630de4b
+Status:           Running
+IP:               10.42.0.12
+IPs:
+  IP:           10.42.0.12
+Controlled By:  ReplicaSet/restart-target-554865b545
+Init Containers:
+  linkerd-init:
+    Container ID:    containerd://df8268e7fa66dfb0d52b010d73837ab49eec1f5eb768f06d14fb53118a8c206c
+    Image:           cr.l5d.io/linkerd/proxy:edge-26.9.1
+    Image ID:        cr.l5d.io/linkerd/proxy@sha256:beb365d73054394f9f5aa70e7fa7ea899c224bc5cf263dfdc0bbf0cc48f74298
+    Port:            <none>
+    Host Port:       <none>
+    SeccompProfile:  RuntimeDefault
+    Command:
+      /usr/lib/linkerd/linkerd2-proxy-init
+    Args:
+      --firewall-bin-path
+      iptables-nft
+      --firewall-save-bin-path
+      iptables-nft-save
+      --ipv6=false
+      --incoming-proxy-port
+      4143
+      --outgoing-proxy-port
+      4140
+      --proxy-uid
+      2102
+      --inbound-ports-to-ignore
+      4190,4191,4567,4568
+      --outbound-ports-to-ignore
+      4567,4568
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Mon, 14 Sep 2026 12:06:29 -0700
+      Finished:     Mon, 14 Sep 2026 12:06:29 -0700
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /run from linkerd-proxy-init-xtables-lock (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-dhpq4 (ro)
+  linkerd-proxy:
+    Container ID:    containerd://ce588c74d2e3eda0f104c6e0888c9d8bb88989d18357d150484adaf68a18e533
+    Image:           cr.l5d.io/linkerd/proxy:edge-26.9.1
+    Image ID:        cr.l5d.io/linkerd/proxy@sha256:beb365d73054394f9f5aa70e7fa7ea899c224bc5cf263dfdc0bbf0cc48f74298
+    Ports:           4143/TCP (linkerd-proxy), 4191/TCP (linkerd-admin)
+    Host Ports:      0/TCP (linkerd-proxy), 0/TCP (linkerd-admin)
+    SeccompProfile:  RuntimeDefault
+    State:           Running
+      Started:       Mon, 14 Sep 2026 12:06:29 -0700
+    Ready:           True
+    Restart Count:   0
+    Liveness:        http-get http://:4191/live delay=10s timeout=1s period=10s #success=1 #failure=3
+    Readiness:       http-get http://:4191/ready delay=2s timeout=1s period=10s #success=1 #failure=3
+    Startup:         http-get http://:4191/ready delay=0s timeout=1s period=1s #success=1 #failure=120
+    Environment:
+      _pod_name:                                                 restart-target-554865b545-vgwcg (v1:metadata.name)
+      _pod_ns:                                                   lab (v1:metadata.namespace)
+      _pod_uid:                                                   (v1:metadata.uid)
+      _pod_ip:                                                    (v1:status.podIP)
+      _pod_nodeName:                                              (v1:spec.nodeName)
+      _pod_containerName:                                        linkerd-proxy
+      LINKERD2_PROXY_CORES:                                      1
+      LINKERD2_PROXY_CORES_MIN:                                  1
+      LINKERD2_PROXY_SHUTDOWN_ENDPOINT_ENABLED:                  false
+      LINKERD2_PROXY_LOG:                                        warn,linkerd=info,hickory=error,[{headers}]=off,[{request}]=off
+      LINKERD2_PROXY_LOG_FORMAT:                                 plain
+      LINKERD2_PROXY_DESTINATION_SVC_ADDR:                       linkerd-dst-headless.linkerd.svc.cluster.local.:8086
+      LINKERD2_PROXY_DESTINATION_PROFILE_NETWORKS:               10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,fd00::/8
+      LINKERD2_PROXY_POLICY_SVC_ADDR:                            linkerd-policy.linkerd.svc.cluster.local.:8090
+      LINKERD2_PROXY_POLICY_WORKLOAD:                            {"ns":"$(_pod_ns)", "pod":"$(_pod_name)"}
+                                                                 
+      LINKERD2_PROXY_INBOUND_DEFAULT_POLICY:                     all-unauthenticated
+      LINKERD2_PROXY_POLICY_CLUSTER_NETWORKS:                    10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,fd00::/8
+      LINKERD2_PROXY_CONTROL_STREAM_INITIAL_TIMEOUT:             3s
+      LINKERD2_PROXY_CONTROL_STREAM_IDLE_TIMEOUT:                5m
+      LINKERD2_PROXY_CONTROL_STREAM_LIFETIME:                    1h
+      LINKERD2_PROXY_INBOUND_CONNECT_TIMEOUT:                    100ms
+      LINKERD2_PROXY_OUTBOUND_CONNECT_TIMEOUT:                   1000ms
+      LINKERD2_PROXY_OUTBOUND_DISCOVERY_IDLE_TIMEOUT:            5s
+      LINKERD2_PROXY_INBOUND_DISCOVERY_IDLE_TIMEOUT:             90s
+      LINKERD2_PROXY_CONTROL_LISTEN_ADDR:                        0.0.0.0:4190
+      LINKERD2_PROXY_ADMIN_LISTEN_ADDR:                          0.0.0.0:4191
+      LINKERD2_PROXY_OUTBOUND_LISTEN_ADDR:                       127.0.0.1:4140
+      LINKERD2_PROXY_OUTBOUND_LISTEN_ADDRS:                      127.0.0.1:4140
+      LINKERD2_PROXY_INBOUND_LISTEN_ADDR:                        0.0.0.0:4143
+      LINKERD2_PROXY_INBOUND_IPS:                                 (v1:status.podIPs)
+      LINKERD2_PROXY_INBOUND_PORTS:                              
+      LINKERD2_PROXY_DESTINATION_PROFILE_SUFFIXES:               svc.cluster.local.
+      LINKERD2_PROXY_INBOUND_ACCEPT_KEEPALIVE:                   10000ms
+      LINKERD2_PROXY_OUTBOUND_CONNECT_KEEPALIVE:                 10000ms
+      LINKERD2_PROXY_INBOUND_ACCEPT_USER_TIMEOUT:                30s
+      LINKERD2_PROXY_OUTBOUND_CONNECT_USER_TIMEOUT:              30s
+      LINKERD2_PROXY_OUTBOUND_METRICS_HOSTNAME_LABELS:           false
+      LINKERD2_PROXY_INBOUND_SERVER_HTTP2_KEEP_ALIVE_INTERVAL:   10s
+      LINKERD2_PROXY_INBOUND_SERVER_HTTP2_KEEP_ALIVE_TIMEOUT:    3s
+      LINKERD2_PROXY_OUTBOUND_SERVER_HTTP2_KEEP_ALIVE_INTERVAL:  10s
+      LINKERD2_PROXY_OUTBOUND_SERVER_HTTP2_KEEP_ALIVE_TIMEOUT:   3s
+      LINKERD2_PROXY_INBOUND_PORTS_DISABLE_PROTOCOL_DETECTION:   25,587,3306,4444,5432,6379,9300,11211
+      LINKERD2_PROXY_DESTINATION_CONTEXT:                        {"ns":"$(_pod_ns)", "nodeName":"$(_pod_nodeName)", "pod":"$(_pod_name)"}
+                                                                 
+      _pod_sa:                                                    (v1:spec.serviceAccountName)
+      _l5d_ns:                                                   linkerd
+      _l5d_trustdomain:                                          cluster.local
+      LINKERD2_PROXY_IDENTITY_DIR:                               /var/run/linkerd/identity/end-entity
+      LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS:                     -----BEGIN CERTIFICATE-----
+                                                                 MIIBjTCCATOgAwIBAgIQCpSRVIDU3YPP67cOmiMTyzAKBggqhkjOPQQDAjAlMSMw
+                                                                 IQYDVQQDExpyb290LmxpbmtlcmQuY2x1c3Rlci5sb2NhbDAeFw0yNjA5MTQxOTA2
+                                                                 MTNaFw0zNjA5MTExOTA2MTNaMCUxIzAhBgNVBAMTGnJvb3QubGlua2VyZC5jbHVz
+                                                                 dGVyLmxvY2FsMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAFYH9EpwtGyw5YMA
+                                                                 hauciCbsqkO9wfVTY4XYsGD4u/49pRUn6rVCNHz4lkcHI/tjN4jSfeUlT58hWIHS
+                                                                 1A/7IKNFMEMwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8CAQEwHQYD
+                                                                 VR0OBBYEFNUenv2sHje5wmkt0pSDL6kgbUygMAoGCCqGSM49BAMCA0gAMEUCIQDu
+                                                                 kQtVle4z5Q65yxqOPxKa52TMKKmdkCiUb6hhsYszIgIgHOnj0b4wumbkQgL3QM0y
+                                                                 uyKcP6cGIRLlJ5RMvh2NlpQ=
+                                                                 -----END CERTIFICATE-----
+                                                                 
+      LINKERD2_PROXY_IDENTITY_TOKEN_FILE:                        /var/run/secrets/tokens/linkerd-identity-token
+      LINKERD2_PROXY_IDENTITY_SVC_ADDR:                          linkerd-identity-headless.linkerd.svc.cluster.local.:8080
+      LINKERD2_PROXY_IDENTITY_LOCAL_NAME:                        $(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.cluster.local
+      LINKERD2_PROXY_IDENTITY_SVC_NAME:                          linkerd-identity.linkerd.serviceaccount.identity.linkerd.cluster.local
+      LINKERD2_PROXY_DESTINATION_SVC_NAME:                       linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local
+      LINKERD2_PROXY_POLICY_SVC_NAME:                            linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local
+    Mounts:
+      /var/run/linkerd/identity/end-entity from linkerd-identity-end-entity (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-dhpq4 (ro)
+      /var/run/secrets/tokens from linkerd-identity-token (rw)
+Containers:
+  idle:
+    Container ID:  containerd://7da88f75f4c7d42435dae2c770b9ac6318de0177062020ea7254b2e8ca88eee2
+    Image:         docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+    Image ID:      docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      while :; do sleep 3600; done
+    State:          Running
+      Started:      Mon, 14 Sep 2026 12:06:30 -0700
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-dhpq4 (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-dhpq4:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+  linkerd-proxy-init-xtables-lock:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  linkerd-identity-end-entity:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     Memory
+    SizeLimit:  <unset>
+  linkerd-identity-token:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  86400
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  13m   default-scheduler  Successfully assigned lab/restart-target-554865b545-vgwcg to cert-hygiene-lab
+  Normal  Pulled     13m   kubelet            spec.initContainers{linkerd-init}: Container image "cr.l5d.io/linkerd/proxy:edge-26.9.1" already present on machine and can be accessed by the pod
+  Normal  Created    13m   kubelet            spec.initContainers{linkerd-init}: Container created
+  Normal  Started    13m   kubelet            spec.initContainers{linkerd-init}: Container started
+  Normal  Pulled     13m   kubelet            spec.initContainers{linkerd-proxy}: Container image "cr.l5d.io/linkerd/proxy:edge-26.9.1" already present on machine and can be accessed by the pod
+  Normal  Created    13m   kubelet            spec.initContainers{linkerd-proxy}: Container created
+  Normal  Started    13m   kubelet            spec.initContainers{linkerd-proxy}: Container started
+  Normal  Pulled     13m   kubelet            spec.containers{idle}: Container image "docker.io/library/busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616" already present on machine and can be accessed by the pod
+  Normal  Created    13m   kubelet            spec.containers{idle}: Container created
+  Normal  Started    13m   kubelet            spec.containers{idle}: Container started
+[exit 0]

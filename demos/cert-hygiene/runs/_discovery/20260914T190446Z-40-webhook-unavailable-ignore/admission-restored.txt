@@ -1,0 +1,6 @@
+result=ok
+ok: inject-probe-verify was created with a linkerd-proxy container
+ok: policy-invalid-verify was denied by linkerd-policy-validator.linkerd.io
+ok: serviceprofile-invalid-verify was denied by linkerd-sp-validator.linkerd.io
+ok: policy-valid-verify was created
+ok: serviceprofile-valid-verify was created

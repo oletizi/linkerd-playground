@@ -1,0 +1,3 @@
+$ kubectl -n lab logs restart-target-554865b545-vgwcg -c linkerd-proxy --timestamps --previous
+Error from server (BadRequest): previous terminated container "linkerd-proxy" in pod "restart-target-554865b545-vgwcg" not found
+[exit 1]
