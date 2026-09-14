@@ -228,7 +228,7 @@ rm "$T/gtm/timevalidity/verify.txt"
 assert_fails "G missing a tick's timevalidity record is invalid" evaluate_validity "$T/gtm" 41-webhook-algorithm "$V" "$T/ctl"
 assert_contains "$(reason "$T/gtm")" "reason=G: timevalidity/verify.txt missing" "reason names the missing tick"
 make_run "$T/gtu" 41-webhook-algorithm c2 h1 false
-printf 'observed_epoch=100\nobserved_utc=2026-01-01T00:00:00Z\n[profileValidator certificate unreadable]\n' > "$T/gtu/timevalidity/baseline.txt"
+printf 'observed_epoch=1789420000\nobserved_utc=2026-09-14T21:06:40Z\n[profileValidator certificate unreadable]\n' > "$T/gtu/timevalidity/baseline.txt"
 assert_fails "G with an unreadable certificate at a tick is invalid" evaluate_validity "$T/gtu" 41-webhook-algorithm "$V" "$T/ctl"
 assert_contains "$(reason "$T/gtu")" "reason=G: timevalidity/baseline.txt: certificate unreadable at tick baseline" "reason names the tick"
 make_run "$T/gtx" 41-webhook-algorithm c2 h1 false
@@ -238,11 +238,25 @@ assert_contains "$(reason "$T/gtx")" "reason=G cert swap: swap/patch-fault.txt d
 # The certificate expiring mid-run: constructed, not assumed. A run whose refused
 # certificate had already expired by its verify tick cannot be told apart from an expiry
 # run -- design section 4's own statement of why this rule exists.
+# Self-consistent, not merely plausible: notAfter_epoch is the actual epoch of the
+# notAfter string, observed_utc is the actual ISO string of observed_epoch, and
+# seconds_until_notAfter is notAfter_epoch - observed_epoch exactly.
 make_run "$T/gexp" 41-webhook-algorithm c2 h1 false
-printf 'observed_epoch=2000\nobserved_utc=2026-01-01T00:33:20Z\nnotAfter=Jan  1 00:16:40 2026 GMT\nnotAfter_epoch=1000\nseconds_until_notAfter=-1000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=1\n' \
+printf 'observed_epoch=1789421000\nobserved_utc=2026-09-14T21:23:20Z\nnotAfter=Sep 14 21:06:40 2026 GMT\nnotAfter_epoch=1789420000\nseconds_until_notAfter=-1000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=1\n' \
   > "$T/gexp/timevalidity/verify.txt"
 assert_fails "G whose certificate expired mid-run is invalid (constructed fixture, not assumed)" evaluate_validity "$T/gexp" 41-webhook-algorithm "$V" "$T/ctl"
 assert_contains "$(reason "$T/gexp")" "reason=G: timevalidity/verify.txt: certificate not time-valid at tick verify (seconds_until_notAfter=-1000)" "reason names the tick and the negative remaining validity"
+# The self-disagreement cross-check: seconds_until_notAfter=500 is positive (the -gt 0
+# check alone would pass it), but it does not equal notAfter_epoch(1789420900) -
+# observed_epoch(1789420000) = 900. Only the cross-check catches this.
+make_run "$T/gdis" 41-webhook-algorithm c2 h1 false
+printf 'observed_epoch=1789420000\nobserved_utc=2026-09-14T21:06:40Z\nnotAfter=Sep 14 21:21:40 2026 GMT\nnotAfter_epoch=1789420900\nseconds_until_notAfter=500\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=0\n' \
+  > "$T/gdis/timevalidity/baseline.txt"
+assert_fails "G whose seconds_until_notAfter disagrees with its own epochs is invalid, even though it is positive" \
+  evaluate_validity "$T/gdis" 41-webhook-algorithm "$V" "$T/ctl"
+assert_contains "$(reason "$T/gdis")" "reason=G: timevalidity/baseline.txt: seconds_until_notAfter=500 disagrees with notAfter_epoch-observed_epoch=900 at tick baseline" \
+  "reason names the tick and both sides of the disagreement"
+assert_eq "$(reason "$T/gdis" | grep -c 'not time-valid')" 0 "the disagreement alone is reported; seconds_until_notAfter=500 is not itself flagged as non-positive"
 make_run "$T/disc" 00-baseline-control c1 h1 false
 printf 'discovery=yes\nshort_windows=no\n' > "$T/disc/discovery.txt"
 assert_fails "a discovery run is never evidence" evaluate_validity "$T/disc" 00-baseline-control "$V"

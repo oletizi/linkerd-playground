@@ -147,7 +147,7 @@ _exit0_reasons() {
 # decide mechanically whether a run is valid evidence and write RUN_DIR/validity.txt.
 evaluate_validity() {
   local run="${1:?}" scenario="${2:?}" expected="${3:?}" control_dir="${4:-}"
-  local reasons=() f tick rule tree rules comp
+  local reasons=() f tick rule tree rules comp obs naf
   rules="$(scenario_rules "$scenario")" || die "evaluate_validity: unknown scenario '$scenario'"
   [ "$(_kv demo_repo_dirty "$run/git-state.txt")" = false ] || reasons+=("dirty harness tree, or git-state.txt missing")
   [ ! -e "$run/discovery.txt" ] || reasons+=("discovery run: never evidence")
@@ -228,9 +228,22 @@ evaluate_validity() {
           if grep -q '^\[' "$f"; then reasons+=("G: timevalidity/$tick.txt: certificate unreadable at tick $tick"); continue; fi
           comp="$(_kv seconds_until_notAfter "$f")"
           case "$comp" in
-            ''|*[!0-9-]*) reasons+=("G: timevalidity/$tick.txt: seconds_until_notAfter unreadable at tick $tick") ;;
-            *) [ "$comp" -gt 0 ] || reasons+=("G: timevalidity/$tick.txt: certificate not time-valid at tick $tick (seconds_until_notAfter=$comp)") ;;
+            ''|*[!0-9-]*) reasons+=("G: timevalidity/$tick.txt: seconds_until_notAfter unreadable at tick $tick"); continue ;;
           esac
+          [ "$comp" -gt 0 ] || reasons+=("G: timevalidity/$tick.txt: certificate not time-valid at tick $tick (seconds_until_notAfter=$comp)")
+          # A record must not disagree with itself: seconds_until_notAfter is exactly
+          # notAfter_epoch - observed_epoch, or the value the scenario computed cannot be
+          # trusted even when it happens to be positive (the class of bug this task's own
+          # first fixtures had: a notAfter string and a notAfter_epoch naming two
+          # different instants). All real recorded ticks already satisfy this.
+          obs="$(_kv observed_epoch "$f")"; naf="$(_kv notAfter_epoch "$f")"
+          case "$obs" in ''|*[!0-9]*) obs="" ;; esac
+          case "$naf" in ''|*[!0-9]*) naf="" ;; esac
+          if [ -z "$obs" ] || [ -z "$naf" ]; then
+            reasons+=("G: timevalidity/$tick.txt: observed_epoch or notAfter_epoch unreadable at tick $tick")
+          elif [ "$comp" -ne $(( naf - obs )) ]; then
+            reasons+=("G: timevalidity/$tick.txt: seconds_until_notAfter=$comp disagrees with notAfter_epoch-observed_epoch=$(( naf - obs )) at tick $tick")
+          fi
         done < <(awk '$2 == "tick" { print $3 }' "$run/timeline.log" 2>/dev/null)
         while read -r f; do reasons+=("$f"); done < <(_exit0_reasons "$run" "G cert swap" \
           swap/patch-fault.txt swap/restart-fault.txt swap/rollout-fault.txt swap/pods-gone-fault.txt \

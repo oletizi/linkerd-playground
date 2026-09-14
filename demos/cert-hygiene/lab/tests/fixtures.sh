@@ -59,8 +59,12 @@ make_run() {
     for f in patch-fault restart-fault rollout-fault pods-gone-fault patch-restore restart-restore rollout-restore pods-gone-restore; do
       printf '$ kubectl ...\ndone\n[exit 0]\n' > "$d/swap/$f.txt"
     done
+    # Self-consistent, not merely plausible: notAfter_epoch is the actual epoch of the
+    # notAfter string (date -u -d "Aug 25 15:46:40 2036 GMT" +%s = 2103292000), and
+    # seconds_until_notAfter is notAfter_epoch - observed_epoch exactly -- a record that
+    # disagrees with itself is the one thing the brief told this task to keep out.
     for t in baseline verify; do
-      printf 'observed_epoch=1000000000\nobserved_utc=2001-09-09T01:46:40Z\nnotAfter=Sep  9 01:46:40 2036 GMT\nnotAfter_epoch=2103292000\nseconds_until_notAfter=1103292000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=0\n' \
+      printf 'observed_epoch=1000000000\nobserved_utc=2001-09-09T01:46:40Z\nnotAfter=Aug 25 15:46:40 2036 GMT\nnotAfter_epoch=2103292000\nseconds_until_notAfter=1103292000\nsignature_algorithm=sha1WithRSAEncryption\nopenssl_x509_checkend_0_exit=0\n' \
         > "$d/timevalidity/$t.txt"
     done
   fi

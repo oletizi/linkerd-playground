@@ -30,6 +30,50 @@ cert_not_before_epoch() { # PEM_FILE
   date -u -d "${start#notBefore=}" +%s
 }
 
+# fault_phase TICK: the admission phase for a probe set taken now, against a single
+# fault-driven scenario's own T_MARK -- baseline -> "baseline", verify -> "restored",
+# any other tick -> "pre-fault" before T_MARK or "fault-NNNN" (seconds since T_MARK)
+# after it. Shared by N and G (N's own review required this fixed: they were identical,
+# byte for byte, apart from the function name -- lib/scenario-n.sh's old _n_phase and
+# scenario-g.sh's old _g_phase).
+fault_phase() {
+  local now
+  now="$(date -u +%s)"
+  case "$1" in
+    baseline) echo baseline ;;
+    verify) echo restored ;;
+    *) if [ "$now" -lt "$T_MARK" ]; then echo pre-fault; else printf 'fault-%04d\n' $(( now - T_MARK )); fi ;;
+  esac
+}
+
+# settle_poll FILE STATE_FN WANT LABEL: poll STATE_FN (a function taking no arguments,
+# echoing one word of state) every 5s until it reports WANT or W_PROPAGATION_TIMEOUT_S
+# passes, appending "<ts> state=<value>" to FILE (run-relative) on every poll and marking
+# LABEL's outcome either way. Shared by N (has the proxy-injector started serving again?)
+# and G (does sp-validator's admission behaviour match WANT?): the same question -- has a
+# change actually propagated -- asked of different webhooks through different STATE_FNs.
+# Never fatal: a timeout is recorded, and whatever the following ticks record is judged
+# as it stands, not masked by this poll succeeding or failing.
+settle_poll() {
+  local file="$1" state_fn="$2" want="$3" label="$4"
+  local f="$RUN_DIR/$file" deadline s
+  deadline=$(( $(date -u +%s) + W_PROPAGATION_TIMEOUT_S ))
+  : > "$f"
+  while :; do
+    s="$("$state_fn")"
+    printf '%s state=%s\n' "$(_utc)" "$s" >> "$f"
+    if [ "$s" = "$want" ]; then
+      mark settled "$label: $s"
+      return 0
+    fi
+    if [ "$(date -u +%s)" -ge "$deadline" ]; then
+      mark settled "$label: not $want after ${W_PROPAGATION_TIMEOUT_S}s (last=$s)"
+      return 0
+    fi
+    sleep 5
+  done
+}
+
 probes_ok_now() { # every probe's latest line is an ok exchange
   local p
   for p in "${PROBES[@]}"; do

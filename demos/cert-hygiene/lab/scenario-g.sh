@@ -24,16 +24,6 @@ scenario_mark_epoch() { # T_mark: when the sp-validator certificate is swapped
   echo $(( $(date -u +%s) + FAULT_LEAD_S ))
 }
 
-_g_phase() { # TICK: the admission phase for a probe set taken now (mirrors N's _n_phase)
-  local now
-  now="$(date -u +%s)"
-  case "$1" in
-    baseline) echo baseline ;;
-    verify) echo restored ;;
-    *) if [ "$now" -lt "$T_MARK" ]; then echo pre-fault; else printf 'fault-%04d\n' $(( now - T_MARK )); fi ;;
-  esac
-}
-
 # _g_utc_from EPOCH: the ISO string of an already-sampled epoch. g-timevalid's whole
 # purpose is to make time-validity provable, so its own record must never carry a second,
 # separately-sampled clock read next to the first: Task 3's own timevalidity/*.txt paired
@@ -87,7 +77,7 @@ scenario_tick_extra() { # NAME: admission probes and G's timevalidity record, ev
   # in the tick's phase; the baseline and post-restore probes are also G's evidence
   # (g-baseline, and admission-restored.txt, recorded but not gated -- design section 4
   # lists no g-restored rule, only g-baseline and g-timevalid).
-  admission_probes "$(_g_phase "$1")" "$1"
+  admission_probes "$(fault_phase "$1")" "$1"
   _g_timevalid "$1"
   case "$1" in
     baseline)
@@ -104,7 +94,7 @@ scenario_tick_extra() { # NAME: admission probes and G's timevalidity record, ev
 }
 
 scenario_post_actions() { # T_mark + 60s: admission probes instead of new workloads (as N)
-  admission_probes "$(_g_phase post-actions)" post-actions
+  admission_probes "$(fault_phase post-actions)" post-actions
   mark admission-probes post-actions
 }
 
@@ -123,31 +113,6 @@ _g_probe_state() {
   elif admission_denied_by "$SP_VALIDATOR_WEBHOOK_NAME" "$tmp/sp.resp"; then echo serving
   else echo other; fi
   rm -rf "$tmp"
-}
-
-# _g_settle LABEL WANT: swap/settle-LABEL.txt -- poll _g_probe_state until it reports
-# WANT (refused|serving) or W_PROPAGATION_TIMEOUT_S passes (shared with N and W: the same
-# question, "has the change actually propagated", on a different webhook). Never fatal: a
-# timeout is recorded and whatever the following ticks record is judged as it stands, the
-# same choice N's own settle makes.
-_g_settle() {
-  local label="$1" want="$2"
-  local f="$RUN_DIR/swap/settle-$label.txt" deadline s
-  deadline=$(( $(date -u +%s) + W_PROPAGATION_TIMEOUT_S ))
-  : > "$f"
-  while :; do
-    s="$(_g_probe_state)"
-    printf '%s state=%s\n' "$(_utc)" "$s" >> "$f"
-    if [ "$s" = "$want" ]; then
-      mark settled "sp-validator $label: $s"
-      return 0
-    fi
-    if [ "$(date -u +%s)" -ge "$deadline" ]; then
-      mark settled "sp-validator $label: not $want after ${W_PROPAGATION_TIMEOUT_S}s (last=$s)"
-      return 0
-    fi
-    sleep 5
-  done
 }
 
 # _g_backing_pods: the current pod name(s) of every Deployment in G_BACKING_DEPLOYS
@@ -169,15 +134,18 @@ _g_backing_pods() {
 # PODS (one per line, captured by _g_backing_pods before the restart that is meant to
 # replace them) to actually be deleted. `kubectl rollout status` alone is not enough: it
 # can report success while the old pod is still Running and serving the old certificate
-# (the same gap N's own review required wait_pods_gone to close).
+# (the same gap N's own review required wait_pods_gone to close). PODS empty is not a
+# state to tolerate: everything around this point already died loudly on the same
+# condition (scenario_fault dies when the backing derivation names no Deployment,
+# deploy_selector dies on an empty selector), and a backing Deployment with zero pods
+# here contradicts the baseline admission probe that already passed against it -- a
+# harness failure, never a "nothing to wait for" success.
 _g_wait_gone() {
   local label="$1" pods="$2"
   local f="swap/pods-gone-$label.txt" p args=()
   while IFS= read -r p; do [ -n "$p" ] && args+=("pod/$p"); done <<< "$pods"
-  if [ "${#args[@]}" -eq 0 ]; then
-    capture "$f" bash -c 'echo "no pre-restart pod recorded; nothing to wait for"'
-    return 0
-  fi
+  [ "${#args[@]}" -ge 1 ] \
+    || die "_g_wait_gone: no pre-restart pod found for ${G_BACKING_DEPLOYS[*]}; see swap/backing.txt"
   capture "$f" kubectl -n linkerd wait --for=delete "${args[@]}" --timeout=120s
 }
 
@@ -219,7 +187,7 @@ scenario_fault() { # build the refused certificate, patch it into the live Secre
   capture_rollouts swap/rollout-fault.txt linkerd "${G_BACKING_DEPLOYS[@]}"
   _g_wait_gone fault "$before_pods"
   snap_controlplane fault-after
-  _g_settle fault refused
+  settle_poll swap/settle-fault.txt _g_probe_state refused "sp-validator fault"
 }
 
 scenario_recover() { # patch the original, normally-signed certificate back in, restart,
@@ -233,5 +201,5 @@ scenario_recover() { # patch the original, normally-signed certificate back in, 
   capture_rollouts swap/rollout-restore.txt linkerd "${G_BACKING_DEPLOYS[@]}"
   _g_wait_gone restore "$before_pods"
   snap_controlplane recover-restore
-  _g_settle restore serving
+  settle_poll swap/settle-restore.txt _g_probe_state serving "sp-validator restore"
 }
