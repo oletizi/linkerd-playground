@@ -50,7 +50,7 @@ STUB_EXIT=124 tapfile "$T/cut.txt" '{"id":1}' '{"id":2'
 assert_eq "$(_v_tap_events "$T/cut.txt")" 1 "a stream timeout(1) cut mid-object: the complete object before it still counts"
 tapfile "$T/one.txt" '{"id":1}'
 assert_eq "$(_v_tap_events "$T/one.txt")" 1 "one complete JSON object: counted 1"
-assert_eq "$(_v_tap_events "$T/no-such-file.txt")" 0 "a missing tap capture: 0, never fatal"
+assert_eq "$(_v_tap_events "$T/no-such-file.txt" 2>/dev/null)" 0 "a missing tap capture: 0, never fatal"
 
 # ---- _v_backing / _v_backing_namespace: the namespace= field (slice 3 Task 1 item 3) ----
 mkdir -p "$T/bin"

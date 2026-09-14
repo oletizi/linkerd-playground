@@ -79,7 +79,16 @@ profile() { # DIR NAME BODY: a fixture credential profile at DIR/profiles/NAME.e
   mkdir -p "$1/profiles"
   printf '%s\n' "$3" > "$1/profiles/$2.env"
 }
-lp() { LAB_DIR="$1" load_profile "$2"; } # LAB_DIR PROFILE
+lp() { # LAB_DIR PROFILE: load_profile against a fixture LAB_DIR, restored after. A plain
+  # prefix assignment before calling load_profile (a shell function, not an external
+  # command) would leave LAB_DIR permanently changed in this shell once load_profile
+  # returns, so it is saved and restored explicitly instead.
+  local save="$LAB_DIR" rc=0
+  LAB_DIR="$1"
+  load_profile "$2" || rc=$?
+  LAB_DIR="$save"
+  return "$rc"
+}
 COMPLETE='ANCHOR_LIFETIME=87600h
 ISSUER_LIFETIME=8760h
 LEAF_LIFETIME=5m
@@ -91,10 +100,15 @@ assert_contains "$(lp "$T/lab" missing-tap 2>&1)" "does not define TAP_CERT_LIFE
 profile "$T/lab" with-tap "$COMPLETE
 TAP_CERT_LIFETIME="
 assert_succeeds "load_profile accepts TAP_CERT_LIFETIME defined empty (unused, per its own comment convention)" lp "$T/lab" with-tap
+# Called again, unwrapped: assert_succeeds above ran it in a subshell (so a crash could
+# never take down this suite), and a subshell's exports never reach here -- this call
+# proves the same fixture succeeds while also letting the export be checked.
+lp "$T/lab" with-tap
 assert_eq "$PROFILE" with-tap "load_profile exports PROFILE"
 profile "$T/lab" tap-set "$COMPLETE
 TAP_CERT_LIFETIME=15m"
 assert_succeeds "load_profile accepts TAP_CERT_LIFETIME set to a real duration" lp "$T/lab" tap-set
+lp "$T/lab" tap-set
 assert_eq "$TAP_CERT_LIFETIME" 15m "load_profile exports the profile's TAP_CERT_LIFETIME"
 profile "$T/lab" no-anchor 'ISSUER_LIFETIME=8760h
 LEAF_LIFETIME=5m
