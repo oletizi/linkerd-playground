@@ -24,7 +24,7 @@ Research and lab results for an article on recognising, fixing and preventing ce
 
 ## Status
 
-Every experiment below has been run, written up, and carried into [findings.md](findings.md) and [sources.md](sources.md). Its triage table no longer has an untested half — and, since the two negative controls in the last bullet, it no longer rests entirely on expiries either: three of its causes have now been produced in the lab, one of them a webhook whose certificate was perfectly healthy and one a certificate that was time-valid and refused anyway.
+Every experiment below has been run, written up, and carried into [findings.md](findings.md) and [sources.md](sources.md). Its triage table no longer has an untested half — and, since the two negative controls in the last bullet, it no longer rests entirely on expiries either: three different causes of the *same* broken-admission symptom have now been produced in the lab, one of them a webhook whose certificate was perfectly healthy and one a certificate that was time-valid and refused anyway.
 
 - **Identity issuer expiry:** run three times (once, then twice more with fuller recording). Reproduced. The repeats also settled how the handshake fails, which restarts recovery needs, and how long an already-open connection lasted.
 - **Webhook serving certificates:** run twice, once per failure policy. Reproduced — with the important qualification that two of the three webhooks kept working past their own expiry, about 30 minutes for the proxy injector and about 10 minutes for the ServiceProfile validator, until the API server had to reconnect.
