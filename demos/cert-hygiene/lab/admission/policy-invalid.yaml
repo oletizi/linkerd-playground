@@ -1,0 +1,8 @@
+apiVersion: policy.linkerd.io/v1alpha1
+kind: NetworkAuthentication
+metadata:
+  name: ${NAME}
+  namespace: ${LAB_NS}
+spec:
+  networks:
+    - cidr: not-a-cidr

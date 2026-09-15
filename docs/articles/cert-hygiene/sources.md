@@ -1,0 +1,454 @@
+# Sources: what to cite for each claim
+
+**Purpose:** a maintained source and claim map for a blog post about recognizing, recovering from, and preventing certificate-expiry failures in Linkerd.
+
+**Research rule:** Use the current Linkerd documentation as the normative source for operational procedures. Kubernetes, IETF, NIST, and cert-manager sources provide underlying mechanics and operational guidance. GitHub issues and discussions are historical, illustrative evidence—not universal behavior or current product guidance.
+
+**Outline section key**
+
+- **Intro** — the abstract, "The situation", and the TL;DR
+- **Triage** — "Triage by what stopped working" and its table
+- **Landscape** — "Why is this happening?": the PKI model and the webhook call path
+- **Diagnosis** — "How to build a decision tree from the symptoms"
+- **Recovery** — "How to fix": per-cause recovery
+- **Hygiene** — "Best practices: how to make certificate expiration a non-event"
+
+---
+
+## Primary Linkerd sources
+
+### Automatic mTLS
+
+- **URL:** https://linkerd.io/docs/features/automatic-mtls/
+- **Authority level:** Primary product documentation; normative for Linkerd behavior.
+- **Claims supported:** Linkerd’s identity model; the identity issuer issues workload/proxy certificates; workload identities are tied to Kubernetes ServiceAccounts; workload certificates are short-lived (documented as 24 hours) and automatically rotate; the trust anchor and identity issuer are longer-lived credentials with different lifecycle responsibilities.
+- **Outline mapping:** Intro, Landscape, Triage, Diagnosis, Hygiene.
+- **Research notes:** Use to establish the mesh signing hierarchy: `trust anchor → identity issuer → workload/proxy certificate`. Do not use it to describe Kubernetes admission-webhook TLS; that is a separate relationship. It does not say that workload certificates are capped at the issuer's own expiry; that comes from Linkerd's source code and our lab (see "This project's own evidence" below).
+
+### Automatically Rotating Control Plane TLS Credentials
+
+- **URL:** https://linkerd.io/2-edge/tasks/automatically-rotating-control-plane-tls-credentials/
+- **Authority level:** Primary product documentation; current edge task guide. Confirm the matching stable-version procedure before publishing commands.
+- **Claims supported:** Linkerd rotates workload certificates but does not itself rotate the identity issuer or trust anchor; cert-manager can rotate the issuer; trust-manager can distribute a trust bundle; trust-anchor rotation requires a staged transition; Linkerd does not need access to the trust-anchor private key, while it does need the issuer private key.
+- **Outline mapping:** Landscape, Recovery, Hygiene.
+- **Research notes:** This is the main source for explaining why a root rotation is a bundle migration rather than a one-step replacement. Its procedure also documents the operational restarts involved in moving the mesh to a new trust configuration.
+
+### Manually Rotating Control Plane TLS Credentials
+
+- **URL:** https://linkerd.io/2-edge/tasks/manually-rotating-control-plane-tls-credentials/
+- **Authority level:** Primary product documentation; current edge task guide. Confirm the matching stable-version procedure before publishing commands.
+- **Claims supported:** Issuer and root rotation; the issuer-only procedure (`linkerd upgrade --identity-issuer-certificate-file=… --identity-issuer-key-file=…`, with no trust-anchor flag); the `IssuerUpdated` event as the sign that the new issuer was loaded; restarting the proxies of all injected workloads after applying a new issuer.
+- **Outline mapping:** Diagnosis, Recovery, Hygiene.
+- **Research notes:** Cite for the "rotate before expiry" path, and for recovering from an expired issuer: "Replacing expired certificates" points here for the issuer-only case. In our lab this procedure recovered an expired issuer, but only once every meshed workload was restarted, as the guide says — and a call recovered only once the workloads at *both* of its ends had been restarted (see [findings.md](findings.md#fixing-it-replacing-an-expired-issuer-while-the-trust-anchor-is-still-valid)). The guide suggests `linkerd check --proxy` to validate the result. In our lab it passed while proxies still held expired certificates and fresh connections were failing, so don't present it as proof that proxies hold valid certificates.
+  - This page also carries the staged trust-anchor rotation. In our lab, following it produced no failed fresh connection at any of its three restart rounds; the only disruption was held-open connections breaking when their peer pod restarted, which an ordinary rollout does too. Its instruction to restart every meshed workload at each step is load-bearing: `linkerd check --proxy` named every meshed pod as still holding an older trust bundle until they were restarted (see [findings.md](findings.md#trust-anchor-rotation-needs-restarts)).
+
+### Replacing expired certificates
+
+- **URL:** https://linkerd.io/docs/tasks/replacing_expired_certificates/
+- **Authority level:** Primary product documentation; normative recovery guide.
+- **Claims supported:** Expired certificates put the mesh in an invalid state and zero downtime is no longer guaranteed; if only the issuer has expired and the trust-anchor key is available, replace the issuer; if the root has expired or its key is unavailable, replace root and issuer together; restart proxies/workloads after the trust configuration is updated.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** The strongest source for the recovery decision tree. Preserve its qualification that the issuer-only path depends on possession of the manually supplied trust-root key. For the issuer-only case it sends readers to "Manually Rotating Control Plane TLS Credentials", which our lab followed successfully. Our lab also followed its expired-anchor branch once, replacing anchor and issuer together: the upgrade's own rollout restarted the control plane, a canary workload received a certificate under the new anchor about 25 seconds later, and restarting every remaining meshed workload restored traffic (see [findings.md](findings.md#fixing-it-replacing-an-expired-trust-anchor)). Because that rollout restarted the identity service itself, the run cannot show whether a separate identity restart would be needed otherwise — don't present that either way. Keep this page as the authority for the procedure; our run is one confirmation of its outcome, not a substitute for it.
+
+### Rotating webhooks certificates
+
+- **URL:** https://linkerd.io/2-edge/tasks/rotating_webhooks_certificates/
+- **Authority level:** Primary product documentation; current edge task guide.
+- **Claims supported:** Linkerd webhook and extension API-server connections are TLS-protected; webhook certificates use self-signed CAs embedded in webhook configuration; the documented default validity is 365 days; relevant secrets include the proxy injector, policy validator, ServiceProfile validator, and Viz tap injector.
+- **Outline mapping:** Triage, Landscape, Diagnosis, Recovery, Hygiene.
+- **Research notes:** Essential for treating a failed admission or policy operation as a potential webhook-TLS problem rather than automatically blaming mesh mTLS — and, equally, for not treating every failed admission operation as a certificate problem: in our lab a webhook with no pods behind it produced the same symptom with its certificate in perfect health. A serving certificate also has to satisfy the platform's own cryptographic policy, not merely its dates and its chain: we had one refused for its signature algorithm with years of validity left (see "Our lab: a webhook certificate refused for its signature algorithm" below). Check version-specific component names and Secret names before including a command. Our lab exercised the recovery branch for *externally supplied* webhook certificates, which is not the default model: re-running `linkerd upgrade` re-rendered the same, still-expired credentials, and the webhooks recovered only when freshly generated credentials were supplied explicitly. Cite that as a caution about self-managed webhook credentials, never as a statement about how Linkerd's own webhook-certificate rotation behaves.
+  - **Keep two viz credentials apart.** The Viz *tap injector* secret this page lists is not the tap *API server's* serving certificate (`CN=tap.linkerd-viz.svc`), which is what our viz experiment expired — see "Our lab: the viz tap API server's certificate" below. *From Linkerd's source code* (see [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md)): nothing in `linkerd check` or `linkerd viz check` covers the tap injector's certificate. We have not tested what an expired one does. The tap API server's own certificate does have a check row, and *in our lab* that row went fatal at the first observation after it expired.
+
+### Automatically Rotating Webhook TLS Credentials
+
+- **URL:** https://linkerd.io/docs/tasks/automatically-rotating-webhook-tls-credentials/
+- **Authority level:** Primary product documentation; normative configuration guidance.
+- **Claims supported:** Webhook TLS credentials are separate from Linkerd proxy certificates and use a separate trust chain; Linkerd upgrades can regenerate default webhook certificates; cert-manager can manage regular automatic webhook-certificate rotation.
+- **Outline mapping:** Landscape, Recovery, Hygiene.
+- **Research notes:** Best source for the recommendation to manage webhook certificates as first-class operational credentials. It explicitly states the separation from proxy-to-proxy TLS.
+
+### Troubleshooting and `linkerd check`
+
+- **URL:** https://linkerd.io/docs/tasks/troubleshooting/
+- **Authority level:** Primary product documentation; normative diagnostic guidance.
+- **Claims supported:** `linkerd check` / `linkerd check --proxy` report distinct trust-anchor, issuer and webhook credential failures, including expiry, invalid CA/signing relationships, name mismatches, and missing Secrets; Linkerd's checks use a 60-day validity warning threshold.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** Make this the practical evidence-gathering source in the diagnosis section. It supports "certificate-like symptoms are not proof of expiry": inspect the reported failure and certificate state rather than inferring a root cause from a symptom. Mind its limits:
+  - `linkerd check` does not inspect workload (proxy) certificates. This is from Linkerd's source code; in our lab, in both issuer repeats, it reported healthy — including under `--proxy` — six seconds before fresh connections through those same proxies failed ten out of ten.
+  - The 60-day warning headline looked the same for an issuer with about 15 minutes left and for one about 10 minutes short of 60 days. Only the date in its detail line showed how close expiry was (our lab).
+  - **The 60-day row is not a precise boundary, and it starts before the 60-day mark.** Our bisect measured the warning still firing for an issuer with **58 minutes 58 seconds more** than 60 days of remaining validity, on both transcripts, and first clearing to `√` at **1 hour 4 minutes 3 seconds more** — a 305-second bracket. The threshold is a quantity of *remaining validity* about an hour above 60 days, so a certificate crosses it roughly an hour of calendar time *before* its 60-days-left moment. Never write that the warning fires at exactly 60 days, and never write anything that implies it fires once 60 days have passed. Quote the bracket; any single number inside it would be invented. See "Our lab: the `linkerd check` 60-day issuer warning" below.
+  - **The issuer warning does not fail the command, so the exit code is not a monitoring signal for it.** Every `linkerd check` and `linkerd check --proxy` transcript our threshold experiment recorded ends `Status check results are √` and `[exit 0]`, including every one whose issuer row printed `‼`, and including checks against an issuer 14 minutes 38 seconds from expiry (our lab). Anything watching the exit code — cron, CI, a health probe — never sees the warning; only reading the output does. Do not write that `linkerd check` "fails" or "catches" an approaching issuer expiry in a way a script would notice. **Scope:** the issuer `‼` row, in those runs. Other rows do fail the command, and the lab has now recorded some of them — `× trust anchors are within their validity period` (trust-anchor expiry), `× control plane pods are ready` (the unavailable-webhook runs) and `× sp-validator webhook has valid cert` (the refused-certificate run) each exit non-zero, as does `linkerd viz check` once the tap certificate expires (see "Our lab: the viz tap API server's certificate" below). Only those few were driven to failure, so the lab still cannot say in general which rows exit non-zero — cite the list as rows that happened to be tripped, never as the boundary.
+  - It halts at the first failing check in a category. With more than one expired webhook certificate, only the first is reported (our lab); inspect the others directly. The same halt has a sharper consequence in `linkerd viz check`: an expired tap API server certificate makes `tap API server has valid cert` fatal, and the `linkerd-viz` section stops at that row, so the eight rows that followed the tap-certificate rows in a healthy transcript — the tap API service, the extension's pods and proxies, prometheus, the self-check — are never reached again, and neither is the `tap API server cert is valid for at least 60 days` row that sits between them (our lab). Say that one expired tap certificate blanks the rest of the section, not merely that it reports itself. Don't say the row is first in the section: the run shows only where the output stops, not what precedes it.
+  - **The halt also drops whole sections, and that is now measured.** In the two non-expiry experiments a healthy transcript is 85 lines and 11 sections; with the proxy injector scaled to zero it is 26 lines and 4 sections — seven sections never run, `linkerd-identity` and `linkerd-webhooks-and-apisvc-tls` among them — and with the refused webhook certificate it is 59 lines and 7 sections, with the three rows *after* the failing one inside the certificate section never printed (our lab). **The reader-facing rule to carry everywhere the article recommends this command: a row's absence is not a pass, and a green row means only that the check reached it.** The lab has now recorded this in four experiments (tap expiry, webhook expiry, the unavailable webhook, the refused certificate) across three sections and both commands — so present it as a property of `linkerd check`, not a viz quirk.
+  - **Do not generalise "the check is green while things are broken" into a property of the tool.** It held for the issuer-recovery case and for the `‼` issuer warning's exit code, and it is **falsified** for a certificate the API server refused for its signature algorithm: there the check went fatal at the first observation and quoted the algorithm itself (see "Our lab: a webhook certificate refused for its signature algorithm" below). Keep the narrow, per-row, per-cause claims the lab earned; do not write a blanket claim they contradict.
+  - The symptom may not look like a certificate error at all: in our lab, applications saw `Connection reset by peer`. And a symptom that *does* look like a certificate error need not be one: an unavailable webhook produced the fail-open symptom with a perfectly healthy certificate (see "Our lab: a webhook that is unavailable, with a healthy certificate" below).
+
+---
+
+## This project's own evidence
+
+Every entry below is a first-party experiment in the same throwaway single-node test cluster, on Linkerd `edge-26.9.1`. Each experiment that breaks something was compared against a run of the same harness on long-lived certificates, in which nothing expired and nothing failed, so that restarts and rollout choreography can be told apart from certificate failures. Those comparison runs have their own sequence of steps, not a step-for-step matched control per experiment; where an experiment restarts different things, or more often, the notes say so. The viz/tap experiment's validity rules require a comparison run recorded at the same harness tree as the run itself, and it has one. The `linkerd check` warning experiment breaks nothing and has no such comparison run. Attribute all of them as "in our testing" or "in our lab", naming the version and the lifetimes that experiment actually used — shortened in most of them, but **not** uniformly: the two negative controls ran 24-hour webhook serving certificates on purpose, since nothing in them is meant to expire. Take a lifetime from the entry below or from the scenario's profile, never from a neighbouring experiment.
+
+**Two of the entries below are negative controls, and they exist to stop the others being over-read.** In the unavailable-webhook runs and the refused-certificate run, *nothing expired* — the certificates involved were recorded as time-valid at every tick. They were run because every *failure* this lab had reproduced until then turned on a `notAfter` passing, so the triage table had never been tested at telling causes apart. (That is a statement about reproduced failures, not about every experiment: the `linkerd check` threshold bisect and the staged trust-anchor rotation both expire nothing, and neither breaks anything either.) Never cite either of them as evidence about expiry, and never merge their counts into the expiry experiments'.
+
+### Our lab: identity issuer expiry, and its two repeats
+
+- **Where:** [findings.md](findings.md) (plain-language summary), [notes/lab-evidence-issuer-expiry.md](notes/lab-evidence-issuer-expiry.md) (the first run) and [notes/lab-evidence-issuer-expiry-rerun.md](notes/lab-evidence-issuer-expiry-rerun.md) (two repeats with fuller recording).
+- **Authority level:** First-party experiment. Three runs in total: one first run, then two repeats that agree with each other on every result. Linkerd `edge-26.9.1`; 15-minute issuer, 5-minute workload certificates, 30-day trust anchor. Each paired with a run where nothing expired and nothing failed.
+- **Claims supported:**
+  - When the issuer expires, every workload certificate expires at the same moment.
+  - Fresh connections fail at once; an already-open TCP connection and a reused HTTP path keep working — about 37 minutes in the repeats, ending only when the pod at the far end was restarted; new pods never become ready.
+  - The failure is a TLS handshake rejection at the identity service, recorded as a `CertificateExpired` alert in each workload proxy's own log — that is a proxy failing to reach *the identity service*, not two workload proxies failing to reach each other.
+  - Replacing the issuer reloads it in 20–30 seconds without an identity restart, and recovers no proxy that already holds an expired certificate; a call worked again only once the workloads at both of its ends had been restarted.
+  - `linkerd check`, with and without `--proxy`, reported everything healthy while fresh connections through those proxies were failing.
+  - The signals listed in the findings' diagnosis section.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** Three runs is three runs. Whether a stuck proxy would ever recover on its own, and what happens at the default 24-hour workload lifetime, are not established; see [findings.md](findings.md#still-open).
+
+### Our lab: webhook serving certificates
+
+- **Where:** [notes/lab-evidence-webhook-expiry.md](notes/lab-evidence-webhook-expiry.md).
+- **Authority level:** First-party experiment. Two runs, one per webhook failure policy (the default fail-open, and fail-closed). Linkerd `edge-26.9.1`; three webhook serving certificates expiring 10 minutes apart (15, 25 and 35 minutes), with a long-lived anchor and issuer that never expired. Paired with the run where nothing expired.
+- **Claims supported:**
+  - An expired webhook certificate is not necessarily an immediate failure: the proxy injector kept injecting for about 29.6 minutes past its own expiry and the ServiceProfile validator kept validating for about 9.6 minutes past its, on connections the API server had already opened; the policy validator's calls failed at its own expiry.
+  - All three failed once the webhooks' backing pods were restarted and the API server had to reconnect: under the fail-open default, pods were admitted with no proxy and invalid policy and ServiceProfile resources were accepted; under fail-closed, `kubectl` was refused with an x509 "certificate has expired" error.
+  - Meshed traffic was unaffected throughout both runs.
+  - `linkerd check` reports the first expired webhook certificate as fatal at the moment of expiry, and then stops at that row, so the other webhooks' rows are not shown.
+- **Claims NOT supported — added after the negative controls were run:** that a pod admitted without a proxy shows an expired webhook certificate. It does not identify a cause at all. An unavailable proxy injector with a perfectly healthy certificate admitted an object the same as this experiment's to within the object's own name and six timestamps (see "Our lab: a webhook that is unavailable, with a healthy certificate" below), so this experiment supports "an expired injector certificate produces a proxy-less pod" and **not** its converse. The same applies to the fail-closed rejection: it is not evidence of an expiry either, since a certificate refused for its signature algorithm produced the same shape of x509 rejection with years of validity left (see "Our lab: a webhook certificate refused for its signature algorithm" below). Whenever this entry's symptoms are cited, cite the discriminator with them — the clause after the last colon in the API server's error, and whether the webhook's Deployment has running pods.
+- **Outline mapping:** Triage, Landscape, Diagnosis, Recovery, Hygiene.
+- **Research notes:** Any claim about when an expired webhook bites must say whether the API server had reconnected. **Credential-model caveat:** the lab supplied its own static webhook serving certificates, which is not how Linkerd normally runs — Linkerd's own controller rotates these. The recovery result (a plain `linkerd upgrade` re-rendered the same expired certificates; fresh credentials had to be supplied explicitly) is a fact about that setup, not about a default installation. Why the three webhooks differed is not explained by these runs.
+
+### Our lab: identity-service outage
+
+- **Where:** [notes/lab-evidence-identity-outage.md](notes/lab-evidence-identity-outage.md).
+- **Authority level:** First-party experiment. One run. Linkerd `edge-26.9.1`; identity scaled to zero for about 15 minutes, 5-minute workload certificates, long-lived anchor and issuer, no credential changed. Paired with the run where nothing expired.
+- **Claims supported:**
+  - Proxies keep working on the certificate they already hold, then fail once it expires — about 2 minutes 40 seconds into the outage here — as a connection reset rather than a hang.
+  - Pods created during the outage never become ready; their proxy cannot resolve the identity service, and they became ready within 16 seconds of its return.
+  - A proxy whose certificate expired during the outage did **not** re-certify on its own once identity returned; only a pod restart got it a new certificate.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** One run. `linkerd check` was not run during this experiment, so make no claim about what it showed. After every meshed workload had been restarted our probes still failed (connections accepted with no reply); the control plane's own proxies were never restarted and their logs were not captured, so no cause may be asserted — see [findings.md](findings.md#still-open).
+
+### Our lab: the `linkerd check` 60-day issuer warning
+
+- **Where:** [notes/lab-evidence-check-threshold.md](notes/lab-evidence-check-threshold.md).
+- **Authority level:** First-party experiment. Ten runs of the scenario, nine of them valid evidence: a first run bracketing the boundary with two issuers 10 minutes either side of 60 days, then a bisect of eight more runs whose second issuer's lifetime was the varied quantity, those eight all at one frozen harness tree. The first run is at an earlier tree, which this scenario's validity rules permit because it judges no probe outcome and so needs no control at a matching tree. The tenth run was recorded against a dirty tree and is not evidence. Compared with the 15-minute issuer from the two issuer-expiry repeats. Linkerd `edge-26.9.1`.
+- **Claims supported:**
+  - The warning `‼ issuer cert is valid for at least 60 days` fires below 60 days, with identical wording at about 15 minutes of remaining validity and at about 10 minutes short of 60 days. Only the date in its detail line shows how close expiry is.
+  - **The row goes on warning above 60 days, and the boundary is measured.** The largest remaining validity still provably warning is **60 days + 58 minutes 58 seconds** (5,187,538 s); the smallest still provably passing is **60 days + 1 hour 4 minutes 3 seconds** (5,187,843 s). The threshold lies between them: a **305-second** bracket.
+  - **The check also clears, which earlier drafts of this entry said had never been seen in a valid run.** Twelve bisect transcripts printed `√`; the acceptance condition — both measured values and both command transcripts on opposite sides of the boundary — is met in six of the eight bisect runs. The behaviour is reproduced in both directions, so the reader-facing triage row covers the whole behaviour, not only the warning half.
+  - The direction that follows, and which the article must keep: the threshold is a quantity of *remaining validity* about an hour above 60 days, so an operator sees the row roughly an hour of calendar time **before** the certificate's 60-days-left moment arrives, and certainly by the time it does.
+  - **The warning never fails the command.** Every `linkerd check` and `linkerd check --proxy` transcript this scenario recorded ends `Status check results are √` and `[exit 0]`, including all twenty-six whose issuer row printed `‼`. (That count is of every transcript the scenario recorded, the superseded dirty-tree run's included — exit status is a raw property of a transcript and does not depend on whether the run counts as evidence for the boundary. The nine valid runs alone support the same claim.) The two sharpest are the 15-minute comparison runs: an issuer **14 minutes 38 seconds from expiry**, with the outage that expiry causes already unavoidable, still exits 0. Across every margin recorded — from 58 m 58 s over the 60-day threshold down to 878 s before the certificate expired outright — the `‼` issuer row never changed the exit status. The operational consequence, which belongs in the article wherever it recommends `linkerd check` for expiry monitoring: a cron job, CI gate, health probe or shell `&&` never sees this warning; only something reading the output does.
+- **Claims NOT supported — do not write these:** that the warning fires at exactly 60 days; that it fires only once 60 days have passed (it starts sooner, and this direction was got wrong once already); any single figure for where the row flips — the 305-second window was not narrowed further, and a number inside it would be invented; any mechanism for why the check wants the extra margin; that `linkerd check` exits non-zero on an approaching issuer expiry, or that a script watching its exit code would catch one; and, in the other direction, any claim about which of the command's *other* rows do or do not fail it — the lab drove none of them to failure. That the bracket happens to straddle one hour past 60 days is worth noticing and not worth over-reading: this lab measured no quantity that would make an hour meaningful.
+- **Outline mapping:** Diagnosis, Hygiene.
+- **Research notes:** The 60-day threshold value itself is source-derived (see "Linkerd source code" below); this experiment measured only the tool's behaviour, and it needs about an hour more margin than a plain "notAfter minus now" reading would predict. **What changed, and why:** this entry previously rested on the first run alone and quoted "about nine minutes more than 60 days" as the only over-60-days observation, with "where above 60 days the row clears" recorded as open and the upper bound resting on a run marked invalid for a dirty tree. The bisect replaced both ends of the bracket with observations from valid runs made minutes apart on the same afternoon, and narrowed it from roughly 24 hours to 305 seconds. The first run's own figure also moved slightly, to 553 s over 60 days from the 557 s quoted before, because a warning transcript only proves the threshold is at least the value at the *end* of the command; the observation it supports is unchanged, and it is no longer the bound that matters. Eight bisect runs on one cluster at one version, with lifetimes chosen to converge rather than repeated at any one lifetime — none of it generalises beyond this lab, and nothing here says the trust anchor's own 60-day check behaves the same way. What would settle the mechanism is reading `pkg/issuercerts/issuercerts.go`, not more runs.
+
+### Our lab: trust-anchor expiry
+
+- **Where:** [notes/lab-evidence-anchor-expiry.md](notes/lab-evidence-anchor-expiry.md).
+- **Authority level:** First-party experiment. One run. Linkerd `edge-26.9.1`; 20-minute trust anchor, 2-hour issuer that outlived it, 5-minute workload certificates. Paired with the run where nothing expired.
+- **Claims supported:**
+  - The identity service refuses every certificate request from the anchor's expiry on, naming the anchor's date — 213 refusals and no issuances in the roughly 30 minutes before recovery — while staying up and reachable.
+  - Nothing fails at the moment of expiry; failures arrive as each proxy's current certificate runs out, about four minutes later here.
+  - New pods created after the expiry never become ready.
+  - `linkerd check` goes fatal on "trust anchors are within their validity period", naming the expiry, and is clean again after recovery.
+  - Linkerd's documented replacement of the anchor and issuer together restored the mesh, and the upgrade's own rollout restarted the control plane.
+- **Claims NOT supported:** that failures stagger across proxies. In this run the six proxies' final certificates expired within 3 seconds of each other and both client pairs failed in the same second. The lockstep-deployment explanation for that clustering is our inference, not a measurement. Whether recovery needs the identity service restarted separately is unresolved, because the documented procedure restarted it itself.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** One run, on lifetimes far shorter than the defaults, in a lab where every workload was deployed at the same moment.
+
+### Our lab: trust-anchor rotation, staged and one-step
+
+- **Where:** [notes/lab-evidence-anchor-rotation.md](notes/lab-evidence-anchor-rotation.md).
+- **Authority level:** First-party experiment. Two runs: one following Linkerd's staged procedure, one replacing anchor and issuer in a single step. Linkerd `edge-26.9.1`; long-lived anchor and issuer, 5-minute workload certificates. Both compared with the run where nothing expired.
+- **Claims supported:**
+  - The staged procedure produced no failed fresh connection at any of its three restart rounds, and no certificate or trust error in any proxy log. Its only application-visible disruption was a held-open connection dropping when the pod at its far end recycled — the same thing the comparison run showed for an ordinary restart.
+  - Right after the combined old-plus-new trust bundle is applied, `linkerd check --proxy` names every meshed pod under "Some pods do not have the current trust bundle and must be restarted", and the warning clears once they are restarted.
+  - A one-step replacement broke the mesh: the identity service restarted onto the new credentials within a second, after which a proxy that had not been restarted could not complete a handshake with it at all, never renewed, kept its existing certificate until it expired (about 2 minutes 40 seconds after the swap here), and then failed. Partly restarted pairs failed too, in both directions; only pairs with both ends restarted worked.
+- **Outline mapping:** Recovery, Hygiene.
+- **Research notes:** One run of each. The one-step failure mechanism is "the proxy can't reach identity to renew", not "a renewed certificate is rejected" — state the mechanism as observed. The delay before anything goes wrong scales with the certificate lifetime, so at production lifetimes a one-step swap can look successful for hours.
+
+### Our lab: the viz tap API server's certificate
+
+- **Where:** [notes/lab-evidence-tap-expiry.md](notes/lab-evidence-tap-expiry.md).
+- **Authority level:** First-party experiment. One run. Linkerd `edge-26.9.1`; a 15-minute serving certificate for the tap API server, with a long-lived anchor and issuer and Linkerd's own three webhook certificates untouched, so the tap certificate is the only credential that expires. Followed by a forced restart of the tap Deployment. Paired with a comparison run recorded at the same harness tree.
+- **Claims supported — and they must not be collapsed into one.** The hypothesis had three clauses and the run did not treat them alike:
+  - **`linkerd viz check` goes fatal on `tap API server has valid cert` at the first observation after the expiry** — 10 seconds after, with nothing sampled in between — and its output never changed again for the rest of the run. No reconnect was needed. Plain `linkerd check` went fatal the same way, because it runs the installed extension's checks too.
+  - **Being fatal, that row truncates the section:** the eight `linkerd-viz` rows that followed the tap-certificate rows in the healthy transcript never printed again.
+  - **The tap APIService stayed `Available=True` and `linkerd viz tap` kept returning live events for 29½ minutes past the expiry**, across 59 consecutive observations. Both failed only after a `rollout restart` of the tap pod forced the API server onto a new connection: the APIService's recorded transition to `Available=False` / `FailedDiscoveryCheck` is stamped four seconds after the restart command.
+  - **What the CLI shows an operator is `HTTP error, status Code [503] (unexpected API response: service unavailable)`, with no mention of a certificate.** The x509 text is in the APIService's `Available` condition and the API server's log.
+  - Meshed traffic was untouched throughout: 5,489 of 5,490 probe outcomes succeeded, the exception being a connection-opening line rather than a failure; a held-open TCP connection survived both the expiry and the tap restart; pods created after the expiry were still injected and became ready.
+- **Claims NOT supported — do not write these:** that tap stops working when its certificate expires (in this run it did not, for half an hour); that the 29½ minutes is how long tap survives an expired certificate — the reconnect was forced at a moment the harness chose while the APIService was still available, so it is a lower bound, not a duration; that the aggregator would or would not have reopened the connection on its own; anything about recovery, since this run replaced no credential and has no recovery phase; that tap's own output tells you a certificate expired.
+- **Outline mapping:** Triage, Diagnosis, Hygiene.
+- **Research notes:** One run. Any claim about *when* tap or the APIService started failing must say whether the API server had reconnected — the answer is always "only after". This is the same reconnect-gating the webhook experiment found, in a different component reached over a different path, so cite the two together rather than as unrelated results (see "Our lab: webhook serving certificates" above). **Credential-model caveat:** the lab supplied the tap serving certificate itself, static and never rotated, so that it could be made to expire on schedule; `linkerd viz install` normally issues and owns it. Nothing in this run says how a default installation rotates it.
+
+### Our lab: a webhook that is unavailable, with a healthy certificate
+
+- **Where:** [notes/lab-evidence-not-expiry.md](notes/lab-evidence-not-expiry.md), and [findings.md](findings.md#a-webhook-with-no-pods-behind-it-and-a-healthy-certificate).
+- **Authority level:** First-party experiment. **Two runs of valid evidence**, one per webhook failure policy (the chart's fail-open default, and fail-closed). Linkerd `edge-26.9.1`; the proxy injector's Deployment scaled to zero for about three minutes, with lab-supplied 24-hour webhook serving certificates and a long-lived anchor and issuer. **Nothing expired in either run** — that is the point of the experiment. Paired with a control run at the same harness tree in which nothing failed.
+- **Claims supported:**
+  - **A webhook with no ready pods produces the same operator-visible symptom as an expired webhook certificate.** Under the fail-open default, pods created while the injector was gone were admitted with no `linkerd-proxy` container and no `initContainers`, and `kubectl` reported success. That is what an expired injector certificate produced in the webhook-expiry experiment.
+  - **The two admitted objects are the same object for practical purposes.** Both records are 124 lines; setting aside the object's own name, UID, `resourceVersion`, `creationTimestamp` and per-pod token volume, they differ in six lines — five `lastTransitionTime` values and one `startTime`. Everything else, down to the image digest, matches character for character. Cite this whenever the article tells a reader what a proxy-less pod means.
+  - **The certificate was healthy throughout, and the run proves it.** The injector's serving certificate was recorded at all 27 ticks of each run: still the certificate the run installed, still verifying against the live webhook configuration's `caBundle`, still time-valid, with 23 h 47 m 10 s of validity left at the last fault tick of one run and 23 h 46 m 55 s in the other.
+  - **Under fail-closed the rejection contains no certificate language at all:** `failed calling webhook "linkerd-proxy-injector.linkerd.io": failed to call webhook: Post "https://linkerd-proxy-injector.linkerd.svc:443/?timeout=10s": no endpoints available for service "linkerd-proxy-injector"`. No `x509`, `tls`, `certificat`, `expire` or `notAfter` string appears in any of the six rejections, and the whole run's API-server journal holds no `x509` line.
+  - **Under fail-open the only record is the API server's own log,** and the line names the policy — `Failed calling webhook, failing open …` where the fail-closed run logs `failing closed`, from a different call site. The client sees a created pod and exit 0.
+  - **Scope was limited to the webhook's own calls.** Policy and ServiceProfile probes were validated normally at every fault tick in both runs.
+  - **`linkerd check` reports it as a readiness failure and never evaluates a certificate.** Every fault-tick transcript in both runs is byte-identical, 26 lines and 4 sections, ending `× control plane pods are ready` / `No running pods for "linkerd-proxy-injector"` and a non-zero exit. Seven of the healthy transcript's eleven sections never run, `linkerd-identity` and `linkerd-webhooks-and-apisvc-tls` among them.
+  - **Mesh traffic between running workloads was unaffected** in both runs, every probe outcome `ok`, no restarts.
+  - **Recovery was immediate:** the injector was serving again 5 seconds after the scale-up in one run and 4 seconds after in the other.
+- **Claims NOT supported — do not write these:**
+  - **That an unavailable webhook is a certificate problem.** It is the opposite: the certificate was in perfect health at every recorded moment, and nothing in any error mentions one. Never fold this experiment into the webhook-expiry results.
+  - That a pod admitted without a proxy tells an operator which cause they have. It does not; that is the finding.
+  - That "no certificate row failed, so the certificates were fine". No certificate row *ran*. The second clause of that hypothesis is true only vacuously, and the note says so.
+  - That `failurePolicy=Fail` is safe because Linkerd exempts its own pods. The fail-closed run shows that the injector's replacement pod *was* admitted while the Service had no endpoints, and it cannot show why: the runs never read the live webhook configurations' `namespaceSelector`, `objectSelector` or `rules`. The chart's `objectSelector` excluding control-plane-component objects is source-derived (see "Linkerd source code" below) and must keep that label.
+  - Anything about Linkerd's default webhook credential model. These were lab-supplied static webhook serving certificates, 24 hours each, which is not how Linkerd normally runs. The shared caveat with the webhook-expiry runs is that both sets are lab-supplied and static; the lifetimes are the one thing that had to differ, since that experiment needed them to expire and this one needed them not to. Never describe the two experiments as having run the same lifetimes.
+- **Outline mapping:** Triage, Diagnosis, Landscape.
+- **Research notes:** Two runs, one per policy — say "two" and do not count the discovery run that preceded them. This is the lab's **negative control for the triage table**: cite it wherever the article tells a reader what a symptom means, not as a failure mode readers are likely to hit. The comparison against the expired-injector object crosses harness trees (the webhook-expiry runs are at an earlier tree), so present it as a comparison across experiments rather than a controlled pair.
+
+### Our lab: a webhook certificate refused for its signature algorithm
+
+- **Where:** [notes/lab-evidence-not-expiry.md](notes/lab-evidence-not-expiry.md), and [findings.md](findings.md#a-certificate-that-is-valid-and-still-refused).
+- **Authority level:** First-party experiment. **One run**, on a cluster configured to fail closed only. Linkerd `edge-26.9.1`, Kubernetes `v1.36.4+k3s1`; the ServiceProfile validator's serving Secret swapped for a certificate signed by the same lab CA with SHA-1, the backing Deployment restarted so it was actually served, then swapped back. Paired with a control run at the same harness tree. Nothing expired. The note does **not** call this scenario reproduced without a qualifier: one acceptance condition asks for the refused certificate's `notAfter` at every tick, and that certificate existed at five of the run's 27 ticks — the note records what was captured instead and why it is at least as strong.
+- **Claims supported:**
+  - **A certificate can be time-valid, correctly chained and refused anyway.** The API server rejected all twelve ServiceProfile probes during the fault with `tls: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "x509: cannot verify signature: insecure algorithm SHA1-RSA" while trying to verify candidate authority certificate "lab-webhook-ca")`.
+  - **The error names the algorithm and carries no time-validity language.** Searching all twelve responses for `expire`, `not yet valid`, `notAfter`, `notBefore` or `validity period` returns nothing; all twelve name `insecure algorithm SHA1-RSA`. The API server's log adds a line the client never sees: `insecure-sha1.invalid-cert.kubernetes.io: invalid certificate detected connecting to "linkerd-sp-validator.linkerd.svc": uses an insecure SHA-1 signature`.
+  - **It was nowhere near expiry, and the run proves it at every tick.** Whichever certificate the Secret held was recorded at all 27 ticks and was time-valid at every one. At each of the five ticks where the SHA-1 certificate was installed it had just under ten years left — 315,359,989 seconds at the first, which is 3,649 days 23 h 59 m 49 s.
+  - **The failure is the webhook call, not a validation verdict:** the deliberately *valid* ServiceProfile probe was refused with the same error, where at baseline and after the restore it was created.
+  - **`linkerd check` went fatal and named the real reason** — `× sp-validator webhook has valid cert` with `cert is not issued by the trust anchor: x509: certificate signed by unknown authority (possibly because of "x509: cannot verify signature: insecure algorithm SHA1-RSA" …)` — at the first observation after the swap, identically at all five fault ticks, with a non-zero exit and no reconnect needed. **This falsified the lab's own prediction** that the check would call the certificate valid. Cite it as the counter-example wherever the article says the check can be green while something is broken.
+  - **Being fatal, the row still truncates the output:** 59 lines and 7 sections against the healthy 85 and 11. The three rows after it — that certificate's 60-day row and both of the policy validator's rows — never print, so the policy validator's certificate was not evaluated at any fault tick, with or without `--proxy`. The row above it keeps printing `√`.
+  - **Scope:** under the same fail-closed policy, pod injection and policy validation worked normally at every fault tick, even though the fault restarted the Deployment backing the ServiceProfile validator.
+  - **Mesh traffic between running workloads was unaffected,** across both rolling restarts: every probe outcome `ok`, no restarts.
+  - **A fact about tooling, worth one line:** `step certificate create` has no flag for a deprecated signature algorithm, and refuses an undersized RSA key — but it honours `signatureAlgorithm` named in a certificate template without complaint. Its flags are not a safeguard against emitting an insecure certificate.
+- **Claims NOT supported — do not write these:**
+  - **That a refused certificate is an expired one.** It is the whole point of the run that it was not: the words "certificate" and "x509" in an error do not mean a date has passed. Never merge this result into the expiry evidence.
+  - **That the signature algorithm alone caused the refusal.** The refused certificate also differed in its extended key usage (server authentication only, where the working one also has client authentication) and its lifetime. The attribution is well supported — every recorded error names the algorithm, none mentions a key usage or a date, and the server-authentication usage the webhook's role needs is present in both — but it is an argument from the record, not a single-variable proof. State it exactly that strongly and no more.
+  - That `linkerd check` catches every platform-level refusal. One algorithm, one Kubernetes and Go version, one webhook, one run. A refusal the platform applies outside ordinary chain building would not necessarily surface in that row at all, and this run does not test it.
+  - That a **green** `webhook has valid cert` row means the API server will accept the certificate. That direction was never tested.
+  - That a refused certificate is noticed without a reconnect. Installing it requires restarting the webhook's pod, so the failure was immediate by construction; the run says nothing about a connection opened beforehand.
+  - Anything about the proxy injector. This run refused the **ServiceProfile validator's** certificate, deliberately: a refused injector certificate under fail-closed would reject every pod creation in injected namespaces. Do not write this result as though it were tested on the injector, and do not imply it and the unavailable-webhook runs tested the same component — they did not.
+  - That the CLI and the API server refuse SHA-1 for the same reason. The matching error strings are suggestive; nothing in the run inspected the CLI's binary or its Go version.
+- **Outline mapping:** Triage, Diagnosis, Landscape, Hygiene.
+- **Research notes:** **One run**, and nothing in it has been reproduced. Say "once" and do not count the feasibility/discovery work that preceded it. The credential itself is not one any ordinary pipeline would emit, so present it as a demonstration that "certificate error ≠ expiry", not as a likely production fault — the production-shaped version of this concern is a platform deprecating an algorithm you are still issuing under. This entry is the one place in the lab where `linkerd check` is the *hero*; keep that, because it stops the article's check-scepticism from becoming a blanket claim the evidence contradicts.
+
+### Linkerd source code at `edge-26.9.1`
+
+- **Where:** [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md), with permalinks to the exact lines.
+- **Authority level:** Primary implementation. It is exact for that version and can change in later releases. Some conclusions in the notes are marked as inferences; keep that label.
+- **Claims supported:**
+  - Workload certificates are capped at the issuer's expiry.
+  - Proxies renew at 70% of the remaining lifetime, never more often than every 10 seconds.
+  - Linkerd's webhooks default to `failurePolicy: Ignore`.
+  - Webhook serving certificates are generated with a 365-day lifetime.
+  - Which certificates `linkerd check` inspects, and its fixed 60-day warning threshold.
+  - Proxies read the trust anchor only when they start.
+- **Outline mapping:** Landscape, Triage, Hygiene.
+- **Research notes:** Cite for behaviour the documentation doesn't state. Where the notes mark a conclusion as an inference, present it as expected behaviour, not as fact, until a lab test confirms it.
+
+---
+
+## Kubernetes sources
+
+### Dynamic Admission Control
+
+- **URL:** https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/
+- **Authority level:** Primary Kubernetes documentation; normative API behavior.
+- **Claims supported:** The Kubernetes API server calls admission webhooks over HTTPS; `clientConfig.caBundle` supplies the CA bundle used to validate the webhook server; webhook failure handling is configured through `failurePolicy`.
+- **Outline mapping:** Triage, Landscape, Diagnosis, Recovery.
+- **Research notes:** Grounds the crucial distinction: `kube-apiserver → HTTPS webhook` is a call path with its own TLS validation, not another branch of Linkerd's workload-identity signing chain. It also documents what `failurePolicy: Ignore` means: an error calling the webhook, a TLS error included, is ignored and the request proceeds. Linkerd's Helm chart sets `Ignore` on all its webhooks by default (from Linkerd's source code; see [notes/linkerd-source-notes.md](notes/linkerd-source-notes.md)). So an expired Linkerd webhook certificate should skip injection or validation rather than reject requests. Our lab confirmed both halves — skipping under `Ignore`, rejection under `Fail` — but only once the API server had to open a new connection to the webhook; before that, calls over an already-open connection kept succeeding well past expiry — about 29.6 minutes for the proxy injector and about 9.6 minutes for the ServiceProfile validator, which is under a third as long (see "Our lab: webhook serving certificates" above). The same reconnect-gating then turned up outside admission control altogether, on the aggregation layer's path to the tap API server (see "Our lab: the viz tap API server's certificate" above), so treat it as an observation about how the API server reaches an expired serving certificate rather than as a webhook-specific quirk.
+
+### Admission Webhook Good Practices
+
+- **URL:** https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/
+- **Authority level:** Primary Kubernetes operational guidance.
+- **Claims supported:** An unavailable webhook can reject matching API requests when configured to fail closed; webhook availability and failure policy affect blast radius; use of fail-open/fail-closed behavior requires deliberate design.
+- **Outline mapping:** Triage, Diagnosis, Recovery, Hygiene.
+- **Research notes:** Use for careful wording about urgency. Avoid implying that a webhook failure necessarily affects all cluster operations; its scope depends on matching rules and `failurePolicy`. Linkerd's own webhooks fail open by default (see "Dynamic Admission Control" above), so for Linkerd the typical risk is silent skipping, not rejection. Our lab has now run the unavailable-webhook case directly, under both policies, with the webhook's certificate healthy throughout: under fail-open, pods were admitted without proxies and only the API server's log recorded anything; under fail-closed, matching creates were rejected with `no endpoints available for service "…"`, while non-matching API calls were unaffected (see "Our lab: a webhook that is unavailable, with a healthy certificate" below). Cite this page for the design principle and our lab for what the two policies actually look like. On blast radius, note what our fail-closed run can and cannot show: the injector's own replacement pod was admitted while its Service had no endpoints, so the cluster recovered — but the run never read the live webhook configurations' selectors, so the reason is source-derived, not observed.
+
+---
+
+## PKI/X.509 and NIST guidance
+
+### RFC 5280 — Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation List (CRL) Profile
+
+- **URL:** https://www.rfc-editor.org/rfc/rfc5280.html
+- **Authority level:** IETF standards-track RFC; foundational technical standard.
+- **Claims supported:** Certificates have a defined validity interval (`notBefore` and `notAfter`); certificate-path validation is time-sensitive; a relying party’s trust anchor is an input to path validation.
+- **Outline mapping:** Intro, Landscape, Diagnosis.
+- **Research notes:** Use sparingly for the mechanics of validity and certificate chains. Linkerd documentation should remain the source for Linkerd-specific consequences and procedures.
+
+### NIST SP 800-57 Part 1 Rev. 5 — Recommendation for Key Management: Part 1 — General
+
+- **URL:** https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-57pt1r5.pdf
+- **Authority level:** NIST federal guidance; high-authority security and key-management guidance.
+- **Claims supported:** Certificates should be inventoried upon creation to facilitate recovery and avoid expiry-related outages; a useful inventory records the certificate’s associated entity, owner/contact, private-key location or custodian, and validity period; monitoring can support proactive replacement.
+- **Outline mapping:** Intro, Hygiene.
+- **Research notes:** This is the strongest external source for the proposed ownership/inventory checklist. It directly connects incomplete certificate records to significant outages. Do not put private keys themselves in a general inventory unless the inventory is an approved key-backup/archive mechanism.
+
+### NIST SP 800-57 Part 2 Rev. 1 — Best Practices for Key Management Organizations
+
+- **URL:** https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final
+- **Authority level:** NIST federal guidance; organizational key-management practices.
+- **Claims supported:** Formal organizational responsibility, policy, lifecycle governance, and controls around cryptographic keys.
+- **Outline mapping:** Hygiene.
+- **Research notes:** Supporting authority for assigning an explicit owner/custodian and documented retrieval process for long-lived CA keys. Use Part 1 for certificate-inventory specifics.
+
+### NIST SP 1800-16 — Securing Web Transactions: TLS Server Certificate Management
+
+- **URL:** https://www.nccoe.nist.gov/publication/1800-16/VolB/index.html
+- **Authority level:** NIST NCCoE practice guide; implementation-oriented guidance.
+- **Claims supported:** Certificate-expiry outages are operationally common; inventories, current ownership data, replacement workflows, training, and verification that replacement certificates are actually deployed reduce risk.
+- **Outline mapping:** Intro, Recovery, Hygiene.
+- **Research notes:** Useful for operational language such as “monitor renewal, not merely expiry” and for validating that a renewed certificate is deployed and in use. It is general TLS guidance, not Linkerd procedure.
+
+---
+
+## cert-manager and automation
+
+### cert-manager — Certificate resource
+
+- **URL:** https://cert-manager.io/docs/usage/certificate/
+- **Authority level:** Primary cert-manager documentation; normative for cert-manager configuration and behavior.
+- **Claims supported:** Certificate renewal is configured through fields such as `duration`, `renewBefore`, and `renewBeforePercentage`; cert-manager records expected renewal timing in status; default renewal behavior is based on certificate lifetime; poorly chosen renewal windows can cause repeated or pathological renewal attempts.
+- **Outline mapping:** Recovery, Hygiene.
+- **Research notes:** Supports the precise version of “automation is not forgetfulness”: renewal has observable state, timing, and failure modes. Do not assert a universal renewal schedule without tying it to the actual configured resource/version.
+
+### cert-manager — Prometheus Metrics
+
+- **URL:** https://cert-manager.io/docs/devops-tips/prometheus-metrics/
+- **Authority level:** Primary cert-manager documentation; operational observability reference.
+- **Claims supported:** cert-manager exposes metrics for observing its components and certificate-management activity.
+- **Outline mapping:** Diagnosis, Hygiene.
+- **Research notes:** Supporting source for monitoring the renewal system’s health and behavior alongside certificate expiration dates. Choose alert expressions only after confirming installed cert-manager version and metric names.
+
+---
+
+## Real-world incidents and historical evidence
+
+### linkerd2 issue #4808 — Replacing expired trust anchor fails
+
+- **URL:** https://github.com/linkerd/linkerd2/issues/4808
+- **Authority level:** Primary project issue record; historical anecdotal evidence, not normative documentation.
+- **Claims supported:** An expired trust anchor can make routine upgrade/recovery paths materially more difficult and can surface X.509 expiry errors.
+- **Outline mapping:** Intro, Triage, Recovery.
+- **Research notes:** Use as a concrete historical illustration only. Pair any remediation advice with the current “Replacing expired certificates” guide.
+
+### linkerd2 issue #4813 — Regenerate webhook TLS credentials during upgrade
+
+- **URL:** https://github.com/linkerd/linkerd2/issues/4813
+- **Authority level:** Primary project issue record; historical product-development evidence.
+- **Claims supported:** Webhook TLS credentials have their own lifecycle and historically required explicit regeneration/rotation considerations.
+- **Outline mapping:** Landscape, Recovery, Hygiene.
+- **Research notes:** Useful background for why webhook certificates belong in the inventory. Do not treat this issue as a current runbook.
+
+### linkerd2 issue #6200 — Identity/fail-fast problems after restarts
+
+- **URL:** https://github.com/linkerd/linkerd2/issues/6200
+- **Authority level:** Primary project issue record; historical anecdotal evidence.
+- **Claims supported:** Restarts can expose an identity-issuance/control-plane problem that existing long-running workloads had not yet encountered.
+- **Outline mapping:** Triage, Diagnosis.
+- **Research notes:** Not a pure certificate-expiry incident. Use only to support the diagnostic pattern "old pods work; restarted/new pods fail", and explicitly avoid presenting it as proof that expiry is the cause. Our lab reproduced the same pattern for an expired issuer.
+
+### linkerd2 discussion #7987 — Behavior after deliberately expiring certificates
+
+- **URL:** https://github.com/linkerd/linkerd2/discussions/7987
+- **Authority level:** Primary community discussion; experimental/anecdotal evidence.
+- **Claims supported:** Deliberately expiring short-lived Linkerd credentials can disrupt application communication in a reproduction.
+- **Outline mapping:** Intro, Triage.
+- **Research notes:** A simple illustrative example, not a guarantee of exact timing or behavior across Linkerd releases/configurations. Use current documentation for all factual and recovery claims.
+
+### linkerd2 issue #13136 — Proxies cannot refresh while the control plane is unavailable
+
+- **URL:** https://github.com/linkerd/linkerd2/issues/13136
+- **Authority level:** Primary project issue record; operator report and open feature request.
+- **Claims supported:** During a long control-plane outage, proxies could not renew their certificates; the certificates eventually expired and affected pods had to be restarted.
+- **Outline mapping:** Triage, Diagnosis, Hygiene.
+- **Research notes:** Illustrates why the workload certificate lifetime is the tolerance for an identity-service outage. Our lab reproduced the shape once, with a 15-minute outage and 5-minute workload certificates: traffic failed as each certificate expired, and the affected proxy did not recover until its pod was restarted (see "Our lab: identity-service outage" above). Use the issue as the production-scale illustration and our lab for the mechanism; neither establishes how long a real outage must last.
+
+### linkerd2 issue #13196 — Rotating the API server's request-header CA breaks Viz tap
+
+- **URL:** https://github.com/linkerd/linkerd2/issues/13196
+- **Authority level:** Primary project issue record; operator report.
+- **Claims supported:** After the Kubernetes API server's request-header client CA (used for aggregated APIs) was rotated, the tap APIService failed client-certificate verification and tap stopped working; restarting the tap pod fixed it.
+- **Outline mapping:** Triage, Recovery.
+- **Research notes:** A tap failure caused by a CA rotation rather than by expiry. Useful as a second cause in the tap row. **This issue's own cause is still not reproduced in our lab** — we expired the tap API server's serving certificate instead (see "Our lab: the viz tap API server's certificate" above), so the tap row now has one reproduced cause and this one as a reported alternative. Note the difference in what a restart does: in this report, restarting the tap pod is what *fixed* tap; in our run, restarting the tap pod is what finally *broke* it, by forcing the API server onto a new connection that had to validate the expired certificate. Don't let a reader take "restart the tap pod" as general tap advice on the strength of both.
+
+---
+
+## Unsupported or editorial claims needing evidence or clear labeling
+
+### 90/60/30/7 escalation policy
+
+- **Status:** Editorial organizational policy; partially anchored by product behavior.
+- **What is supported:** Linkerd's checks use a 60-day certificate-validity warning threshold (see "Troubleshooting and `linkerd check`"). In our lab that warning's headline did not change as expiry approached, and it started while the issuer still had between 58 minutes 58 seconds and 1 hour 4 minutes 3 seconds *more* than 60 days of validity — so the row marks neither a precise boundary nor a degree of urgency, and it is already firing a little before the 60-day mark rather than at it. Both are arguments for setting your own escalation windows on the expiry date or a metric.
+- **What is not established by the sources above:** A universal Linkerd, Kubernetes, NIST, or cert-manager prescription for the complete sequence of 90 days / 60 days / 30 days / 7 days.
+- **Recommended wording:** “Example organizational policy: begin planned maintenance at 90 days, warn at 60, require action at 30, and escalate at 7. Adapt these windows to the credential lifetime, ownership model, and change process. Linkerd itself starts warning a little before 60 days' validity remain — in our testing, about an hour's worth before.”
+- **Outline mapping:** Hygiene.
+
+### “Hard trust-anchor replacement is the most common self-inflicted outage in this space”
+
+- **Status:** Still unsupported as written — "most common" is a comparative claim and our lab measures no frequencies. Do not state it as a fact.
+- **What is supported:** Linkerd’s staged-rotation guidance establishes that replacing a trust anchor is a multi-step trust-bundle migration, and the expired-certificate recovery guide establishes that an expired root is disruptive. Our lab now shows the mechanism, once: a one-step replacement of anchor and issuer against a live fleet left every un-restarted proxy unable to reach the identity service at all, so none renewed; each rode out the certificate it held and then failed, and partly restarted pairs failed in both directions. The staged procedure, run against the same lab, produced no failed fresh connection at any restart round.
+- **Potentially supportable alternative:** Attribute a narrower claim if using a direct source. A Buoyant/CNCF statement reported in the prior research says expired certificates are “the most common reason for a production Linkerd installation to take downtime.” Before quoting or publishing it, locate the original page, confirm its wording and publication context, and attribute it directly.
+- **Recommended wording now:** “A one-step root replacement can break validation mesh-wide; follow Linkerd’s staged trust-bundle rotation procedure. In our testing the one-step replacement broke every meshed pair until both of its ends were restarted, while the staged procedure broke nothing — and the damage from the one-step swap only became visible once each proxy's existing certificate expired, which at production lifetimes can be hours after the change looked successful.”
+- **Outline mapping:** Hygiene.
+
+### “Certificates are supposed to expire”
+
+- **Status:** Editorial framing, with standards support for time-bounded validity.
+- **What is supported:** RFC 5280 defines certificate validity intervals, and Linkerd documents finite validity periods for workload, issuer, trust-anchor, and webhook credentials.
+- **Recommended wording:** “Certificate expiry is an expected lifecycle event; healthy systems make renewal and rotation routine.”
+- **Outline mapping:** Intro, Hygiene.
+
+### “Loss of the trust-anchor key is not immediately an outage”
+
+- **Status:** Requires careful qualification.
+- **What is supported:** Linkerd’s automation guide says Linkerd does not need access to the trust-anchor private key for its ongoing operation, while the recovery guide says an unavailable root key means root and issuer must be replaced together when recovery is required.
+- **Recommended wording:** “Loss of the root key does not itself prove the currently deployed certificates are invalid, but it removes the ability to issue a replacement issuer under that root. Treat it as a lifecycle incident and plan migration while the existing trust configuration remains healthy.”
+- **Outline mapping:** Recovery, Hygiene.
+
+### “Single-proxy renewal failure is usually not a certificate-management task”
+
+- **Status:** Useful diagnostic heuristic, not a source-backed rule. Our lab now supports two specific causes; it still establishes nothing about which cause is *usual*.
+- **What is supported:**
+  - After an expired issuer was replaced, proxies whose certificates had already expired stayed on them until their workloads were restarted, in all three of our runs — and a call recovered only once both of its ends had been restarted.
+  - After an identity-service outage that outlasted the workload certificate lifetime, a proxy that was never restarted did not re-certify once the service returned; its renewal timestamp and counter never moved during the window we watched (our lab, one run). Linkerd issue #13136 reports the same shape from production.
+- **Evidence still needed:** Current Linkerd documentation or controlled tests connecting single-proxy renewal failures to clock skew or workload authentication; and anything at all about relative frequency.
+- **Recommended wording:** "A single proxy unable to renew its identity warrants investigation of the identity issuance path as well as the certificate lifecycle. If the issuer was just replaced, or the identity service has been unavailable, first check whether that workload — and the workload at the other end of the failing call — has been restarted since. In our testing, neither situation resolved itself without a restart."
+- **Outline mapping:** Diagnosis, Recovery.
+
+---
+
+## Suggested citation posture for the blog post
+
+1. Cite **Linkerd task and feature documentation** for every Linkerd operational claim and command.
+2. Cite **Kubernetes documentation** when explaining webhook TLS, `caBundle`, and `failurePolicy`.
+3. Cite **NIST** for inventory, ownership, key custody, monitoring, and recovery-process recommendations.
+4. Cite **cert-manager documentation** for automation configuration and observability—not as proof that a given Linkerd installation is correctly configured.
+5. Use **incidents** as attributed illustrations. Do not extrapolate their exact symptoms or version-specific workarounds into general claims.
+6. Cite **our lab** as "in our testing", naming the Linkerd version and the lifetimes that experiment used — most are shortened, the two negative controls deliberately are not — for behaviour no documentation states.
+7. Cite **Linkerd's source code** for version-specific behaviour, and keep the "inference" label wherever the notes carry one.
+
+## Maintenance log
+
+- **2026-09-10:** Initial bibliography created from the established outline/source map. Source URLs were rechecked for availability; no commands or version-specific configuration have been copied into the blog outline.
+- **2026-09-11:** Checked against the lab results and the source reading.
+  - Updated the outline key to the current outline.
+  - Corrected the manual-rotation, troubleshooting, admission-webhook and single-proxy entries.
+  - Added this project's own evidence, and issues #13136 and #13196, which [findings.md](findings.md) cites.
+- **2026-09-12:** Added the second round of lab experiments.
+  - Replaced the single "our lab" entry with one per experiment: issuer expiry and its two repeats, webhook serving certificates, an identity-service outage, the `linkerd check` 60-day warning, trust-anchor expiry, and trust-anchor rotation (staged and one-step).
+  - Updated the research notes of "Manually Rotating Control Plane TLS Credentials" (staged rotation, and restarting both ends of a call), "Replacing expired certificates" (the expired-anchor branch, and what it cannot settle about restarting identity), "Rotating webhooks certificates" (the recovery branch observed for lab-supplied credentials) and "Troubleshooting and `linkerd check`" (the threshold measurements and the halt-at-first-failure behaviour).
+  - Updated "Dynamic Admission Control", the 90/60/30/7 policy entry, issue #13136, "Hard trust-anchor replacement is the most common self-inflicted outage" and "Single-proxy renewal failure is usually not a certificate-management task" with what the new evidence supports. Neither editorial claim is upgraded to a sourced fact.
+- **2026-09-14:** Added the third round: the viz/tap experiment, and the bisect of the `linkerd check` 60-day boundary. Two claims on this page were not merely stale but the opposite of what the evidence now records, and both are corrected here rather than quietly overwritten.
+  - **Reversed: "the check clears above 60 days … was never seen in a valid run."** It has now been seen in twelve valid transcripts. "Our lab: the `linkerd check` 60-day issuer warning" is rewritten around the bisect: ten runs, nine valid, and a measured 305-second bracket between 60 days + 58 m 58 s (still warning) and 60 days + 1 h 4 m 3 s (clear), replacing the day-wide bracket that had rested partly on a run marked invalid for a dirty tree. The first run's own over-60-days figure moved from 557 s to 553 s under the note's start/end rule; the observation it supports is unchanged.
+  - **Reversed: the tap case as untested.** A new entry, "Our lab: the viz tap API server's certificate", records the one run. Its three clauses are kept apart deliberately: `linkerd viz check` went fatal at the first observation after the expiry, while the APIService stayed available and tap kept streaming for 29½ minutes until a forced reconnect. Do not cite it as "tap stops working when the certificate expires".
+  - Added the direction rule for the 60-day boundary, in "Troubleshooting and `linkerd check`" and in the evidence entry: the warning starts *before* the 60-day mark, because the threshold is a quantity of remaining validity about an hour above 60 days. Nothing may imply it fires after 60 days have passed.
+  - Added, from the threshold note's "The warning never fails the command": the `‼` issuer row never changes the exit status, so the exit code is not a monitoring signal for an approaching issuer expiry. Recorded in "Troubleshooting and `linkerd check`" among that command's limits and in the threshold entry's claims, fenced to the issuer row and these runs, with the untested scope stated in the claims-NOT-supported field.
+  - Added the `linkerd viz check` truncation to the halt-at-first-failure bullet; connected the tap reconnect-gating to the webhook one in "Dynamic Admission Control" and both evidence entries; separated the Viz tap-injector credential from the tap API server's in "Rotating webhooks certificates"; updated issue #13196, whose own cause remains unreproduced, and the 90/60/30/7 entry's supported claim and recommended wording.
+- **2026-09-14, second entry:** Added the fourth round — the two experiments in which **nothing expired**. Until now every *reproduced failure* on these pages turned on a `notAfter` passing, so the triage table had never been tested at telling causes apart. (Not every experiment turned on one: the `linkerd check` threshold bisect installs an issuer about sixty days out and expires nothing across its nine evidence runs, and the staged trust-anchor rotation is a planned rotation with no expiry in it. Neither produces a failure. Do not write that everything on these pages came from an expiry.)
+  - **New entry: "Our lab: a webhook that is unavailable, with a healthy certificate."** Two valid runs, one per failure policy. Its load-bearing result is that an unavailable proxy injector and an expired proxy-injector certificate admit the *same pod* — 124 lines each, six differing lines once identity and timestamps are set aside — so the symptom "pods have no proxy" does not identify a cause. Its claims-NOT-supported field forbids the predictable over-reading: that an unavailable webhook is a certificate problem.
+  - **New entry: "Our lab: a webhook certificate refused for its signature algorithm."** One run, fail-closed only. A certificate with just under ten years left, correctly chained, was refused for being signed with SHA-1, and the error names the algorithm and no date. Its claims-NOT-supported field forbids reading a refused certificate as an expired one, and — separately — forbids stating the algorithm attribution more strongly than the record does: the refused certificate also differed in extended key usage and lifetime, so it is an argument from the record rather than a single-variable proof.
+  - **Qualified, not deleted: "`linkerd check` can be green while things are broken."** The refused-certificate run falsified the lab's own prediction that the check would call that certificate valid — it went fatal at the first observation and quoted the algorithm. The general form of the claim is now marked as contradicted by the lab's own evidence in "Troubleshooting and `linkerd check`"; the narrow per-row, per-cause claims the issuer and threshold experiments earned are unchanged.
+  - Strengthened the halt-at-first-failure bullet with the measured section counts (85 lines/11 sections healthy; 26/4 with the injector scaled away, 7 sections never run; 59/7 with the refused certificate), and the rule that follows: a row's absence is not a pass, a green row means only that the check reached it. Four experiments, three sections, both commands.
+  - Updated "Admission Webhook Good Practices" (the unavailable-webhook case is now run under both policies, with what the fail-closed run can and cannot show about blast radius) and "Dynamic Admission Control" (not every failed admission operation is a certificate problem; a serving certificate must satisfy the platform's cryptographic policy as well as its dates and chain). Added the negative-control paragraph to the head of "This project's own evidence".
+  - **Counts:** the unavailable webhook ran **twice** (once per policy) and the refused certificate **once**. Discovery and feasibility runs are not evidence and are not counted, here or anywhere on these pages.

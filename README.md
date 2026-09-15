@@ -11,6 +11,7 @@ cross-infrastructure trust.
 | Demo | What it shows |
 |------|---------------|
 | [spiffe-cross-boundary](demos/spiffe-cross-boundary/) | **RetailCloud** — a store's on-prem point-of-sale on another machine pushes to a cloud dashboard over the mesh, gated by SPIFFE identity (Linkerd mesh expansion). Live dashboard, network topology, and a built-in tutorial. |
+| [cert-hygiene](demos/cert-hygiene/) | Reproducible Linkerd certificate-expiry failures (issuer, trust anchor, webhooks) in a disposable one-box k3s lab, recorded as raw evidence for the certificate-hygiene article. |
 
 ## Running a demo
 
