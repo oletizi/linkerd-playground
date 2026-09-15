@@ -4,7 +4,9 @@
 
 ## 1. Why this slice
 
-Every scenario the lab has run so far is a certificate that expired. Ten scenarios, twenty evidence runs, one cause.
+Every failure the lab has reproduced so far turned on a `notAfter` passing. One cause.
+
+> **Corrected after review, 2026-09-14.** This section originally read "Every scenario the lab has run so far is a certificate that expired. Ten scenarios, twenty evidence runs, one cause." That is false, and the error propagated into a reader-facing note before a reviewer caught it: `20-check-threshold` installs an issuer roughly sixty days out and nothing expires in any of its nine evidence runs, and `07-anchor-rotation-staged` is a planned rotation with no expiry and no probe failures. Neither is a reproduced *failure*, which is what the argument below actually needs — but "every scenario" was the wrong claim and is left here rather than quietly replaced.
 
 The article's central device is a triage table: a reader arrives with a symptom and the table tells them which cause to check. That table is now entirely populated by reproduced expiry failures — which means the lab has never produced a failure the table would have to *distinguish* expiry from. A triage table built only from one cause has never been tested at the thing it exists to do.
 
