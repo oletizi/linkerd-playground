@@ -204,6 +204,34 @@ assert_fails "b64_key_hits dies rather than silently skipping when tr cannot rea
 assert_fails "key_scan dies rather than silently skipping when the base64 scan cannot read a file" \
   key_scan_broken_tr "$T/ev/i"
 
+# ---- the second hole: b64_key_hits' own candidate-file grep swallowed its exit status ----
+# key_scan's header promises it fails closed on anything unreadable under PATH; the PEM
+# half already checked its grep's exit code, but b64_key_hits' candidate-file grep threw
+# away both the error message and the exit status ("2>/dev/null || true"), so a genuinely
+# unreadable file dropped silently out of the base64 half with no error -- the same broken
+# promise as the tr bug above, found in the same review. mode 000 is a real reproduction
+# in THIS suite: it runs as the lab VM's regular user, not root (verified directly: `whoami`
+# via scripts/in-lab.sh prints a non-root user, and both `cat` and `grep` observably fail
+# with "Permission denied", not a silent success, against a mode-000 file as that user). If
+# this suite is ever run as root, this fixture would stop reproducing the bug (root can
+# read a mode-000 file) without the fix becoming wrong -- the grep-exit-code check is
+# still correct, it would just have nothing to catch here.
+mkdir -p "$T/ev/j"
+printf 'not a key, just unreadable\n' > "$T/ev/j/unreadable.txt"
+chmod 000 "$T/ev/j/unreadable.txt"
+assert_fails "b64_key_hits dies rather than silently skipping an unreadable candidate file" \
+  b64_key_hits "$T/ev/j"
+# No separate key_scan-level assertion here: key_scan's PEM-scan grep walks the identical
+# file set (it also tries to open every file under PATH, just checking a different
+# pattern), so it independently hits the same "Permission denied" and already dies before
+# b64_key_hits ever runs -- that half's fail-closed check was already correct (round 1).
+# A key_scan-level assertion on this fixture would pass whether or not the fix above
+# exists, which is exactly the "passes for the wrong reason" trap: it would look like
+# coverage of this fix without being any. key_scan's own propagation of a b64_key_hits
+# failure (the "|| die" added to key_scan) is already proven by
+# "key_scan dies rather than silently skipping when the base64 scan cannot read a file"
+# above, using the broken-tr double on a fixture the PEM half does not itself reject.
+
 # ---- depth pin: three layers of base64 around a PEM key ----
 mkdir -p "$T/ev/g"
 mid="$(printf 'overrides: %s\n' "$outer" | base64 -w0)"

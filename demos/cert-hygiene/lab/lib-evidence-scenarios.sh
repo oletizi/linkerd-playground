@@ -173,9 +173,20 @@ w_backing_deployments() {
 # b64_key_hits DIR: files under DIR (or DIR itself, if a file) holding a base64 run (40+
 # characters) that decodes, directly or through nested base64 up to three layers, to text
 # containing "PRIVATE KEY". Byte-safe: LC_ALL=C throughout (grep -a and tr), so no byte
-# hides a match, and dies if a candidate file's bytes cannot be read.
+# hides a match; dies if any candidate file, or the directory listing itself, cannot be
+# read (mirrors key_scan's own PEM-scan check below -- same contract, same shape).
 b64_key_hits() {
-  local d="${1:?b64_key_hits: DIR required}" f text
+  local d="${1:?b64_key_hits: DIR required}" f text rc=0 candidates
+  # Capture and check the enumeration grep's own exit status, exactly as key_scan does for
+  # its PEM scan: an unreadable file or subdirectory under $d (permission denied, a
+  # dangling symlink, ...) previously made grep exit >1 but "2>/dev/null || true" discarded
+  # both the message and the status, so that file silently dropped out of the base64 half
+  # of the scan with no error -- the same broken fail-closed promise as the tr bug above,
+  # found in the same review (2026-09-14). Do not restore the "|| true" to "simplify" this:
+  # exit 1 (no matches) is fine and expected; anything past 1 is a real read failure.
+  candidates="$(LC_ALL=C grep -rlaE '[A-Za-z0-9+/]{40,}' "$d")" || rc=$?
+  [ "$rc" -le 1 ] || die "b64_key_hits: cannot read everything under $d (grep exit $rc)"
+  [ -n "$candidates" ] || return 0
   while IFS= read -r f; do
     # LC_ALL=C: outside the C locale, tr treats a byte invalid in that locale's encoding
     # (e.g. a stray 0xff) as an error. BSD tr (macOS, where this guard also runs as a
@@ -187,7 +198,7 @@ b64_key_hits() {
     # failure and key_scan's fail-closed promise means it must not be swallowed.
     text="$(LC_ALL=C tr -d '\0' < "$f")" || die "b64_key_hits: cannot read $f (tr exit $?)"
     if _has_key_b64 3 "$text"; then echo "$f"; fi
-  done < <(LC_ALL=C grep -rlaE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
+  done <<< "$candidates"
 }
 
 # key_scan PATH: every private key under PATH (a directory, or one file), one line per
