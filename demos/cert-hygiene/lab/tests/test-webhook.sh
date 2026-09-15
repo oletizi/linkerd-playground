@@ -168,6 +168,42 @@ mkdir -p "$T/ev/n"
 printf 'a\0b\n  tls.key: %s\n' "$key_b64" > "$T/ev/n/nul.yaml"
 assert_eq "$(b64_key_hits "$T/ev/n")" "$T/ev/n/nul.yaml" "a base64 key after a NUL byte is reported"
 
+# ---- the tr-locale bug: an unforced tr can silently drop bytes after an invalid one ----
+# Real BSD tr (macOS, where this guard also runs as a pre-commit check) fails and emits
+# nothing further once it hits a byte invalid in the ambient locale; GNU tr (the lab VM)
+# tolerates the same bytes, so this bug never showed up running tests only on the VM. This
+# stub reproduces BSD tr's real failure (verified directly on macOS: given
+# "hello\xff\xfe\xc0", plain `tr -d '\0'` prints "hello" and exits 1; forced LC_ALL=C
+# prints all of it and exits 0) so the fix is provable on the VM too.
+REAL_TR="$(command -v tr)"
+mkdir -p "$T/bin-tr" "$T/ev/i"
+cat > "$T/bin-tr/tr" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+[ "\${LC_ALL:-}" = C ] && exec "$REAL_TR" "\$@"
+exit 1
+EOF
+chmod +x "$T/bin-tr/tr"
+printf '\377\376\300 data:\n  tls.key: %s\n' "$key_b64" > "$T/ev/i/nonutf8.yaml"
+assert_eq "$(PATH="$T/bin-tr:$PATH" b64_key_hits "$T/ev/i")" "$T/ev/i/nonutf8.yaml" \
+  "a base64 key after a locale-invalid byte is still found when tr rejects that byte"
+assert_contains "$(PATH="$T/bin-tr:$PATH" key_scan "$T/ev/i")" \
+  "base64-encoded private key: $T/ev/i/nonutf8.yaml" \
+  "key_scan reports the same hit"
+mkdir -p "$T/bin-tr-broken"
+cat > "$T/bin-tr-broken/tr" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$T/bin-tr-broken/tr"
+# fails loudly, not silently, when tr genuinely cannot read a file's bytes at all
+b64_hits_broken_tr() { PATH="$T/bin-tr-broken:$PATH" b64_key_hits "$1"; } # DIR
+key_scan_broken_tr() { PATH="$T/bin-tr-broken:$PATH" key_scan "$1"; } # DIR
+assert_fails "b64_key_hits dies rather than silently skipping when tr cannot read a file" \
+  b64_hits_broken_tr "$T/ev/i"
+assert_fails "key_scan dies rather than silently skipping when the base64 scan cannot read a file" \
+  key_scan_broken_tr "$T/ev/i"
+
 # ---- depth pin: three layers of base64 around a PEM key ----
 mkdir -p "$T/ev/g"
 mid="$(printf 'overrides: %s\n' "$outer" | base64 -w0)"
@@ -183,6 +219,9 @@ printf 'data:\n  tls.crt: %s\n' "$crt_b64" > "$T/run-clean/cert.yaml"
 assert_eq "$(key_scan "$T/run-b64")" "base64-encoded private key: $T/run-b64/leak.yaml" "key_scan reports a base64-only key"
 assert_succeeds "key_scan passes a clean directory" key_scan "$T/run-clean"
 assert_fails "key_scan fails closed on a missing path" key_scan "$T/no-such-dir"
+# The fail-closed check on b64_key_hits' failure does not affect an ordinary clean run.
+assert_succeeds "key_scan still passes a clean directory with the fail-closed check in place" \
+  key_scan "$T/run-clean"
 no_keys_in() { RUN_DIR="$1" assert_no_keys; } # DIR
 assert_fails "assert_no_keys fails on a base64-only key" no_keys_in "$T/run-b64"
 assert_succeeds "assert_no_keys passes a clean run" no_keys_in "$T/run-clean"

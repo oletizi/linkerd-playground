@@ -59,7 +59,11 @@ _has_key_b64() {
   [ "$depth" -gt 0 ] || return 1
   while IFS= read -r run; do
     [[ ! "$run" =~ ^[0-9a-f]+$ ]] || continue
-    dec="$(printf '%s' "$run" | base64 -d 2>/dev/null | tr -d '\0' || true)"
+    # LC_ALL=C: a decoded run can be arbitrary bytes, including some invalid in the
+    # ambient locale; an unforced tr can fail and silently truncate on such a byte
+    # (2026-09-14 fix, same as b64_key_hits below). The trailing "|| true" is unrelated:
+    # it only covers base64 -d rejecting a run that is not valid base64 at all.
+    dec="$(printf '%s' "$run" | base64 -d 2>/dev/null | LC_ALL=C tr -d '\0' || true)"
     [ -n "$dec" ] || continue
     if _has_key_b64 $(( depth - 1 )) "$dec"; then return 0; fi
   done < <(printf '%s\n' "$text" | LC_ALL=C grep -aoE '[A-Za-z0-9+/]{40,}={0,2}' || true)
@@ -168,11 +172,21 @@ w_backing_deployments() {
 
 # b64_key_hits DIR: files under DIR (or DIR itself, if a file) holding a base64 run (40+
 # characters) that decodes, directly or through nested base64 up to three layers, to text
-# containing "PRIVATE KEY". Byte-safe: LC_ALL=C grep -a, so no byte hides a match.
+# containing "PRIVATE KEY". Byte-safe: LC_ALL=C throughout (grep -a and tr), so no byte
+# hides a match, and dies if a candidate file's bytes cannot be read.
 b64_key_hits() {
-  local d="${1:?b64_key_hits: DIR required}" f
+  local d="${1:?b64_key_hits: DIR required}" f text
   while IFS= read -r f; do
-    if _has_key_b64 3 "$(tr -d '\0' < "$f")"; then echo "$f"; fi
+    # LC_ALL=C: outside the C locale, tr treats a byte invalid in that locale's encoding
+    # (e.g. a stray 0xff) as an error. BSD tr (macOS, where this guard also runs as a
+    # pre-commit check) exits 1 and -- worse -- silently drops everything after that byte
+    # from its output, so a base64 key later in the same file went unscanned (2026-09-14
+    # fix). GNU tr on the lab VM tolerates the same bytes, which is why this did not show
+    # up there; do not "simplify" this back out on the strength of the VM alone. LC_ALL=C
+    # makes every byte legal, so tr must succeed; if it still doesn't, that is a real read
+    # failure and key_scan's fail-closed promise means it must not be swallowed.
+    text="$(LC_ALL=C tr -d '\0' < "$f")" || die "b64_key_hits: cannot read $f (tr exit $?)"
+    if _has_key_b64 3 "$text"; then echo "$f"; fi
   done < <(LC_ALL=C grep -rlaE '[A-Za-z0-9+/]{40,}' "$d" 2>/dev/null || true)
 }
 
@@ -185,7 +199,9 @@ key_scan() {
   [ -e "$p" ] || die "key_scan: no such path $p"
   pem="$(LC_ALL=C grep -rlaF 'PRIVATE KEY' "$p")" || rc=$?
   [ "$rc" -le 1 ] || die "key_scan: cannot read everything under $p (grep exit $rc)"
-  b64="$(b64_key_hits "$p")"
+  # b64_key_hits already dies on its own read failures (fail closed); do not swallow that
+  # here by leaving this an unchecked assignment.
+  b64="$(b64_key_hits "$p")" || die "key_scan: cannot read everything under $p (base64 scan failed)"
   [ -n "$pem$b64" ] || return 0
   if [ -n "$pem" ]; then while IFS= read -r f; do echo "private key PEM text: $f"; done <<< "$pem"; fi
   if [ -n "$b64" ]; then while IFS= read -r f; do echo "base64-encoded private key: $f"; done <<< "$b64"; fi
