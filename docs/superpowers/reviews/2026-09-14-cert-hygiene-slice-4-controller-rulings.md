@@ -1,6 +1,6 @@
 # Slice 4 controller rulings
 
-Every decision taken while executing the [slice 4 plan](../plans/2026-09-14-cert-hygiene-lab-slice-4/README.md), with what it cost and what it would have cost if wrong. Recorded for the same reason as [slice 2's](2026-09-12-cert-hygiene-slice-2-controller-rulings.md) and [slice 3's](2026-09-14-cert-hygiene-slice-3-controller-rulings.md): a reader who disagrees with a judgement should be able to find it, see the reasoning, and overturn it without re-deriving the situation.
+Every decision taken while executing the [slice 4 plan](../plans/2026-09-14-cert-hygiene-lab-slice-4/README.md), with what it cost and what it would have cost if wrong. Written at the end of the slice and extended after the whole-branch review, so that the last two rulings are here rather than only in the working ledger. Recorded for the same reason as [slice 2's](2026-09-12-cert-hygiene-slice-2-controller-rulings.md) and [slice 3's](2026-09-14-cert-hygiene-slice-3-controller-rulings.md): a reader who disagrees with a judgement should be able to find it, see the reasoning, and overturn it without re-deriving the situation.
 
 Slice 4 ran the two experiments in which nothing expires — a webhook whose pods are gone with a healthy certificate, and a certificate that is time-valid and correctly chained but refused for its signature algorithm.
 
@@ -11,6 +11,10 @@ Slice 4 ran the two experiments in which nothing expires — a webhook whose pod
 **The harness debt from slice 3's final review was paid first.** Adding scenarios changes the hashed tree and costs a control re-run regardless, so four deferred items were free before the freeze and would have cost an hour each afterwards. One of them — teaching `control-at-tree` to read committed manifests — closed the bug that had invalidated a good fifty-minute run in the previous slice, and it was verified end to end against a real published control by moving the control's directory aside.
 
 **`sources.md` and `findings.md` were both pulled into the final task's scope** where they made claims this slice's evidence contradicts. Correcting a reader-facing page that asserts the opposite of the evidence is fixing a defect, not widening scope.
+
+**An older claim was narrowed rather than deleted.** The pages said `linkerd check` can be green while traffic is broken. That is false for the refused certificate, where the check is fatal and accurate — but it remains true for the causes it was drawn from, and the original finding stays reachable. Newer evidence qualifying an older headline is the case most likely to be handled too bluntly.
+
+**The triage table kept its shape and lost a column.** When the discriminating information made the rows too dense, the choice was between moving it into per-row prose and dropping something else. Prose beneath a table is the same burial one step shorter — a reader holding a proxy-less pod reads the row and stops — so the mechanism column went instead, since every one of its cells was already in the detail section the row links to. The discriminator is the only column that answers the question the reader arrived with.
 
 ## On the feasibility gate
 
@@ -44,4 +48,6 @@ Slice 4 ran the two experiments in which nothing expires — a webhook whose pod
 
 Every figure an implementer reported was recomputed by a reviewer from the run files rather than checked for internal consistency. That found: a fault that was not proved to have taken effect before probing, a run whose fault could have failed entirely while still being marked valid evidence, a wait that could hang forever on a pod that would never be deleted, an asserted mechanism the run disproved, a tick count contradicting its own enumeration in the same sentence, an interval computed in the wrong direction, a false universal quantifier, a miscounted upload, and a claim about two tools' behaviour drawn from one run.
 
-Six times in this project a correction has introduced a fresh error — including once in this slice, in a sentence added while fixing five others. A correction is the highest-risk edit here, because it is made under the belief that the surrounding text was just checked. Every fix round got its own verification pass, and every one of those passes found something.
+Seven times in this project a correction has introduced a fresh error — twice in this slice. The first was a sentence added while fixing five others. The second was worse and is the one worth learning from: a clause corrected in the note was re-imported verbatim into two other pages by a task already in flight, because the controller dispatched that task while the document it was told to draw from was still being corrected. The implementer copied text that was accurate when it read it and stale by the time it committed.
+
+A correction is the highest-risk edit here, because it is made under the belief that the surrounding text was just checked — and a correction to a *source* document is riskier still, because work already running against it does not see the change. Every fix round got its own verification pass, and every one of those passes found something, including the last: the whole-branch review is what caught the re-import.

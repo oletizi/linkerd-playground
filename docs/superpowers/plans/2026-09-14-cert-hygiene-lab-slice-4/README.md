@@ -12,7 +12,7 @@
 
 **One scenario may not be runnable.** G depends on the API server refusing a certificate for its signature algorithm, which is unverified on this cluster and which the lab's own signing tool will not produce. Task 3 is a stop gate: if no candidate is refused for its algorithm, G stops there and the controller decides.
 
-**The harness debt is paid first.** Adding scenarios changes the tree and costs a control re-run anyway, so slice 3's three deferred findings are free here and are done before the freeze.
+**The harness debt is paid first.** Adding scenarios changes the tree and costs a control re-run anyway, so slice 3's four deferred findings are free here and are done before the freeze.
 
 ## Global Constraints
 

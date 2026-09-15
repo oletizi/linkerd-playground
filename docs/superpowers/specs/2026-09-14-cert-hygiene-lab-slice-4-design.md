@@ -73,7 +73,7 @@ A G run whose certificate cannot be shown time-valid throughout is not evidence:
 
 ## 6. Harness debt, paid in this slice
 
-Adding scenarios changes the harness tree and so costs a control re-run regardless. The three items deferred from slice 3's final review are therefore done here, where they are free:
+Adding scenarios changes the harness tree and so costs a control re-run regardless. The four items deferred from slice 3's final review are therefore done here, where they are free:
 
 - `control-at-tree` reads the control run from committed manifests rather than from a directory on disk, which is what made a published-and-deleted control invalidate a good run.
 - The reconnect-exit block duplicated verbatim between `w-reconnect` and `v-reconnect` becomes one helper.
