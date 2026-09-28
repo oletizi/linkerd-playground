@@ -1,0 +1,9 @@
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: ${NAME}
+  namespace: ${LAB_NS}
+spec:
+  identityRefs:
+    - kind: Pod
+      name: server

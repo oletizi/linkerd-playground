@@ -1,0 +1,15 @@
+run=runs/_discovery/20260911T134906Z-gates
+files=10
+uploaded_utc=2026-09-14T02:27:35Z
+archive=runs/_discovery/20260911T134906Z-gates.tar.gz
+---
+64291df40a34be26a4b5c0ff72f7646a57153373ca061c13ca8c5e3b90d05def  296  durations.txt
+0c88c529a73d6b2651bfb8549ac4f5d9e651b83a880bf1028e8b453cba888fe2  1087  FINDINGS.md
+61dd073d515f8535e388c5356bac99068669a75d32ed94e42c571da2739e0c45  2797  gates/g0-no-restart.txt
+57ffd3097be972ef1e7ed5bb1c5502e819d6d5f096c669b8a79bb015711f0bc4  4638  gates/g1-client-a.txt
+0d0e7263caf6837ccbb427fc3e1d61cf0b071c633d1c0cd0c78d9b59117ac90d  4518  gates/g2-server.txt
+2dbaf9572a3c17cca9996c0a900974dccbd24aba73768dca4a7b4edfc8948d3d  8937  gates/g3-all.txt
+1c3fdd22824b10337299ad6a3e2dc7f88216e7186bd99071da620db4275e0806  103  restarts/g1-client-a.txt
+f8fb0ce67c92c6f50fe46bffe5fca474e6f765cbeec16aba1e7da193c51e0bd6  89  restarts/g2-server.txt
+004949ab3fc13e219cd15fde788f19de7c7a4d003619ad309249a27c10455d2f  292  restarts/g3-all.txt
+277bd3a1460cc78f07a241ba29d4c148af87c6ef64d1d26bd8aab7bc8929c085  467  timeline.log

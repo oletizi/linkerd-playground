@@ -1,0 +1,93 @@
+run=runs/_discovery/20260911T181758Z-02-webhook-expiry-fail
+files=72
+uploaded_utc=2026-09-14T02:29:47Z
+validity_evidence_valid=no
+validity_reason=discovery run: never evidence
+validity_reason=missing leaf-lifetime.txt
+validity_reason=missing credential-plan.txt
+validity_reason=missing admission-baseline.txt
+validity_reason=missing recover/branch.txt
+validity_reason=missing recover/plain-render.txt
+validity_reason=missing recover/plain-apply.txt
+validity_reason=missing recover/plain-manifest.yaml
+validity_reason=timeline does not end in done
+validity_reason=effective leaf lifetime check did not pass
+validity_reason=credential states do not walk the declared plan
+validity_reason=webhook baseline did not prove every admission probe
+validity_reason=plain linkerd upgrade render or apply did not succeed: recover/plain-render.txt or plain-apply.txt does not end [exit 0], or plain-manifest.yaml is empty
+validity_reason=no valid 00-baseline-control run with harness tree 5bb8a6b75625f0783be96279d0dde273fcb595e8ab9c42713bcdef2c7264089a
+harness_tree_sha256=5bb8a6b75625f0783be96279d0dde273fcb595e8ab9c42713bcdef2c7264089a
+archive=runs/_discovery/20260911T181758Z-02-webhook-expiry-fail.tar.gz
+---
+fd9b16634b7656905a789efbba2c51959b8abccc730214ce4f3288373d5c2f31  648  certs/issuer-initial.pem
+37a7b7c6d90cc88d9dafcea2daab570ffd23da2db836ffe016e7d722b1d31978  1918  certs/issuer-initial.txt
+8e089aabff2a828a540b134e621d4bb513445902d3c4ce3be5dd5a6b7bac29dc  599  certs/trust-anchor.pem
+167dd7de865a670ad730fad000bbf020feb06004703ccf2b74b852a2ec10564f  1791  certs/trust-anchor.txt
+ff38b2a5d8b90663bae28aaca38653e814f6a91372e27aec7b2031f887bad3bf  1103  certs/webhook-ca.pem
+7e924386c33feb592d685bfccad0dfe7815455f7a44c3131977cab8122f736f3  3232  certs/webhook-ca.txt
+a76efbfbad05df893267796b5110b83ba0fee401c05ee66631efc8916671f317  1261  certs/webhook-policyValidator.pem
+4c2b7838b16e08211c9a8a06c9fe66a3837adee1c50ea02f1d1e38ceb5b257e7  3519  certs/webhook-policyValidator.txt
+ead5d68ddd932a888b45855b4cc2dda9148812e5eacd5484e37b7a9b9c48c62f  1249  certs/webhook-profileValidator.pem
+140f038d1ad1e8a2e0e06f1cfe5e771650937f11e4edd6bf63c540019f189315  3515  certs/webhook-profileValidator.txt
+5b27a3cfa33342cb02398b0dfe0c516492f8be9af5edfe7f4d873fb0a3acc2a7  1257  certs/webhook-proxyInjector.pem
+8c4cb3d7c16f3c10aa48fdc63696b7ba612f0b71e872443315a60f761a291520  3520  certs/webhook-proxyInjector.txt
+5380ca56245b609f698d8da0c750cf4e658db1839ff32cabaea19dc6d333a7b3  88  discovery-windows.txt
+1a65467e9de20e9d1541c61de116e87618071b71b0385211552c85aed903f1fb  32  discovery.txt
+cc7087827f16d34520f26a6e98e3fef7293df40bd57bb8ecc7ff84661f626938  130154  events/aborted.txt
+2a4345e1110b048ef4de38e2ab3fa2cf5ac6adb20442f406477c0b7e98f4123e  165  git-state.txt
+06106e959f3b4e2b2e546e262532e90244aecda81cecd3999daea88f2c2774f8  658  harness.log
+0609b77c13a4959137d4910adc40c15db6c0ce5190d151d842eaae0fe9f75701  57  host.txt
+5d2270abcc77423b379d3986d5a6527718b44447b1fd59d75aee32e1b7a155f2  29614  install.log
+dd5b7297d04058afc6c60da57b76e9c2da45f61f03d926cb485d37f075a7e48c  18573  logs/aborted/identity-proxy.txt
+65338547192bc143624c518a2497d3e4c0bf77168d34a37dee9a8a06ee86e6c5  3140  logs/aborted/identity.txt
+d9c4b90c56ddb2554125ccf7bdc03f26517a6c55bcbdc62cb6629d6bf7c32649  532  logs/aborted/pods.txt
+e1761e407fc9dc116a12da33589a277de773f8618c919a1085c8d1ba4499c8fa  223  logs/aborted/probe-http-586cfdddb4-jhl7x-linkerd-init-previous.txt
+d0106a49a6902ef20f48d83b880edd522a6a424ef76a3073b6c0a4a07bb48f6d  4004  logs/aborted/probe-http-586cfdddb4-jhl7x-linkerd-init.txt
+5a96e80002b3297a877f4bd57e6f4410e58e7629b8fa6408fb560111bf339520  225  logs/aborted/probe-http-586cfdddb4-jhl7x-linkerd-proxy-previous.txt
+9511a4e74282de420b6eb4a4fdd1580541438760e2cbc20cc13cc03b8f9773f3  6314  logs/aborted/probe-http-586cfdddb4-jhl7x-linkerd-proxy.txt
+b6de636e14f360656f8e457d408750ddc2ac33411d8f85b3e34d2bdd86a38dc5  209  logs/aborted/probe-http-586cfdddb4-jhl7x-probe-previous.txt
+e0e9eaca8dcce3a7ff786fc1b63cdc1c13749cd11a34cf85a681b664cac3c8ec  8370  logs/aborted/probe-http-586cfdddb4-jhl7x-probe.txt
+42bf75e63ac504c972371ceebe6f3a37717469a608f92242aaaa1ac1adde65bd  233  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-linkerd-init-previous.txt
+9d4033a4b025534b3690b42c0ecc6794ad440d4ebabe7969f3ac0efad8dbc2da  4009  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-linkerd-init.txt
+a157a86e858842a35f51e0198a5a23dcbfff7efb632c0cdec4312ff888101793  235  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-linkerd-proxy-previous.txt
+3c3f691ee2e45c3a10565bf04ef3b3ddcfd759ba30510ace7f6c74d0659562e4  6215  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-linkerd-proxy.txt
+5fa54e33857e636a559ca7495e056ca190213ca62b8046d97f7aca2193d16971  219  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-probe-previous.txt
+9be58bb9ca40f7f2dafec1820f1bde858e8aa7d006adcdbc288d39fc6757908a  8067  logs/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-probe.txt
+194148dd8765113371da8fbd75f047a6805f61ae81b6faed1c8a33a9d08744b2  227  logs/aborted/probe-tcp-new-f6545f757-zh6n4-linkerd-init-previous.txt
+544cafe1424b57a5d4baca74335cb703b19047376bd5f3b568b7283f9fb26036  4006  logs/aborted/probe-tcp-new-f6545f757-zh6n4-linkerd-init.txt
+34b099cc3b6ee7939afab71defa5e2d994275db08ed348077e6285ec29c7d852  229  logs/aborted/probe-tcp-new-f6545f757-zh6n4-linkerd-proxy-previous.txt
+b791c43874fb55c83af5913817fd8f650379ecf8082eecae2bc1db7350d46e81  6212  logs/aborted/probe-tcp-new-f6545f757-zh6n4-linkerd-proxy.txt
+54bbd19298ba7f3b053be0f7865f8e8dcc14630cf81ac193c5413e14fe647134  213  logs/aborted/probe-tcp-new-f6545f757-zh6n4-probe-previous.txt
+914ddc98581f9198f9caf7e3b02d1dba2b74fbe789688b57d7c9ea14d025bf95  7964  logs/aborted/probe-tcp-new-f6545f757-zh6n4-probe.txt
+e8353e7b15723d794872bab0dcde79605c8dbbf29bb0287b9f8f5f14f4278d26  235  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-linkerd-init-previous.txt
+fb01aebe9d91a3e8caa5d03d726fff7a4030c16590648fda58bc293b4c1bef17  4010  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-linkerd-init.txt
+f0760d38d92910dedef0b63430920de785f052731e5ffb3caecd2de981e55440  237  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-linkerd-proxy-previous.txt
+d35a24ddc5b91839d28714fbc3d0e8cc56652143c6f1da9cd0d5dd90e86fbc5f  5976  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-linkerd-proxy.txt
+2b871db3951203b3a5cfc498e7c8f01581152643aa9664a3cb7db133304d9026  221  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-probe-previous.txt
+48769ac9d90b257a9be88bc696841241239e450c9741eb89f2e69be296867266  657  logs/aborted/probe-tcp-stream-5f4ccc76bc-687jm-probe.txt
+6c4b2ce9d4ba128e4eb0bd95a4e419cbaf07058c73e761b3cbcf283c8febd1ab  215  logs/aborted/restart-target-554865b545-cslhr-idle-previous.txt
+6221a1f05fdcb5ea6157f029a797277ad91365dea4fb6cace8f3b6e5ced6c519  84  logs/aborted/restart-target-554865b545-cslhr-idle.txt
+996ad4f79b236ab679d38b8623a9755f8b4ae08f0911a696265cff1af066a4cb  231  logs/aborted/restart-target-554865b545-cslhr-linkerd-init-previous.txt
+58377197f00106879f3f6c9e3e21e22cda233bc25f2cfcdb62c3b2aef1c8bfbf  4008  logs/aborted/restart-target-554865b545-cslhr-linkerd-init.txt
+84e50900fd2d307ccf45455fecf5b390b668b46bf7951ffbdcee04511f34eb16  233  logs/aborted/restart-target-554865b545-cslhr-linkerd-proxy-previous.txt
+49428acd3c07b32b2c913d2944e1d73468d2497c3fdf3ebde9a84b73b702497e  4638  logs/aborted/restart-target-554865b545-cslhr-linkerd-proxy.txt
+e99880350a4c592be63e5f3b3455f561fd6a823595cff9f1a90ad1b8d7ee87ba  199  logs/aborted/server-577d5dfdbd-8tbr6-echo-previous.txt
+7df61d36176ce614ee8356a3608f483d7aa0835a5678851a97694ffa99bc1606  76  logs/aborted/server-577d5dfdbd-8tbr6-echo.txt
+170189ae9fb3c74240851a88e705d03aa693ef8b753b6ff6f925a496646a5ca9  199  logs/aborted/server-577d5dfdbd-8tbr6-http-previous.txt
+af07097cf17e5af2b42aa7259c31be9326c92120e38627f994dd1c79a9a1f39c  76  logs/aborted/server-577d5dfdbd-8tbr6-http.txt
+31119d7e6ef753bc3db58a3d1ca16f27ac61fdd24e0cc834b2a84acd8ce6bbbc  215  logs/aborted/server-577d5dfdbd-8tbr6-linkerd-init-previous.txt
+da38a2698ecb96efc64db76a9fa2aa1a14d4c3a497ae4ae1099661fa30c06b4a  4000  logs/aborted/server-577d5dfdbd-8tbr6-linkerd-init.txt
+400c6fb78633e2676eec0de79ca19314062f6c03d428d39a03aedc48173e1e1a  217  logs/aborted/server-577d5dfdbd-8tbr6-linkerd-proxy-previous.txt
+3bd1f38eef82d9af0c0c88b25d493b2a0d236595ea33e7b4e34ffdffcaf4fead  5238  logs/aborted/server-577d5dfdbd-8tbr6-linkerd-proxy.txt
+bb93a240b6d8e1424c032b200eab011d9123bb1d2dc29924195e51924a1b50ae  767  probes/aborted/pods.txt
+c2988d1494bd5e0d8c716aaf09558855dca40484e7e3e00582ee91d63cc20e2e  196  probes/aborted/probe-http-586cfdddb4-jhl7x-previous.log
+fa89eff5ac94ba8662151498936091f8f59006fcd867523756b04b87cbe92111  5060  probes/aborted/probe-http-586cfdddb4-jhl7x.log
+aa28b207227f0d480b6a63becee2d673e3712ea9e9996906dca7156d980b2890  206  probes/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8-previous.log
+9e10cc17b05926747c42be8adf1ceeb657ec6f7d8b40af8549f46b3f05730a00  4717  probes/aborted/probe-tcp-new-b-64dbdd7f5c-l6pf8.log
+6f8239633e117ff7608762e1de38ef209e8a329c24de581794b7f9d3f653d61a  200  probes/aborted/probe-tcp-new-f6545f757-zh6n4-previous.log
+83f543231a35799ee9fd8bf60e6ff2f1829a57e57b07f4745f59ce298162da0e  4612  probes/aborted/probe-tcp-new-f6545f757-zh6n4.log
+0ec13c9cd59557c27693ca8a4d1029719c11116708b732d0818c8da203299c5a  208  probes/aborted/probe-tcp-stream-5f4ccc76bc-687jm-previous.log
+d9e5163605ed0c85308635a43a8b51af126c42d37caaa02006f909dcd8a05704  500  probes/aborted/probe-tcp-stream-5f4ccc76bc-687jm.log
+5c973a63bf97f0e9cdbcf49ec13c2b09fc77e3c441bb5303f4de583cab932c0e  470  timeline.log
+6dff6dfe09a854d0deb931a65256a30b821b73160c412e6a992f9022d9997d35  803  validity.txt
+f2b8d66735704e7a2bc54ceae408a85acfbe5fd8dd3e4b0fe9686a9bd0c1ea39  3748  versions.txt

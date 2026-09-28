@@ -1,0 +1,14 @@
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: ${NAME}
+  namespace: ${LAB_NS}
+spec:
+  targetRef:
+    group: ""
+    kind: Pod
+    name: server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: NetworkAuthentication
+      name: no-such-networkauthentication

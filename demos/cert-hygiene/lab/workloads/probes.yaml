@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-http
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-http
+  template:
+    metadata:
+      labels:
+        app: probe-http
+    spec:
+      containers:
+        - name: probe
+          image: ${IMAGE_CURL}
+          command: ["sh", "/probes/probe-http.sh"]
+          env:
+            - name: TARGET_URL
+              value: http://server.${LAB_NS}.svc.cluster.local:8080/
+            - name: PROBE_INTERVAL_S
+              value: "${PROBE_INTERVAL_S}"
+          volumeMounts:
+            - name: probes
+              mountPath: /probes
+      volumes:
+        - name: probes
+          configMap:
+            name: lab-probes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-tcp-new
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-tcp-new
+  template:
+    metadata:
+      labels:
+        app: probe-tcp-new
+    spec:
+      containers:
+        - name: probe
+          image: ${IMAGE_SOCAT}
+          command: ["sh", "/probes/probe-tcp-new.sh"]
+          env:
+            - name: PROBE_NAME
+              value: probe-tcp-new
+            - name: TARGET_HOST
+              value: server.${LAB_NS}.svc.cluster.local
+            - name: TARGET_PORT
+              value: "9000"
+            - name: PROBE_INTERVAL_S
+              value: "${PROBE_INTERVAL_S}"
+          volumeMounts:
+            - name: probes
+              mountPath: /probes
+      volumes:
+        - name: probes
+          configMap:
+            name: lab-probes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-tcp-new-b
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-tcp-new-b
+  template:
+    metadata:
+      labels:
+        app: probe-tcp-new-b
+    spec:
+      containers:
+        - name: probe
+          image: ${IMAGE_SOCAT}
+          command: ["sh", "/probes/probe-tcp-new.sh"]
+          env:
+            - name: PROBE_NAME
+              value: probe-tcp-new-b
+            - name: TARGET_HOST
+              value: server.${LAB_NS}.svc.cluster.local
+            - name: TARGET_PORT
+              value: "9000"
+            - name: PROBE_INTERVAL_S
+              value: "${PROBE_INTERVAL_S}"
+          volumeMounts:
+            - name: probes
+              mountPath: /probes
+      volumes:
+        - name: probes
+          configMap:
+            name: lab-probes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-tcp-stream
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-tcp-stream
+  template:
+    metadata:
+      labels:
+        app: probe-tcp-stream
+    spec:
+      containers:
+        - name: probe
+          image: ${IMAGE_SOCAT}
+          command: ["sh", "/probes/probe-tcp-stream.sh"]
+          env:
+            - name: TARGET_HOST
+              value: server.${LAB_NS}.svc.cluster.local
+            - name: TARGET_PORT
+              value: "9000"
+            - name: PROBE_INTERVAL_S
+              value: "${PROBE_INTERVAL_S}"
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          volumeMounts:
+            - name: probes
+              mountPath: /probes
+      volumes:
+        - name: probes
+          configMap:
+            name: lab-probes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restart-target
+  namespace: ${LAB_NS}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restart-target
+  template:
+    metadata:
+      labels:
+        app: restart-target
+    spec:
+      containers:
+        - name: idle
+          image: ${IMAGE_BUSYBOX}
+          command: ["sh", "-c", "while :; do sleep 3600; done"]

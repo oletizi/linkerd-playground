@@ -1,0 +1,70 @@
+set shell := ["bash", "-cu"]
+
+# Create (or reuse) the OrbStack lab machine and install its packages
+lab-up:
+    bash scripts/lab-up.sh
+
+# Delete the lab machine (and the lab keys inside it)
+lab-down:
+    bash scripts/lab-down.sh
+
+# Shell inside the lab machine, in this directory
+sh:
+    bash scripts/in-lab.sh lab/shell.sh
+
+# Unit tests for the lab's evidence helpers (run inside the lab machine)
+test:
+    bash scripts/in-lab.sh lab/tests/run.sh
+
+# Fresh k3s + Linkerd with the credential profile PROFILE (lab/profiles/PROFILE.env)
+reset PROFILE="issuer-short":
+    bash scripts/in-lab.sh --detach .lab-logs/reset.log lab/reset.sh {{PROFILE}} manual-$(date -u +%Y%m%dT%H%M%SZ)
+    bash scripts/wait-log.sh .lab-logs/reset.log 540
+
+# Deploy lab workloads into the current lab cluster (WHAT: baseline | probe-new)
+deploy WHAT="baseline":
+    bash scripts/in-lab.sh lab/deploy.sh {{WHAT}}
+
+# Record raw data answering the design's open lab questions (spec section 7)
+discover:
+    bash scripts/in-lab.sh lab/discover.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)
+
+# One full evidence snapshot of the current lab into .lab-logs/ (not evidence)
+snapshot:
+    bash scripts/in-lab.sh lab/snapshot-once.sh .lab-logs/snapshot-$(date -u +%Y%m%dT%H%M%SZ)
+
+# Launch a scenario detached in the lab (prints the run directory)
+run SCENARIO:
+    bash scripts/run.sh {{SCENARIO}}
+
+# Wait for a run to finish; prints its timeline tail and validity verdict
+wait RUN TIMEOUT="3600":
+    bash scripts/wait-run.sh {{RUN}} {{TIMEOUT}}
+
+# Private-key guard for DIR (e.g. a run before committing it, valid or not): PEM text and base64
+key-guard DIR:
+    bash scripts/in-lab.sh lab/key-guard.sh {{DIR}}
+
+# Discovery: does the current lab serve the lab-supplied webhook certificates?
+discover-webhooks:
+    bash scripts/in-lab.sh lab/discover-webhooks.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-webhooks
+
+# Discovery: how long healthy restarts take to pass the restart-stage gates
+discover-gates:
+    bash scripts/in-lab.sh lab/discover-gates.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-gates
+
+# Discovery: which policy and ServiceProfile resources the healthy validators reject
+discover-admission:
+    bash scripts/in-lab.sh lab/discover-admission.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-admission
+
+# Discovery: does the current lab serve the lab-supplied tap certificate, and does tap work?
+discover-tap:
+    bash scripts/in-lab.sh lab/discover-tap.sh runs/_discovery/$(date -u +%Y%m%dT%H%M%SZ)-tap
+
+# Launch a scenario as a discovery run (runs/_discovery/; never evidence)
+run-discovery SCENARIO:
+    bash scripts/run.sh --discovery {{SCENARIO}}
+
+# The same, with the discovery-only shortened observation windows (DISCOVERY_* settings)
+run-discovery-short SCENARIO:
+    bash scripts/run.sh --discovery --short {{SCENARIO}}

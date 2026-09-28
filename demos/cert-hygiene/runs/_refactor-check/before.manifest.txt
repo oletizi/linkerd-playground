@@ -1,0 +1,11 @@
+run=runs/_refactor-check/before
+files=6
+uploaded_utc=2026-09-14T02:33:56Z
+archive=runs/_refactor-check/before.tar.gz
+---
+996adcd5b35118c6f831263fd4840d7e3240f532b5b6e694e95274ec60b9b745  724  gen-certs.log
+8bf1eff29c0af6b1dc9433b0c7fe1837a562ef83bae202cc96eff65eadd81a14  1582  install-k3s.log
+5fcd34b2fd023ad3c231f80827815835655858b44a7ba4284e1b40555cb39f5f  18171  install-linkerd.log
+a8fa25dbef976828e1ade8daf7c36ff747ed4cc265c5843886f5b778851b6041  3806  linkerd-check.txt
+23f97218e1b01cd41a0c71e965512dab4ced0ce9673f07c442b8dac347f17f13  56  linkerd-version.txt
+064416940a64fda6d75fc8fccb75219dad3c8239ff1ce06427296c6c6c68d4d4  1077  pods.txt
