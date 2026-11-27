@@ -15,5 +15,5 @@
   ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ':(top)site' ':(top)demos'"
 
 [build.environment]
-  # Match the toolchain the site is developed against (Astro 5 needs >=18.20.8).
+  # Astro 7.4 needs Node >=22.23.4; "22" resolves to the newest 22.x release.
   NODE_VERSION = "22"
